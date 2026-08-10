@@ -13,7 +13,7 @@ export interface PollState {
 
 export function pollDecision(state: PollState): "silent" | "trigger" {
   if (!state.idle || state.hasPendingMessages) return "silent";
-  return state.remoteWorkIds.length > 0 || (state.pendingAcceptanceIds?.length ?? 0) > 0 ? "trigger" : "silent";
+  return state.remoteWorkIds.length > 0 ? "trigger" : "silent";
 }
 
 export function selectPolledWork(works: WorkTask[]): WorkTask | undefined {
@@ -60,7 +60,7 @@ export function startTodoPoller(
       if (selected) updateSessionWork(sessionId, selected);
       onWorkChanged();
       pi.sendUserMessage(
-        "检查 Todo：定时轮询发现未完成工作或待验收反馈，请同步处理；执行工作时更新 Todo，待验收时先向用户确认，通过前不要擅自返工。",
+        "检查 Todo：定时轮询发现普通未完成工作，请同步并按顺序执行；执行过程中更新 Todo，完成后继续下一个工作，直到队列为空或需要用户确认。",
         { deliverAs: "followUp" },
       );
     } finally {

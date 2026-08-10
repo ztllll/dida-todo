@@ -17,10 +17,13 @@ describe("主动 Todo 检查决策", () => {
     expect(pollDecision({ idle: true, hasPendingMessages: true, remoteWorkIds: ["one"] })).toBe("silent");
   });
 
-  it("仅在空闲且发现未完成工作或待验收时触发一次 LLM turn", () => {
+  it("仅在空闲且发现普通未完成工作时触发 LLM turn", () => {
     expect(pollDecision({ idle: true, hasPendingMessages: false, remoteWorkIds: [] })).toBe("silent");
     expect(pollDecision({ idle: true, hasPendingMessages: false, remoteWorkIds: ["one"] })).toBe("trigger");
-    expect(pollDecision({ idle: true, hasPendingMessages: false, remoteWorkIds: [], pendingAcceptanceIds: ["accept"] })).toBe("trigger");
+  });
+
+  it("只有待验收任务时保持静默", () => {
+    expect(pollDecision({ idle: true, hasPendingMessages: false, remoteWorkIds: [], pendingAcceptanceIds: ["accept"] })).toBe("silent");
   });
 
   it("自动恢复的 Runtime 绑定不等于 LLM 正在工作，不能阻止轮询", () => {

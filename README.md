@@ -81,7 +81,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 
 ### 6. 空闲主动轮询
 
-配置 `pollIntervalMinutes` 后，扩展会在会话启动或 `/reload` 后立即检查一次，之后按指定分钟间隔轮询。仅在 Pi 空闲且没有待处理消息时访问滴答；发现未完成工作或待验收事项才触发 LLM turn，否则完全静默。轮询依赖当前 Pi 进程和会话存活，不是系统 daemon。
+配置 `pollIntervalMinutes` 后，扩展会在会话启动或 `/reload` 后立即检查一次，之后按指定分钟间隔轮询。仅在 Pi 空闲且没有待处理消息时访问滴答；只有普通未完成顶层工作才触发 LLM turn；清单中只有待验收事项时完全静默。轮询依赖当前 Pi 进程和会话存活，不是系统 daemon。
 
 ### 7. 会话独立与永久历史
 
@@ -386,7 +386,7 @@ Create `~/.config/pi-dida-todo/config.json`:
 }
 ```
 
-Exact tmux target matching takes precedence over exact cwd matching. The extension never guesses or creates business projects. `pollIntervalMinutes` is optional (1–1440); the poller checks immediately on startup and then on the interval. It stays silent while Pi is busy, messages are queued, or neither unfinished work nor pending acceptance exists. A restored display binding does not count as active execution.
+Exact tmux target matching takes precedence over exact cwd matching. The extension never guesses or creates business projects. `pollIntervalMinutes` is optional (1–1440); the poller checks immediately on startup and then on the interval. It stays silent while Pi is busy, messages are queued, or no ordinary unfinished top-level work exists. Pending-acceptance tasks alone never wake the LLM. A restored display binding does not count as active execution.
 
 ## Usage
 
