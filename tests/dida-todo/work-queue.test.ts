@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WorkTask } from "../../extensions/dida-todo/domain.js";
-import { formatWorkQueueForAgent, nextUnfinishedWork } from "../../extensions/dida-todo/work-queue.js";
+import { formatWorkQueueForAgent, hasUnfinishedTasks, nextUnfinishedWork } from "../../extensions/dida-todo/work-queue.js";
 
 function work(id: string, title: string, statuses: Array<"pending" | "in_progress" | "completed">): WorkTask {
   return {
@@ -25,6 +25,15 @@ describe("多工作任务执行队列", () => {
 
     expect(nextUnfinishedWork([first, second, third], "first")?.remote.id).toBe("second");
     expect(nextUnfinishedWork([first, second, third], "second")?.remote.id).toBe("third");
+  });
+
+  it("没有 Checklist 的未完成顶层任务仍是待执行工作", () => {
+    const empty = work("empty", "纯标题任务", []);
+
+    expect(hasUnfinishedTasks(empty)).toBe(true);
+    expect(nextUnfinishedWork([empty])?.remote.id).toBe("empty");
+    expect(formatWorkQueueForAgent([empty])).toContain("[尚无 Checklist，仍需执行]");
+    expect(formatWorkQueueForAgent([empty])).toContain("workId: empty");
   });
 
   it("给 Agent 的同步上下文明确要求连续处理全部未完成工作", () => {

@@ -74,7 +74,7 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
         selected: work.remote.id === selected?.remote.id,
       }));
       const text = selected
-        ? `Selected work: ${selected.remote.title} (${selected.remote.id})\n${formatWorkSchedule(selected.remote)}\n${selected.tasks.filter((task) => task.status !== "deleted").map((task) => `[${task.status}] #${task.id} ${task.subject}`).join("\n")}`
+        ? `Selected work: ${selected.remote.title} (${selected.remote.id})\n${formatWorkSchedule(selected.remote)}\n${selected.tasks.filter((task) => task.status !== "deleted").map((task) => `[${task.status}] #${task.id} ${task.subject}`).join("\n") || "[pending] 尚无 Checklist；先根据顶层任务标题分析工作并创建执行步骤"}`
         : works.length
           ? `Unfinished works:\n${works.map((work) => `- ${work.title} [${work.completed}/${work.total}] (${work.id})`).join("\n")}`
           : "No unfinished Dida work tasks";

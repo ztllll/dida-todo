@@ -19,7 +19,11 @@ describe("LLM 工作任务切换工具", () => {
     expect(result.tasks[0]?.status).toBe("pending");
   });
 
-  it("拒绝不存在或已无未完成步骤的工作", () => {
+  it("允许选择没有 Checklist 的未完成顶层任务", () => {
+    expect(selectWorkResult([work("empty", [])], "empty").remote.id).toBe("empty");
+  });
+
+  it("拒绝不存在或已有 Checklist 且全部完成的工作", () => {
     expect(() => selectWorkResult([work("one", ["completed"])], "missing")).toThrow("not found");
     expect(() => selectWorkResult([work("one", ["completed"])], "one")).toThrow("没有未完成步骤");
   });

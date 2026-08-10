@@ -4,7 +4,9 @@ import { formatWorkSchedule } from "./scheduling.js";
 import { formatAcceptanceForAgent } from "./acceptance.js";
 
 export function hasUnfinishedTasks(work: WorkTask): boolean {
-  return work.tasks.some((task) => task.status === "pending" || task.status === "in_progress");
+  const visible = work.tasks.filter((task) => task.status !== "deleted");
+  if (visible.length === 0) return work.remote.status === 0;
+  return visible.some((task) => task.status === "pending" || task.status === "in_progress");
 }
 
 export function nextUnfinishedWork(works: WorkTask[], currentWorkId?: string): WorkTask | undefined {
@@ -21,7 +23,8 @@ export function formatWorkQueueForAgent(works: WorkTask[], adoptedCount = 0, acc
   const workLines = unfinished.map((work) => {
     const visible = work.tasks.filter((task) => task.status !== "deleted");
     const done = visible.filter((task) => task.status === "completed").length;
-    return `- ${work.remote.title} [${done}/${visible.length}] (workId: ${work.remote.id})\n  ${formatWorkSchedule(work.remote).replaceAll("\n", " · ")}`;
+    const progress = visible.length ? `[${done}/${visible.length}]` : "[尚无 Checklist，仍需执行]";
+    return `- ${work.remote.title} ${progress} (workId: ${work.remote.id})\n  ${formatWorkSchedule(work.remote).replaceAll("\n", " · ")}`;
   });
   const acceptanceLines = acceptances.map(({ remote, comments }) => formatAcceptanceForAgent(remote, comments));
   return [
