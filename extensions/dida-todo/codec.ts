@@ -1,0 +1,135 @@
+import type { DidaChecklistItem, DidaTask, Task, TaskStatus, WorkMetadata, WorkTask } from "./domain.js";
+
+const START = "<!-- pi-dida-todo:start -->";
+const END = "<!-- pi-dida-todo:end -->";
+
+function cloneTask(task: Task): Task {
+  return {
+    ...task,
+    ...(task.blockedBy ? { blockedBy: [...task.blockedBy] } : {}),
+    ...(task.metadata ? { metadata: { ...task.metadata } } : {}),
+  };
+}
+
+export function encodeManagedContent(userContent: string, metadata: WorkMetadata): string {
+  const cleanUserContent = stripManagedContent(userContent).trimEnd();
+  const block = `${START}\n${JSON.stringify(metadata)}\n${END}`;
+  return cleanUserContent ? `${cleanUserContent}\n\n${block}` : block;
+}
+
+export function stripManagedContent(content: string | undefined): string {
+  if (!content) return "";
+  const start = content.indexOf(START);
+  if (start === -1) return content;
+  const end = content.indexOf(END, start + START.length);
+  if (end === -1) return content;
+  return `${content.slice(0, start)}${content.slice(end + END.length)}`.trimEnd();
+}
+
+export function decodeMetadata(content: string | undefined): WorkMetadata | undefined {
+  if (!content) return undefined;
+  const start = content.indexOf(START);
+  const end = content.indexOf(END, start + START.length);
+  if (start === -1 || end === -1) return undefined;
+  const raw = content.slice(start + START.length, end).trim();
+  try {
+    const value = JSON.parse(raw) as Partial<WorkMetadata>;
+    if (
+      value.schemaVersion !== 1 ||
+      value.kind !== "pi-todo-work" ||
+      typeof value.bindingKey !== "string" ||
+      typeof value.nextId !== "number" ||
+      !Array.isArray(value.tasks)
+    ) {
+      return undefined;
+    }
+    return {
+      ...value,
+      schemaVersion: 1,
+      kind: "pi-todo-work",
+      tasks: value.tasks.map(cloneTask),
+    } as WorkMetadata;
+  } catch {
+    return undefined;
+  }
+}
+
+export function metadataToItems(metadata: WorkMetadata): DidaChecklistItem[] {
+  return metadata.tasks
+    .filter((task) => task.status !== "deleted")
+    .map((task, index) => ({
+      ...(task.itemId ? { id: task.itemId } : {}),
+      title: task.subject,
+      status: task.status === "completed" ? 1 : 0,
+      sortOrder: -(index + 1) * 1099511627776,
+      isAllDay: false,
+    }));
+}
+
+export function decodeWorkTask(remote: DidaTask): WorkTask | undefined {
+  const metadata = decodeMetadata(remote.content);
+  if (!metadata) return undefined;
+  const items = remote.items ?? [];
+  const itemsById = new Map(items.filter((item) => item.id).map((item) => [item.id as string, item]));
+  const availableWithoutId = [...items];
+
+  const matchedItemIds = new Set<string>();
+  const tasks = metadata.tasks.map((stored) => {
+    let item = stored.itemId ? itemsById.get(stored.itemId) : undefined;
+    if (!item) item = availableWithoutId.find((candidate) => candidate.title === stored.subject);
+    if (!item || stored.status === "deleted") return cloneTask(stored);
+    if (item.id) matchedItemIds.add(item.id);
+    const completed = item.status === 1 || item.status === 2;
+    const status: TaskStatus = completed
+      ? "completed"
+      : metadata.activeTaskId === stored.id
+        ? "in_progress"
+        : "pending";
+    return {
+      ...cloneTask(stored),
+      ...(item.id ? { itemId: item.id } : {}),
+      subject: item.title,
+      status,
+    };
+  });
+
+  let nextId = Math.max(metadata.nextId, ...tasks.map((task) => task.id + 1), 1);
+  for (const item of items) {
+    if (item.id && matchedItemIds.has(item.id)) continue;
+    const duplicate = tasks.some((task) => task.status !== "deleted" && task.subject === item.title && (!item.id || task.itemId === item.id));
+    if (duplicate) continue;
+    const completed = item.status === 1 || item.status === 2;
+    tasks.push({
+      id: nextId++,
+      subject: item.title,
+      status: completed ? "completed" : "pending",
+      ...(item.id ? { itemId: item.id } : {}),
+      metadata: { source: "dida" },
+    });
+  }
+
+  const normalizedMetadata = { ...metadata, nextId, tasks };
+  return {
+    remote,
+    metadata: normalizedMetadata,
+    tasks,
+    userContent: stripManagedContent(remote.content),
+  };
+}
+
+export function synchronizeItemIds(metadata: WorkMetadata, remote: DidaTask): WorkMetadata {
+  const items = remote.items ?? [];
+  const unused = new Set(items.map((_, index) => index));
+  const tasks = metadata.tasks.map((task) => {
+    if (task.status === "deleted") return cloneTask(task);
+    let index = task.itemId ? items.findIndex((item) => item.id === task.itemId) : -1;
+    if (index < 0 || !unused.has(index)) {
+      index = items.findIndex((item, candidateIndex) => unused.has(candidateIndex) && item.title === task.subject);
+    }
+    if (index < 0) return cloneTask(task);
+    unused.delete(index);
+    const item = items[index];
+    return { ...cloneTask(task), ...(item.id ? { itemId: item.id } : {}) };
+  });
+  return { ...metadata, tasks };
+}

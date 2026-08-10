@@ -1,0 +1,64 @@
+{
+  "name": "dida-todo",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Pi extension that uses Dida365 as the durable source of truth for Todo work, progress, reminders, and human acceptance.",
+  "license": "MIT",
+  "author": "Ztllll",
+  "homepage": "https://github.com/ztllll/dida-todo#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ztllll/dida-todo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ztllll/dida-todo/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "dida",
+    "dida365",
+    "todo",
+    "task-management",
+    "human-in-the-loop"
+  ],
+  "files": [
+    "extensions/dida-todo",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "bash scripts/check-structure.sh && npm run typecheck && npm test && npm run pack:check",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "pack:check": "npm pack --dry-run --json >/tmp/dida-todo-pack.json",
+    "inventory": "bash scripts/pi-inventory.sh"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/dida-todo"
+    ]
+  },
+  "dependencies": {
+    "@suibiji/dida-cli": "^0.1.12"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.84.1",
+    "@earendil-works/pi-coding-agent": "^0.84.1",
+    "@earendil-works/pi-tui": "^0.84.1",
+    "@types/node": "^22.20.1",
+    "typebox": "^1.3.11",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,113 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { DidaProjectData, DidaTask } from "./domain.js";
+import type { DidaGateway } from "./repository.js";
+import type { DidaComment } from "./acceptance.js";
+
+const MAX_OUTPUT_BYTES = 1024 * 1024;
+
+function outputError(stderr: string, stdout: string): string {
+  return (stderr || stdout || "dida CLI 执行失败").trim().slice(0, 4000);
+}
+
+export class DidaCliGateway implements DidaGateway {
+  constructor(
+    private readonly pi: ExtensionAPI,
+    private readonly command = "dida",
+  ) {}
+
+  async getProjectData(projectId: string, signal?: AbortSignal): Promise<DidaProjectData> {
+    return this.execJson(["project", "data", projectId, "--json"], signal);
+  }
+
+  async getTask(projectId: string, taskId: string, signal?: AbortSignal): Promise<DidaTask> {
+    return this.execJson(["task", "get", projectId, taskId, "--json"], signal);
+  }
+
+  async createTask(input: Record<string, unknown>, signal?: AbortSignal): Promise<DidaTask> {
+    const args = [
+      "task",
+      "create",
+      "--title",
+      String(input.title),
+      "--project",
+      String(input.projectId),
+      "--content",
+      String(input.content ?? ""),
+      "--items",
+      JSON.stringify(input.items ?? []),
+      "--tags",
+      Array.isArray(input.tags) ? input.tags.join(",") : "pi-todo",
+    ];
+    if (input.desc !== undefined) args.push("--desc", String(input.desc));
+    if (input.isAllDay === true) args.push("--all-day");
+    if (input.startDate !== undefined) args.push("--start-date", String(input.startDate));
+    if (input.dueDate !== undefined) args.push("--due-date", String(input.dueDate));
+    if (input.timeZone !== undefined) args.push("--time-zone", String(input.timeZone));
+    if (Array.isArray(input.reminders) && input.reminders.length) args.push("--reminders", input.reminders.join(","));
+    if (input.repeatFlag !== undefined) args.push("--repeat", String(input.repeatFlag));
+    if (input.priority !== undefined) args.push("--priority", String(input.priority));
+    if (input.sortOrder !== undefined) args.push("--sort-order", String(input.sortOrder));
+    args.push("--json");
+    return this.execJson(args, signal);
+  }
+
+  async updateTask(taskId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<DidaTask> {
+    const args = [
+      "task",
+      "update",
+      taskId,
+      "--id",
+      String(input.id ?? taskId),
+      "--project",
+      String(input.projectId),
+      "--title",
+      String(input.title),
+      "--content",
+      String(input.content ?? ""),
+      "--items",
+      JSON.stringify(input.items ?? []),
+      "--tags",
+      Array.isArray(input.tags) ? input.tags.join(",") : "pi-todo",
+      "--priority",
+      String(input.priority ?? 0),
+    ];
+    if (input.desc !== undefined) args.push("--desc", String(input.desc));
+    if (input.isAllDay === true) args.push("--all-day");
+    if (input.startDate !== undefined) args.push("--start-date", String(input.startDate));
+    if (input.dueDate !== undefined) args.push("--due-date", String(input.dueDate));
+    if (input.timeZone !== undefined) args.push("--time-zone", String(input.timeZone));
+    if (Array.isArray(input.reminders) && input.reminders.length) args.push("--reminders", input.reminders.join(","));
+    if (input.repeatFlag !== undefined) args.push("--repeat", String(input.repeatFlag));
+    if (input.sortOrder !== undefined) args.push("--sort-order", String(input.sortOrder));
+    args.push("--json");
+    return this.execJson(args, signal);
+  }
+
+  async completeTask(projectId: string, taskId: string, signal?: AbortSignal): Promise<void> {
+    await this.exec(["task", "complete", projectId, taskId], signal);
+  }
+
+  async addTaskComment(projectId: string, taskId: string, title: string, signal?: AbortSignal): Promise<void> {
+    await this.exec(["task", "comment", "add", projectId, taskId, "--title", title, "--json"], signal);
+  }
+
+  async getTaskComments(projectId: string, taskId: string, signal?: AbortSignal): Promise<DidaComment[]> {
+    return this.execJson(["task", "comment", "list", projectId, taskId, "--json"], signal);
+  }
+
+  private async execJson<T>(args: string[], signal?: AbortSignal): Promise<T> {
+    const stdout = await this.exec(args, signal);
+    if (Buffer.byteLength(stdout, "utf8") > MAX_OUTPUT_BYTES) throw new Error("dida CLI JSON 输出超过 1 MiB 限制");
+    try {
+      return JSON.parse(stdout) as T;
+    } catch (error) {
+      throw new Error(`无法解析 dida CLI JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async exec(args: string[], signal?: AbortSignal): Promise<string> {
+    const result = await this.pi.exec(this.command, args, { signal, timeout: 30_000 });
+    if (result.code !== 0) throw new Error(outputError(result.stderr, result.stdout));
+    return result.stdout.trim();
+  }
+}

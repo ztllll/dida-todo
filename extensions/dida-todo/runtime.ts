@@ -1,0 +1,69 @@
+import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import type { Task, TodoScope, WorkTask } from "./domain.js";
+
+export interface SessionRuntime {
+  scope: TodoScope;
+  work?: WorkTask;
+  works: WorkTask[];
+  lastSyncAt?: string;
+}
+
+const sessions = new Map<string, SessionRuntime>();
+let activeSessionId = "";
+let ui: ExtensionUIContext | undefined;
+
+export function setSessionRuntime(sessionId: string, runtime: SessionRuntime): void {
+  sessions.set(sessionId, runtime);
+}
+
+export function getSessionRuntime(sessionId: string): SessionRuntime | undefined {
+  return sessions.get(sessionId);
+}
+
+export function updateSessionWork(sessionId: string, work: WorkTask | undefined): void {
+  const runtime = sessions.get(sessionId);
+  if (!runtime) throw new Error(`Pi session ${sessionId} 尚未初始化滴答 Todo`);
+  runtime.work = work;
+  if (work) {
+    const index = runtime.works.findIndex((candidate) => candidate.remote.id === work.remote.id);
+    if (index >= 0) runtime.works[index] = work;
+    else runtime.works.unshift(work);
+  }
+}
+
+export function updateSessionWorks(sessionId: string, works: WorkTask[], preferredWorkId?: string): void {
+  const runtime = sessions.get(sessionId);
+  if (!runtime) throw new Error(`Pi session ${sessionId} 尚未初始化滴答 Todo`);
+  runtime.works = works;
+  runtime.lastSyncAt = new Date().toISOString();
+  const targetId = preferredWorkId ?? runtime.work?.remote.id;
+  runtime.work = targetId ? works.find((work) => work.remote.id === targetId) : works.length === 1 ? works[0] : undefined;
+}
+
+export function removeSessionRuntime(sessionId: string): void {
+  sessions.delete(sessionId);
+  if (activeSessionId === sessionId) activeSessionId = "";
+}
+
+export function setActiveSession(sessionId: string, uiContext: ExtensionUIContext): void {
+  activeSessionId = sessionId;
+  ui = uiContext;
+}
+
+export function getActiveRuntime(): SessionRuntime | undefined {
+  return activeSessionId ? sessions.get(activeSessionId) : undefined;
+}
+
+export function getActiveTasks(): Task[] {
+  return getActiveRuntime()?.work?.tasks.map((task) => ({ ...task })) ?? [];
+}
+
+export function getActiveUI(): ExtensionUIContext | undefined {
+  return ui;
+}
+
+export function clearActiveSession(sessionId: string): void {
+  if (activeSessionId !== sessionId) return;
+  activeSessionId = "";
+  ui = undefined;
+}
