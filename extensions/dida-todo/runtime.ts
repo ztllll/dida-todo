@@ -1,5 +1,6 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { Task, TodoScope, WorkTask } from "./domain.js";
+import { isExecutableWork } from "./work-queue.js";
 
 export interface SessionRuntime {
   scope: TodoScope;
@@ -37,7 +38,9 @@ export function updateSessionWorks(sessionId: string, works: WorkTask[], preferr
   runtime.works = works;
   runtime.lastSyncAt = new Date().toISOString();
   const targetId = preferredWorkId ?? runtime.work?.remote.id;
-  runtime.work = targetId ? works.find((work) => work.remote.id === targetId) : works.length === 1 ? works[0] : undefined;
+  const target = targetId ? works.find((work) => work.remote.id === targetId && isExecutableWork(work)) : undefined;
+  const executable = works.filter(isExecutableWork);
+  runtime.work = target ?? (executable.length === 1 ? executable[0] : undefined);
 }
 
 export function removeSessionRuntime(sessionId: string): void {

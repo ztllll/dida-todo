@@ -62,7 +62,7 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
           ? sync.works.slice(currentIndex + 1).find(isExecutableWork) ?? sync.works.slice(0, currentIndex).find(isExecutableWork)
           : unfinished[0];
       } else if (currentId) {
-        selected = sync.works.find((work) => work.remote.id === currentId);
+        selected = sync.works.find((work) => work.remote.id === currentId && isExecutableWork(work));
       }
       if (selected) updateSessionWork(sessionId, selected);
       else if (params.action === "next" || params.action === "finish_current") updateSessionWork(sessionId, undefined);

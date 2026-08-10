@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import type { Task, TodoScope, WorkTask } from "./domain.js";
 import { DidaTodoRepository } from "./repository.js";
 import { getSessionRuntime, updateSessionWork, updateSessionWorks } from "./runtime.js";
+import { isExecutableWork } from "./work-queue.js";
 
 export const PUBLIC_DIDA_TODO_COMMANDS = ["todos"] as const;
 
@@ -40,8 +41,9 @@ export function registerCommands(pi: ExtensionAPI, repository: DidaTodoRepositor
       const result = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true });
       updateSessionWorks(sessionId, result.works, runtime.work?.remote.id);
       let refreshed = getSessionRuntime(sessionId);
-      if (!refreshed?.work && result.works.length > 0) {
-        updateSessionWork(sessionId, result.works[0]);
+      const firstExecutable = result.works.find(isExecutableWork);
+      if (!refreshed?.work && firstExecutable) {
+        updateSessionWork(sessionId, firstExecutable);
         refreshed = getSessionRuntime(sessionId);
       }
       onWorkChanged();
