@@ -1,9 +1,9 @@
 {
   "name": "dida-todo",
   "version": "0.1.0",
-  "private": false,
+  "private": true,
   "type": "module",
-  "description": "Pi extension that uses Dida365 as the durable source of truth for Todo work, progress, reminders, and human acceptance.",
+  "description": "Pi 扩展：以滴答清单为 Todo 真源，支持自然语言执行、双向同步、提醒和强制人类验收闭环。",
   "license": "MIT",
   "author": "Ztllll",
   "homepage": "https://github.com/ztllll/dida-todo#readme",
