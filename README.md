@@ -25,7 +25,7 @@
 → Checklist 和评论持续回写滴答
 ```
 
-- 支持用户手工创建顶层 Checklist 工作任务。
+- 支持用户手工创建顶层 Checklist 工作任务；只有标题、尚无 Checklist 的未完成任务也会进入队列，LLM 会先拆分执行步骤。
 - 支持用户在执行过程中新增、改名或完成 Checklist Item。
 - Pi 刷新后会导入这些变化，并保留稳定的内部 Todo ID。
 
@@ -79,7 +79,11 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 - 需要调整：保持验收 Todo 未完成并评论；下次“检查 Todo”时，LLM 会读取反馈并先询问，再决定是否返工。
 - “尚未点击完成”只代表尚未闭环，不会被自动判定为实现失败。
 
-### 6. 会话独立与永久历史
+### 6. 空闲主动轮询
+
+配置 `pollIntervalMinutes` 后，扩展会在会话启动或 `/reload` 后立即检查一次，之后按指定分钟间隔轮询。仅在 Pi 空闲且没有待处理消息时访问滴答；发现未完成工作或待验收事项才触发 LLM turn，否则完全静默。轮询依赖当前 Pi 进程和会话存活，不是系统 daemon。
+
+### 7. 会话独立与永久历史
 
 - `/new`、会话切换、compact 或 detach 不删除滴答历史。
 - 滴答是唯一任务真源；Pi Runtime 只是当前展示与活动工作缓存。
@@ -107,14 +111,34 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 
 ### 从 GitHub Release 安装
 
+安装固定版本（推荐，可复现）：
+
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.1.0
+pi install git:github.com/ztllll/dida-todo@v0.2.3
+```
+
+安装 main 最新代码：
+
+```bash
+pi install git:github.com/ztllll/dida-todo
+```
+
+升级已安装的 GitHub 包：
+
+```bash
+pi update git:github.com/ztllll/dida-todo
 ```
 
 也可以先试用而不写入安装配置：
 
 ```bash
-pi -e git:github.com/ztllll/dida-todo@v0.1.0
+pi -e git:github.com/ztllll/dida-todo@v0.2.3
+```
+
+安装、升级或修改配置后，在交互式 Pi 中执行：
+
+```text
+/reload
 ```
 
 本项目当前**只以 GitHub 为正式发布渠道，不发布 npm 包**。包内已依赖 `@suibiji/dida-cli`，无需全局安装 `dida`。
@@ -174,7 +198,7 @@ OAuth Token 保存在用户配置目录，不应写入项目或提交到 Git。
 
 绑定优先级：精确 tmux target → 精确 cwd。扩展不会猜测清单，也不会自动创建业务清单。
 
-`didaCommand` 是可选高级覆盖；默认解析本项目依赖中的 `@suibiji/dida-cli`。
+`pollIntervalMinutes` 可选，范围为 `1–1440` 分钟；未配置时不主动轮询。修改配置后执行 `/reload`。`didaCommand` 是可选高级覆盖；默认解析本项目依赖中的 `@suibiji/dida-cli`。
 
 ## 使用示例
 
@@ -193,6 +217,8 @@ OAuth Token 保存在用户配置目录，不应写入项目或提交到 Git。
 检查 Todo
 ```
 
+如果配置了 `pollIntervalMinutes`，也可以保持 Pi 会话运行，扩展会在空闲时主动检查。只有标题的任务会先由 LLM 创建 Checklist；已有 Checklist 的任务会直接按步骤执行。
+
 执行期间你可以在滴答看到 Checklist 完成变化和 Pi 评论。工作结束后，会出现：
 
 ```text
@@ -203,7 +229,7 @@ OAuth Token 保存在用户配置目录，不应写入项目或提交到 Git。
 
 ## 诚实的限制
 
-1. 当前不是后台 daemon：滴答负责定时提醒，用户输入触发 LLM 同步与执行。
+1. 定时轮询不是系统 daemon：仅在 Pi 进程和当前会话存活时有效；Pi 退出后由滴答负责提醒。
 2. 滴答 Checklist 没有原生 `in_progress`，因此进行中状态主要在 Pi Overlay 可见。
 3. Dida CLI 更新需要发送完整 Items；项目已做进程内和文件队列串行化，但跨主机并发、etag 冲突、限流和长期无人值守仍需更多验证。
 4. 当前重点支持滴答清单，不宣称兼容 TickTick 国际版。
@@ -234,7 +260,7 @@ OAuth Token 保存在用户配置目录，不应写入项目或提交到 Git。
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-发布前已通过 45 项自动测试、Git 安装、Pi 临时加载、包内容与凭据扫描。真实环境仍可能暴露新的边界，欢迎通过 Issues 反馈。
+当前版本已通过 53 项自动测试、官方 Extension Loader、Git 安装、Pi 临时加载、包内容与凭据扫描。真实环境仍可能暴露新的边界，欢迎通过 Issues 反馈。
 
 ## 开发成员
 
@@ -300,19 +326,33 @@ One fixed Dida365 project per local project / tmux target
 
 Requirements: Node.js `>=20`, Pi Coding Agent, a Dida365 account, and a dedicated Dida365 project.
 
+Install a pinned release (recommended):
+
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.1.0
+pi install git:github.com/ztllll/dida-todo@v0.2.3
+```
+
+Install the latest `main` branch:
+
+```bash
+pi install git:github.com/ztllll/dida-todo
+```
+
+Update an installed GitHub package:
+
+```bash
+pi update git:github.com/ztllll/dida-todo
 ```
 
 Temporary trial:
 
 ```bash
-pi -e git:github.com/ztllll/dida-todo@v0.1.0
+pi -e git:github.com/ztllll/dida-todo@v0.2.3
 ```
 
-GitHub is the only official release channel. This project is **not published to npm**. `@suibiji/dida-cli` is installed as a dependency, so a global `dida` installation is unnecessary.
+Run `/reload` after installation, update, or configuration changes. GitHub is the only official release channel. This project is **not published to npm**. `@suibiji/dida-cli` is installed as a dependency, so a global `dida` installation is unnecessary.
 
-Disable `@juicesharp/rpiv-todo` and any extension that also registers `todo` or `/todos`. `dida-todo` detects these conflicts and fails clearly instead of silently overriding them.
+Disable `@juicesharp/rpiv-todo` and any extension that also registers `todo` or `/todos`. Pi reports duplicate tool registrations as extension diagnostics; disable conflicting providers before use.
 
 ## Login and configuration
 
@@ -366,6 +406,8 @@ Continue the previous work
 Show pending acceptance reports
 ```
 
+With `pollIntervalMinutes` configured, leave the Pi session running and the extension checks while idle. Title-only tasks are queued and decomposed into Checklist steps before execution.
+
 Internal tools:
 
 - `todo`: Checklist steps in the current work.
@@ -404,7 +446,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, and UX simplification. Before publication it passed 45 automated tests, Git installation, Pi temporary loading, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, and UX simplification. The current release passed 53 automated tests, the official Extension Loader, Git installation, Pi temporary loading, package-content inspection, and credential scanning.
 
 ## Team
 
