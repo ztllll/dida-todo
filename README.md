@@ -155,6 +155,7 @@ OAuth Token 保存在用户配置目录，不应写入项目或提交到 Git。
   "maxWidgetLines": 12,
   "collapseKey": "ctrl+shift+t",
   "autoResumeSingle": true,
+  "pollIntervalMinutes": 5,
   "bindings": [
     {
       "key": "tmux:my-project:0.0",
@@ -281,6 +282,7 @@ Capture ideas, bugs, and feature requests in Dida365 from your phone or browser.
 - **Natural-language-first UX:** users keep `/todos` and the Overlay; top-level work management stays internal.
 - **Bidirectional Checklist sync:** titles and completion state flow between Dida365 and Pi.
 - **Multi-work queue:** the LLM can process all unfinished top-level tasks using priority and time ranges.
+- **Optional idle polling:** when configured, Pi checks Dida365 only while idle and triggers the LLM only when unfinished work exists.
 - **Durable history:** clearing or replacing a Pi session does not delete remote work.
 - **Mandatory human acceptance:** source work cannot complete until a pending acceptance Todo with a completion report and reminder exists.
 - **Feedback loop:** keep acceptance open and add a comment; the next sync exposes the feedback to the LLM, which asks before rework.
@@ -327,6 +329,7 @@ Create `~/.config/pi-dida-todo/config.json`:
   "maxWidgetLines": 12,
   "collapseKey": "ctrl+shift+t",
   "autoResumeSingle": true,
+  "pollIntervalMinutes": 5,
   "bindings": [
     {
       "key": "tmux:my-project:0.0",
@@ -343,7 +346,7 @@ Create `~/.config/pi-dida-todo/config.json`:
 }
 ```
 
-Exact tmux target matching takes precedence over exact cwd matching. The extension never guesses or creates business projects.
+Exact tmux target matching takes precedence over exact cwd matching. The extension never guesses or creates business projects. `pollIntervalMinutes` is optional (1–1440); polling stays silent while Pi is busy, a work item is active, messages are queued, or no remote work exists.
 
 ## Usage
 
@@ -375,6 +378,7 @@ All Checklist steps complete
 → build a report from per-step resolutions
 → create or reuse a pending human-acceptance Todo
 → schedule a default reminder two minutes later
+→ create a starter comment so the feedback entry point is visible
 → only then complete the source work
 ```
 
@@ -382,7 +386,7 @@ This rule lives in the Repository, not in an LLM prompt, so tools and scripts ca
 
 ## Honest limitations
 
-1. This is not a background daemon. Dida365 provides reminders; user input triggers LLM synchronization and execution.
+1. This is not a system daemon. Optional polling works only while the Pi process and session are alive; Dida365 remains responsible for reminders.
 2. Dida365 Checklist items have no native `in_progress` state; that state is primarily visible in the Pi Overlay.
 3. Cross-host concurrency, etag conflicts, rate limits, token expiry, and long unattended runs need more field testing.
 4. The current scope targets Dida365 and does not claim TickTick International compatibility.

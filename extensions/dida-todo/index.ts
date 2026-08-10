@@ -27,6 +27,7 @@ import { shouldCheckTodoInput } from "./input-sync.js";
 import { formatWorkQueueForAgent } from "./work-queue.js";
 import { registerTodoWorkTool } from "./work-tool.js";
 import { findDidaTodoConflicts } from "./compatibility.js";
+import { startTodoPoller } from "./poller.js";
 
 async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Promise<string | undefined> {
   if (!pane) return undefined;
@@ -48,6 +49,7 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
   const gateway = new DidaCliGateway(pi, resolveDidaCommand(config));
   const repository = new DidaTodoRepository(gateway);
   let activeUI = false;
+  const stopPollers = new Map<string, () => void>();
 
   const overlay = new TodoOverlay(
     getActiveTasks,
@@ -75,12 +77,7 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     const sessionId = ctx.sessionManager.getSessionId();
     const tmuxTarget = await detectTmuxTarget(pi, process.env.TMUX_PANE);
     const binding = resolveBinding(config, ctx.cwd, tmuxTarget);
-    if (!binding) {
-      if (ctx.hasUI) {
-        ctx.ui.setStatus("dida-todo", ctx.ui.theme.fg("warning", "滴答 Todo 未绑定"));
-      }
-      return;
-    }
+    if (!binding) return;
     const scope = {
       binding,
       bindingKey: bindingKeyFor(ctx.cwd, tmuxTarget),
@@ -96,14 +93,17 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       activeUI = true;
       setActiveSession(sessionId, ctx.ui);
       overlay.setUI(ctx.ui);
-      ctx.ui.setStatus(
-        "dida-todo",
-        ctx.ui.theme.fg("accent", work ? `滴答: ${work.remote.title}` : `滴答: ${binding.label ?? binding.projectId}`),
-      );
       overlay.update(true);
       if (!work && works.length > 1) {
         ctx.ui.notify(`当前项目有 ${works.length} 个未完成工作任务；可直接说“检查 Todo”让 LLM 按优先级执行`, "warning");
       }
+    }
+    if (config.pollIntervalMinutes !== undefined) {
+      stopPollers.get(sessionId)?.();
+      stopPollers.set(
+        sessionId,
+        startTodoPoller(pi, ctx, repository, config.pollIntervalMinutes, () => overlay.update(true)),
+      );
     }
   });
 
@@ -125,12 +125,13 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
   pi.on("session_shutdown", async (_event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     const wasActive = getSessionRuntime(sessionId) === getActiveRuntime();
+    stopPollers.get(sessionId)?.();
+    stopPollers.delete(sessionId);
     removeSessionRuntime(sessionId);
     if (wasActive) {
       overlay.dispose();
       clearActiveSession(sessionId);
       activeUI = false;
-      if (ctx.hasUI) ctx.ui.setStatus("dida-todo", undefined);
     }
   });
 

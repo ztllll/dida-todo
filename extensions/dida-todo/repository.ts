@@ -298,6 +298,14 @@ export class DidaTodoRepository {
         buildAcceptanceTaskInput(work.remote, 2, buildAcceptanceSummary(work.remote.title, work.tasks)),
         signal,
       );
+      if (this.gateway.addTaskComment) {
+        await this.gateway.addTaskComment(
+          scope.binding.projectId,
+          acceptanceTask.id,
+          "💬 请在此处输入验收意见；如果通过，请直接完成此验收任务。",
+          signal,
+        );
+      }
     }
     await this.gateway.completeTask(scope.binding.projectId, workId, signal);
     return { acceptanceTask };

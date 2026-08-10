@@ -28,6 +28,12 @@ export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<DidaTodoCo
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`滴答 Todo 配置必须是 JSON 对象: ${path}`);
   const value = raw as Partial<DidaTodoConfig>;
   if (!Array.isArray(value.bindings)) throw new Error(`滴答 Todo 配置缺少 bindings 数组: ${path}`);
+  if (
+    value.pollIntervalMinutes !== undefined &&
+    (!Number.isInteger(value.pollIntervalMinutes) || value.pollIntervalMinutes < 1 || value.pollIntervalMinutes > 1440)
+  ) {
+    throw new Error("pollIntervalMinutes 必须是 1 到 1440 的整数分钟");
+  }
   for (const [index, binding] of value.bindings.entries()) {
     if (!binding || typeof binding.key !== "string" || typeof binding.projectId !== "string") {
       throw new Error(`bindings[${index}] 必须包含字符串 key 和 projectId`);

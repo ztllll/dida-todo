@@ -95,6 +95,7 @@ export interface DidaTodoConfig {
   maxWidgetLines?: number;
   collapseKey?: string;
   autoResumeSingle?: boolean;
+  pollIntervalMinutes?: number;
 }
 
 export interface TodoScope {

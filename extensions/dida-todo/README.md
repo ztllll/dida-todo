@@ -69,6 +69,8 @@ list / switch / next / refresh / finish_current
 5. 读取待验收报告及评论；
 6. Overlay 与滴答状态同步。
 
+可选配置 `pollIntervalMinutes`（1–1440）：Pi 空闲、没有活动工作且没有待处理消息时定时读取滴答；没有新工作则静默，发现工作才触发一次 LLM turn。会话关闭时自动清理 timer。
+
 ## 强制人类验收闭环
 
 `DidaTodoRepository.finishWork()` 固化以下不变量：
@@ -78,7 +80,8 @@ list / switch / next / refresh / finish_current
 → 根据 Checklist 与 metadata.resolution 生成报告
 → 幂等创建或复用待验收 Todo
 → 设置默认两分钟后的准时提醒
-→ 验收 Todo 创建成功后才完成原工作
+→ 验收 Todo 创建成功后立即写入评论入口
+→ 验收 Todo 与评论创建成功后才完成原工作
 ```
 
 LLM、命令或脚本都不能绕过。待验收 Todo 保持未完成时，LLM 下次检查会读取报告和评论，但不会因“尚未点击完成”擅自判定失败或自动返工；有反馈时先询问用户。人类点击完成后闭环结束。
@@ -123,4 +126,5 @@ npm run check
 1. 滴答 Item 没有原生 `in_progress`，该状态保存在顶层任务受管元数据中；滴答侧显示为未完成，Pi Overlay 显示为进行中。
 2. Dida CLI 更新需要发送完整 Items；已做进程内/文件队列串行化，跨宿主并发和 etag 冲突仍需继续测试。
 3. 当前没有后台常驻 LLM 轮询；滴答负责定时提醒，用户说“检查 Todo”触发 LLM 同步和执行。
-4. 本工作区不是生产部署位置，未经授权不得复制到全局 Pi 配置。
+4. 定时轮询只在 Pi 进程和当前会话存活时有效，不是系统级后台服务。
+5. 本工作区不是生产部署位置，未经授权不得复制到全局 Pi 配置。

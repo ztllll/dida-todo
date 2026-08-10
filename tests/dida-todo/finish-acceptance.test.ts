@@ -6,6 +6,7 @@ import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo
 class FinishGateway implements DidaGateway {
   created: DidaTask[] = [];
   completed: string[] = [];
+  comments: Array<{ taskId: string; title: string }> = [];
   constructor(public tasks: DidaTask[], private failAcceptance = false) {}
   async getProjectData(projectId: string): Promise<DidaProjectData> {
     return { project: { id: projectId, name: "example" }, tasks: structuredClone(this.tasks.filter((task) => task.status === 0)), columns: [] };
@@ -23,6 +24,9 @@ class FinishGateway implements DidaGateway {
     return structuredClone(task);
   }
   async updateTask(): Promise<DidaTask> { throw new Error("unused"); }
+  async addTaskComment(_projectId: string, taskId: string, title: string): Promise<void> {
+    this.comments.push({ taskId, title });
+  }
   async completeTask(_projectId: string, taskId: string): Promise<void> {
     this.completed.push(taskId);
     const task = this.tasks.find((candidate) => candidate.id === taskId);
@@ -76,6 +80,7 @@ describe("完成工作强制人类验收", () => {
     expect(gateway.created[0]?.content).toContain("8 项测试通过");
     expect(gateway.completed).toEqual(["work"]);
     expect(result.acceptanceTask.id).toBe("created-1");
+    expect(gateway.comments).toEqual([{ taskId: "created-1", title: "💬 请在此处输入验收意见；如果通过，请直接完成此验收任务。" }]);
   });
 
   it("已有同源未完成验收 Todo 时复用，不重复创建", async () => {
@@ -96,6 +101,7 @@ describe("完成工作强制人类验收", () => {
     expect(gateway.created).toHaveLength(0);
     expect(result.acceptanceTask.id).toBe("acceptance");
     expect(gateway.completed).toEqual(["work"]);
+    expect(gateway.comments).toEqual([]);
   });
 
   it("验收 Todo 创建失败时不得完成原工作", async () => {
