@@ -346,7 +346,7 @@ Create `~/.config/pi-dida-todo/config.json`:
 }
 ```
 
-Exact tmux target matching takes precedence over exact cwd matching. The extension never guesses or creates business projects. `pollIntervalMinutes` is optional (1–1440); polling stays silent while Pi is busy, a work item is active, messages are queued, or no remote work exists.
+Exact tmux target matching takes precedence over exact cwd matching. The extension never guesses or creates business projects. `pollIntervalMinutes` is optional (1–1440); the poller checks immediately on startup and then on the interval. It stays silent while Pi is busy, messages are queued, or neither unfinished work nor pending acceptance exists. A restored display binding does not count as active execution.
 
 ## Usage
 

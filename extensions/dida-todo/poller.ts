@@ -6,13 +6,14 @@ import { getSessionRuntime, updateSessionWork, updateSessionWorks } from "./runt
 export interface PollState {
   idle: boolean;
   hasPendingMessages: boolean;
-  currentWorkId?: string;
+  boundWorkId?: string;
   remoteWorkIds: string[];
+  pendingAcceptanceIds?: string[];
 }
 
 export function pollDecision(state: PollState): "silent" | "trigger" {
-  if (!state.idle || state.hasPendingMessages || state.currentWorkId) return "silent";
-  return state.remoteWorkIds.length > 0 ? "trigger" : "silent";
+  if (!state.idle || state.hasPendingMessages) return "silent";
+  return state.remoteWorkIds.length > 0 || (state.pendingAcceptanceIds?.length ?? 0) > 0 ? "trigger" : "silent";
 }
 
 export function selectPolledWork(works: WorkTask[]): WorkTask | undefined {
@@ -40,35 +41,33 @@ export function startTodoPoller(
     if (running || stopped) return;
     const runtime = getSessionRuntime(sessionId);
     if (!runtime) return;
-    const decisionBeforeFetch = pollDecision({
-      idle: ctx.isIdle(),
-      hasPendingMessages: ctx.hasPendingMessages(),
-      currentWorkId: runtime.work?.remote.id,
-      remoteWorkIds: [],
-    });
-    if (decisionBeforeFetch === "silent" && (!ctx.isIdle() || ctx.hasPendingMessages() || runtime.work)) return;
+    if (!ctx.isIdle() || ctx.hasPendingMessages()) return;
     running = true;
     try {
       const sync = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true });
       if (pollDecision({
         idle: ctx.isIdle(),
         hasPendingMessages: ctx.hasPendingMessages(),
-        currentWorkId: getSessionRuntime(sessionId)?.work?.remote.id,
+        boundWorkId: getSessionRuntime(sessionId)?.work?.remote.id,
         remoteWorkIds: sync.works.map((work) => work.remote.id),
+        pendingAcceptanceIds: sync.acceptances.map(({ remote }) => remote.id),
       }) !== "trigger") {
         updateSessionWorks(sessionId, sync.works, runtime.work?.remote.id);
         return;
       }
       const selected = selectPolledWork(sync.works);
-      if (!selected) return;
-      updateSessionWorks(sessionId, sync.works, selected.remote.id);
-      updateSessionWork(sessionId, selected);
+      updateSessionWorks(sessionId, sync.works, selected?.remote.id);
+      if (selected) updateSessionWork(sessionId, selected);
       onWorkChanged();
-      pi.sendUserMessage("检查 Todo：定时轮询发现新的未完成工作，请同步并执行；如果任务存在歧义或风险，先询问用户。", { deliverAs: "followUp" });
+      pi.sendUserMessage(
+        "检查 Todo：定时轮询发现未完成工作或待验收反馈，请同步处理；执行工作时更新 Todo，待验收时先向用户确认，通过前不要擅自返工。",
+        { deliverAs: "followUp" },
+      );
     } finally {
       running = false;
     }
   };
+  void poll();
   const timer = setInterval(() => void poll(), intervalMinutes * 60_000);
   timer.unref();
   return () => {

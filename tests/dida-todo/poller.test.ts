@@ -12,15 +12,19 @@ function work(id: string, priority: number, createdTime: string): WorkTask {
 }
 
 describe("主动 Todo 检查决策", () => {
-  it("Pi 忙碌、已有当前工作或已有待发送消息时保持静默", () => {
-    expect(pollDecision({ idle: false, hasPendingMessages: false, currentWorkId: undefined, remoteWorkIds: ["one"] })).toBe("silent");
-    expect(pollDecision({ idle: true, hasPendingMessages: false, currentWorkId: "one", remoteWorkIds: ["one"] })).toBe("silent");
-    expect(pollDecision({ idle: true, hasPendingMessages: true, currentWorkId: undefined, remoteWorkIds: ["one"] })).toBe("silent");
+  it("Pi 忙碌或已有待发送消息时保持静默", () => {
+    expect(pollDecision({ idle: false, hasPendingMessages: false, remoteWorkIds: ["one"] })).toBe("silent");
+    expect(pollDecision({ idle: true, hasPendingMessages: true, remoteWorkIds: ["one"] })).toBe("silent");
   });
 
-  it("仅在空闲且发现未绑定工作时触发一次 LLM turn", () => {
-    expect(pollDecision({ idle: true, hasPendingMessages: false, currentWorkId: undefined, remoteWorkIds: [] })).toBe("silent");
-    expect(pollDecision({ idle: true, hasPendingMessages: false, currentWorkId: undefined, remoteWorkIds: ["one"] })).toBe("trigger");
+  it("仅在空闲且发现未完成工作或待验收时触发一次 LLM turn", () => {
+    expect(pollDecision({ idle: true, hasPendingMessages: false, remoteWorkIds: [] })).toBe("silent");
+    expect(pollDecision({ idle: true, hasPendingMessages: false, remoteWorkIds: ["one"] })).toBe("trigger");
+    expect(pollDecision({ idle: true, hasPendingMessages: false, remoteWorkIds: [], pendingAcceptanceIds: ["accept"] })).toBe("trigger");
+  });
+
+  it("自动恢复的 Runtime 绑定不等于 LLM 正在工作，不能阻止轮询", () => {
+    expect(pollDecision({ idle: true, hasPendingMessages: false, boundWorkId: "old", remoteWorkIds: ["old", "new"] })).toBe("trigger");
   });
 
   it("优先选择高优先级工作，同优先级选择最新工作", () => {
