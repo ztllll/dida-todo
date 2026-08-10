@@ -26,7 +26,6 @@ import { registerTodoTool } from "./tool.js";
 import { shouldCheckTodoInput } from "./input-sync.js";
 import { formatWorkQueueForAgent } from "./work-queue.js";
 import { registerTodoWorkTool } from "./work-tool.js";
-import { findDidaTodoConflicts } from "./compatibility.js";
 import { startTodoPoller } from "./poller.js";
 
 async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Promise<string | undefined> {
@@ -38,13 +37,6 @@ async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Pro
 }
 
 export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
-  const conflicts = findDidaTodoConflicts(
-    pi.getAllTools().map((tool) => ({ name: tool.name, source: tool.sourceInfo.source || tool.sourceInfo.path })),
-    pi.getCommands().map((command) => ({ name: command.name, source: command.sourceInfo.source || command.sourceInfo.path })),
-  );
-  if (conflicts.length) {
-    throw new Error(`dida-todo 与已加载扩展冲突：${conflicts.join("；")}。请禁用 @juicesharp/rpiv-todo 或其他注册同名接口的扩展。`);
-  }
   const config = await loadConfig();
   const gateway = new DidaCliGateway(pi, resolveDidaCommand(config));
   const repository = new DidaTodoRepository(gateway);
