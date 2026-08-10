@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import type { WorkTask } from "./domain.js";
 import { DidaTodoRepository } from "./repository.js";
 import { getSessionRuntime, updateSessionWork, updateSessionWorks } from "./runtime.js";
-import { hasUnfinishedTasks } from "./work-queue.js";
+import { hasUnfinishedTasks, isExecutableWork } from "./work-queue.js";
 import { formatWorkSchedule } from "./scheduling.js";
 
 export const TODO_WORK_ACTIONS = ["list", "switch", "next", "refresh", "finish_current"] as const;
@@ -12,6 +12,7 @@ export const TODO_WORK_ACTIONS = ["list", "switch", "next", "refresh", "finish_c
 export function selectWorkResult(works: WorkTask[], workId: string): WorkTask {
   const work = works.find((candidate) => candidate.remote.id === workId);
   if (!work) throw new Error(`work ${workId} not found`);
+  if ((work.remote.priority ?? 0) <= 0) throw new Error(`work ${workId} 没有设置优先级`);
   if (!hasUnfinishedTasks(work)) throw new Error(`work ${workId} 没有未完成步骤`);
   return work;
 }
@@ -23,8 +24,9 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
     description: "Internal LLM tool for synchronizing and moving through Dida top-level work. Users normally control it with natural language, not slash commands. Pending acceptance reports and feedback are included in list/refresh results.",
     promptSnippet: "Inspect and switch the Dida top-level work queue",
     promptGuidelines: [
-      "When checking todo, process all unfinished top-level Dida work tasks, not only the currently selected work.",
-      "Respect Dida priority and time range when ordering work. High priority is 5, medium 3, low 1, none 0.",
+      "When checking todo, process all prioritized unfinished top-level Dida work tasks, not only the currently selected work.",
+      "Never execute or mention priority-0 Dida work during automatic checks; it is a draft until the user assigns low, medium, or high priority.",
+      "Respect Dida priority and time range when ordering work. High priority is 5, medium 3, low 1; none 0 is not executable.",
       "A pending acceptance is not proof of failure; inspect comments and ask the user before starting rework.",
       "After completing every checklist item, call todo_work finish_current. The repository always creates or reuses the human acceptance Todo before completing the source work; this cannot be skipped by the LLM.",
       "Then call todo_work next and continue until no unfinished work remains or user input is required.",
@@ -54,10 +56,10 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
         if (!params.workId) throw new Error("workId required for switch");
         selected = selectWorkResult(sync.works, params.workId);
       } else if (params.action === "next" || params.action === "finish_current") {
-        const unfinished = sync.works.filter(hasUnfinishedTasks);
+        const unfinished = sync.works.filter(isExecutableWork);
         const currentIndex = currentId ? sync.works.findIndex((work) => work.remote.id === currentId) : -1;
         selected = currentIndex >= 0
-          ? sync.works.slice(currentIndex + 1).find(hasUnfinishedTasks) ?? sync.works.slice(0, currentIndex).find(hasUnfinishedTasks)
+          ? sync.works.slice(currentIndex + 1).find(isExecutableWork) ?? sync.works.slice(0, currentIndex).find(isExecutableWork)
           : unfinished[0];
       } else if (currentId) {
         selected = sync.works.find((work) => work.remote.id === currentId);
@@ -66,7 +68,7 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
       else if (params.action === "next" || params.action === "finish_current") updateSessionWork(sessionId, undefined);
       onWorkChanged();
 
-      const works = sync.works.filter(hasUnfinishedTasks).map((work) => ({
+      const works = sync.works.filter(isExecutableWork).map((work) => ({
         id: work.remote.id,
         title: work.remote.title,
         completed: work.tasks.filter((task) => task.status === "completed").length,

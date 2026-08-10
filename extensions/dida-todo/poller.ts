@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { WorkTask } from "./domain.js";
 import type { DidaTodoRepository } from "./repository.js";
 import { getSessionRuntime, updateSessionWork, updateSessionWorks } from "./runtime.js";
+import { isExecutableWork } from "./work-queue.js";
 
 export interface PollState {
   idle: boolean;
@@ -17,7 +18,7 @@ export function pollDecision(state: PollState): "silent" | "trigger" {
 }
 
 export function selectPolledWork(works: WorkTask[]): WorkTask | undefined {
-  return [...works].sort((left, right) => {
+  return works.filter(isExecutableWork).sort((left, right) => {
     const priority = (right.remote.priority ?? 0) - (left.remote.priority ?? 0);
     if (priority !== 0) return priority;
     return String(right.remote.createdTime ?? "").localeCompare(String(left.remote.createdTime ?? ""));
@@ -45,22 +46,23 @@ export function startTodoPoller(
     running = true;
     try {
       const sync = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true });
+      const executableWorks = sync.works.filter(isExecutableWork);
       if (pollDecision({
         idle: ctx.isIdle(),
         hasPendingMessages: ctx.hasPendingMessages(),
         boundWorkId: getSessionRuntime(sessionId)?.work?.remote.id,
-        remoteWorkIds: sync.works.map((work) => work.remote.id),
+        remoteWorkIds: executableWorks.map((work) => work.remote.id),
         pendingAcceptanceIds: sync.acceptances.map(({ remote }) => remote.id),
       }) !== "trigger") {
         updateSessionWorks(sessionId, sync.works, runtime.work?.remote.id);
         return;
       }
-      const selected = selectPolledWork(sync.works);
+      const selected = selectPolledWork(executableWorks);
       updateSessionWorks(sessionId, sync.works, selected?.remote.id);
       if (selected) updateSessionWork(sessionId, selected);
       onWorkChanged();
       pi.sendUserMessage(
-        "检查 Todo：定时轮询发现普通未完成工作，请同步并按顺序执行；执行过程中更新 Todo，完成后继续下一个工作，直到队列为空或需要用户确认。",
+        "检查 Todo：定时轮询发现已设置优先级的普通未完成工作，请同步并按顺序执行；无优先级任务视为草稿并静默跳过。执行过程中更新 Todo，完成后继续下一个工作，直到队列为空或需要用户确认。",
         { deliverAs: "followUp" },
       );
     } finally {

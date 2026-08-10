@@ -24,7 +24,7 @@ import {
 } from "./runtime.js";
 import { registerTodoTool } from "./tool.js";
 import { shouldCheckTodoInput } from "./input-sync.js";
-import { formatWorkQueueForAgent } from "./work-queue.js";
+import { formatWorkQueueForAgent, isExecutableWork } from "./work-queue.js";
 import { registerTodoWorkTool } from "./work-tool.js";
 import { startTodoPoller } from "./poller.js";
 
@@ -79,15 +79,16 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     };
     const sync = await repository.syncOpenWorks(scope, { adoptUnmanaged: true }, ctx.signal);
     const works = sync.works;
-    const work = works.length === 1 && config.autoResumeSingle !== false ? works[0] : undefined;
+    const executableWorks = works.filter(isExecutableWork);
+    const work = executableWorks.length === 1 && config.autoResumeSingle !== false ? executableWorks[0] : undefined;
     setSessionRuntime(sessionId, { scope, works, lastSyncAt: new Date().toISOString(), ...(work ? { work } : {}) });
     if (ctx.hasUI && !activeUI) {
       activeUI = true;
       setActiveSession(sessionId, ctx.ui);
       overlay.setUI(ctx.ui);
       overlay.update(true);
-      if (!work && works.length > 1) {
-        ctx.ui.notify(`当前项目有 ${works.length} 个未完成工作任务；可直接说“检查 Todo”让 LLM 按优先级执行`, "warning");
+      if (!work && executableWorks.length > 1) {
+        ctx.ui.notify(`当前项目有 ${executableWorks.length} 个已设置优先级的未完成工作任务；可直接说“检查 Todo”让 LLM 按优先级执行`, "warning");
       }
     }
     if (config.pollIntervalMinutes !== undefined) {
@@ -106,7 +107,8 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     const sync = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true });
     updateSessionWorks(runtime.scope.sessionId, sync.works, runtime.work?.remote.id);
     const refreshed = getActiveRuntime();
-    if (!refreshed?.work && sync.works.length > 0) updateSessionWork(runtime.scope.sessionId, sync.works[0]);
+    const firstExecutable = sync.works.find(isExecutableWork);
+    if (!refreshed?.work && firstExecutable) updateSessionWork(runtime.scope.sessionId, firstExecutable);
     overlay.update(true);
     const injected = [formatWorkQueueForAgent(sync.works, sync.adoptedWorkIds.length, sync.acceptances), "", event.text].join("\n");
     return { action: "transform", text: injected };

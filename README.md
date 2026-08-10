@@ -81,7 +81,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 
 ### 6. 空闲主动轮询
 
-配置 `pollIntervalMinutes` 后，扩展会在会话启动或 `/reload` 后立即检查一次，之后按指定分钟间隔轮询。仅在 Pi 空闲且没有待处理消息时访问滴答；只有普通未完成顶层工作才触发 LLM turn；清单中只有待验收事项时完全静默。轮询依赖当前 Pi 进程和会话存活，不是系统 daemon。
+配置 `pollIntervalMinutes` 后，扩展会在会话启动或 `/reload` 后立即检查一次，之后按指定分钟间隔轮询。仅在 Pi 空闲且没有待处理消息时访问滴答；只有设置了低/中/高优先级的普通未完成顶层工作才触发 LLM turn；无优先级任务视为草稿并静默跳过，清单中只有待验收事项时也完全静默。轮询依赖当前 Pi 进程和会话存活，不是系统 daemon。
 
 ### 7. 会话独立与永久历史
 
@@ -308,7 +308,7 @@ Capture ideas, bugs, and feature requests in Dida365 from your phone or browser.
 - **Natural-language-first UX:** users keep `/todos` and the Overlay; top-level work management stays internal.
 - **Bidirectional Checklist sync:** titles and completion state flow between Dida365 and Pi.
 - **Multi-work queue:** the LLM can process all unfinished top-level tasks using priority and time ranges.
-- **Optional idle polling:** when configured, Pi checks Dida365 only while idle and triggers the LLM only when unfinished work exists.
+- **Optional idle polling:** when configured, Pi checks Dida365 only while idle and triggers the LLM only for prioritized unfinished work. Priority 0 is treated as a draft and stays silent.
 - **Durable history:** clearing or replacing a Pi session does not delete remote work.
 - **Mandatory human acceptance:** source work cannot complete until a pending acceptance Todo with a completion report and reminder exists.
 - **Feedback loop:** keep acceptance open and add a comment; the next sync exposes the feedback to the LLM, which asks before rework.
@@ -386,7 +386,7 @@ Create `~/.config/pi-dida-todo/config.json`:
 }
 ```
 
-Exact tmux target matching takes precedence over exact cwd matching. The extension never guesses or creates business projects. `pollIntervalMinutes` is optional (1–1440); the poller checks immediately on startup and then on the interval. It stays silent while Pi is busy, messages are queued, or no ordinary unfinished top-level work exists. Pending-acceptance tasks alone never wake the LLM. A restored display binding does not count as active execution.
+Exact tmux target matching takes precedence over exact cwd matching. The extension never guesses or creates business projects. `pollIntervalMinutes` is optional (1–1440); the poller checks immediately on startup and then on the interval. It stays silent while Pi is busy, messages are queued, or no prioritized unfinished top-level work exists. Priority 0 tasks are synchronized but treated as drafts: they do not execute, wake the LLM, or produce a reply. Pending-acceptance tasks alone never wake the LLM. A restored display binding does not count as active execution.
 
 ## Usage
 

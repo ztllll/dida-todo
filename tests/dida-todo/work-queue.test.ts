@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { WorkTask } from "../../extensions/dida-todo/domain.js";
-import { formatWorkQueueForAgent, hasUnfinishedTasks, nextUnfinishedWork } from "../../extensions/dida-todo/work-queue.js";
+import { formatWorkQueueForAgent, hasUnfinishedTasks, isExecutableWork, nextUnfinishedWork } from "../../extensions/dida-todo/work-queue.js";
 
-function work(id: string, title: string, statuses: Array<"pending" | "in_progress" | "completed">): WorkTask {
+function work(id: string, title: string, statuses: Array<"pending" | "in_progress" | "completed">, priority = 1): WorkTask {
   return {
-    remote: { id, projectId: "project", title, status: 0, priority: 0 },
+    remote: { id, projectId: "project", title, status: 0, priority },
     userContent: "",
     tasks: statuses.map((status, index) => ({ id: index + 1, subject: `${title}-${index + 1}`, status })),
     metadata: {
@@ -36,13 +36,26 @@ describe("多工作任务执行队列", () => {
     expect(formatWorkQueueForAgent([empty])).toContain("workId: empty");
   });
 
+  it("无优先级任务保留未完成状态，但不进入自动执行队列", () => {
+    const draft = work("draft", "持续编辑中的草稿", [], 0);
+    const ready = work("ready", "已准备执行", [], 1);
+
+    expect(hasUnfinishedTasks(draft)).toBe(true);
+    expect(isExecutableWork(draft)).toBe(false);
+    expect(isExecutableWork(ready)).toBe(true);
+    expect(nextUnfinishedWork([draft, ready])?.remote.id).toBe("ready");
+    const text = formatWorkQueueForAgent([draft, ready]);
+    expect(text).not.toContain("workId: draft");
+    expect(text).toContain("workId: ready");
+  });
+
   it("给 Agent 的同步上下文明确要求连续处理全部未完成工作", () => {
     const text = formatWorkQueueForAgent([
       work("first", "最新工作", ["pending"]),
       work("second", "第二工作", ["completed", "pending"]),
     ]);
 
-    expect(text).toContain("全部未完成顶层工作任务");
+    expect(text).toContain("全部已设置优先级且未完成的顶层工作任务");
     expect(text).toContain("完成一个顶层工作后继续检查并切换到下一个");
     expect(text).toContain("workId: first");
     expect(text).toContain("workId: second");
