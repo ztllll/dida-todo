@@ -9,6 +9,7 @@ const require = createRequire(import.meta.url);
 export const BUNDLED_DIDA_COMMAND = require.resolve("@suibiji/dida-cli/dist/index.js");
 export const DEFAULT_MAX_WIDGET_LINES = 12;
 export const DEFAULT_COLLAPSE_KEY = "ctrl+shift+t";
+export const DEFAULT_POLL_INTERVAL_MINUTES = 10;
 
 export function normalizeCwd(cwd: string): string {
   const resolved = resolve(cwd);
@@ -66,6 +67,10 @@ export function resolveBinding(config: DidaTodoConfig, cwd: string, tmuxTarget?:
   }
   const cwdKey = `cwd:${normalizedCwd}`;
   return config.bindings.find((binding) => binding.key === cwdKey);
+}
+
+export function resolvePollIntervalMinutes(config: DidaTodoConfig): number {
+  return config.pollIntervalMinutes ?? DEFAULT_POLL_INTERVAL_MINUTES;
 }
 
 export function resolveDidaCommand(config: DidaTodoConfig): string {

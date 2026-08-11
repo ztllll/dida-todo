@@ -81,7 +81,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 
 ### 6. 空闲主动轮询
 
-配置 `pollIntervalMinutes` 后，扩展会在会话启动或 `/reload` 后立即检查一次，之后按指定分钟间隔轮询。仅在 Pi 空闲且没有待处理消息时访问滴答；只有设置了低/中/高优先级的普通未完成顶层工作才触发 LLM turn；无优先级任务视为草稿并静默跳过，清单中只有待验收事项时也完全静默。轮询依赖当前 Pi 进程和会话存活，不是系统 daemon。
+扩展默认每 **10 分钟**主动轮询；无需用户配置。会话启动或 `/reload` 后立即检查一次，之后按间隔轮询。仅在 Pi 空闲且没有待处理消息时访问滴答；只有设置了低/中/高优先级的普通未完成顶层工作才触发 LLM turn；无优先级任务视为草稿并静默跳过，清单中只有待验收事项时也完全静默。轮询依赖当前 Pi 进程和会话存活，不是系统 daemon。
 
 ### 7. 会话独立与永久历史
 
@@ -105,7 +105,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 ### 最简流程：全局安装 + 登录
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.4.1
+pi install git:github.com/ztllll/dida-todo@v0.4.2
 ```
 
 新开任意 Pi 会话，直接告诉 LLM：
@@ -130,7 +130,7 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 升级：
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.4.1
+pi install git:github.com/ztllll/dida-todo@v0.4.2
 # 或安装 main：pi install git:github.com/ztllll/dida-todo
 ```
 
@@ -163,7 +163,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
   "collapseKey": "ctrl+shift+t",
   "autoResumeSingle": true,
   "autoProvisionProject": true,
-  "pollIntervalMinutes": 5,
+  "pollIntervalMinutes": 10,
   "bindings": [
     {
       "key": "tmux:my-project:0.0",
@@ -182,7 +182,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 
 默认自动创建/复用和绑定；手工 `bindings` 仅用于覆盖默认行为。绑定优先级：精确 tmux target → 精确 cwd。多个同名清单时不会猜测。
 
-`pollIntervalMinutes` 可选，范围为 `1–1440` 分钟；未配置时不主动轮询。修改配置后执行 `/reload`。`didaCommand` 是可选高级覆盖；默认解析本项目依赖中的 `@suibiji/dida-cli`。
+`pollIntervalMinutes` 默认是 **10 分钟**，可在 `1–1440` 分钟范围内覆盖。修改配置后执行 `/reload`。`didaCommand` 是可选高级覆盖；默认解析本项目依赖中的 `@suibiji/dida-cli`。
 
 ## 使用示例
 
@@ -201,7 +201,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 检查 Todo
 ```
 
-如果配置了 `pollIntervalMinutes`，也可以保持 Pi 会话运行，扩展会在空闲时主动检查。只有标题的任务会先由 LLM 创建 Checklist；已有 Checklist 的任务会直接按步骤执行。
+保持 Pi 会话运行时，扩展默认每 10 分钟在空闲状态主动检查。只有标题的任务会先由 LLM 创建 Checklist；已有 Checklist 的任务会直接按步骤执行。
 
 执行期间你可以在滴答看到 Checklist 完成变化和 Pi 评论。工作结束后，会出现：
 
@@ -244,7 +244,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前 `v0.4.1` 已通过 23 个测试文件、68 项自动测试、TypeScript、官方 Extension Loader、Git 安装、Pi 临时加载、包内容与凭据扫描。真实环境仍可能暴露新的边界，欢迎通过 Issues 反馈。
+当前 `v0.4.2` 已通过 24 个测试文件、70 项自动测试、TypeScript、官方 Extension Loader、Git 安装、Pi 临时加载、包内容与凭据扫描。真实环境仍可能暴露新的边界，欢迎通过 Issues 反馈。
 
 ## 开发成员
 
@@ -292,7 +292,7 @@ Capture ideas, bugs, and feature requests in Dida365 from your phone or browser.
 - **Natural-language-first UX:** users keep `/todos` and the Overlay; top-level work management stays internal.
 - **Bidirectional Checklist sync:** titles and completion state flow between Dida365 and Pi.
 - **Multi-work queue:** the LLM can process all unfinished top-level tasks using priority and time ranges.
-- **Optional idle polling:** when configured, Pi checks Dida365 only while idle and triggers the LLM only for prioritized unfinished work. Priority 0 is treated as a draft and stays silent.
+- **Default idle polling:** Pi checks Dida365 every 10 minutes by default, only while idle, and triggers the LLM only for executable unfinished work. The interval is configurable. Priority 0 is treated as a draft and stays silent.
 - **Durable history:** clearing or replacing a Pi session does not delete remote work.
 - **Mandatory human acceptance:** source work cannot complete until a pending acceptance Todo with a completion report and reminder exists.
 - **Feedback loop:** keep acceptance open and add a comment; the next sync exposes the feedback to the LLM, which asks before rework.
@@ -309,7 +309,7 @@ One fixed Dida365 project per local project / tmux target
 ## Install
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.4.1
+pi install git:github.com/ztllll/dida-todo@v0.4.2
 ```
 
 In any new Pi session, tell the LLM:
@@ -336,7 +336,7 @@ Create `~/.config/pi-dida-todo/config.json`:
   "collapseKey": "ctrl+shift+t",
   "autoResumeSingle": true,
   "autoProvisionProject": true,
-  "pollIntervalMinutes": 5,
+  "pollIntervalMinutes": 10,
   "bindings": [
     {
       "key": "tmux:my-project:0.0",
@@ -353,7 +353,7 @@ Create `~/.config/pi-dida-todo/config.json`:
 }
 ```
 
-Exact tmux target matching takes precedence over exact cwd matching. By default, an unbound session reuses the unique same-name project or creates one; it never guesses between duplicate names. Set `autoProvisionProject: false` for fully explicit bindings. `pollIntervalMinutes` is optional (1–1440); the poller checks immediately on startup and then on the interval. It stays silent while Pi is busy, messages are queued, or no prioritized unfinished top-level work exists. Priority 0 tasks are synchronized but treated as drafts: they do not execute, wake the LLM, or produce a reply. Pending-acceptance tasks alone never wake the LLM. A restored display binding does not count as active execution.
+Exact tmux target matching takes precedence over exact cwd matching. By default, an unbound session reuses the unique same-name project or creates one; it never guesses between duplicate names. Set `autoProvisionProject: false` for fully explicit bindings. `pollIntervalMinutes` defaults to **10 minutes** and can be overridden from 1–1440; the poller checks immediately on startup and then on the interval. It stays silent while Pi is busy, messages are queued, or no prioritized unfinished top-level work exists. Priority 0 tasks are synchronized but treated as drafts: they do not execute, wake the LLM, or produce a reply. Pending-acceptance tasks alone never wake the LLM. A restored display binding does not count as active execution.
 
 ## Usage
 
@@ -373,7 +373,7 @@ Continue the previous work
 Show pending acceptance reports
 ```
 
-With `pollIntervalMinutes` configured, leave the Pi session running and the extension checks while idle. Title-only tasks are queued and decomposed into Checklist steps before execution.
+Leave the Pi session running and the extension checks while idle every 10 minutes by default. Title-only tasks are queued and decomposed into Checklist steps before execution.
 
 Internal tools:
 
@@ -395,7 +395,7 @@ This rule lives in the Repository, not in an LLM prompt, so tools and scripts ca
 
 ## Honest limitations
 
-1. This is not a system daemon. Optional polling works only while the Pi process and session are alive; Dida365 remains responsible for reminders.
+1. This is not a system daemon. Default 10-minute polling works only while the Pi process and session are alive; Dida365 remains responsible for reminders.
 2. Dida365 Checklist items have no native `in_progress` state; that state is primarily visible in the Pi Overlay.
 3. Cross-host concurrency, etag conflicts, rate limits, token expiry, and long unattended runs need more field testing.
 4. The current scope targets Dida365 and does not claim TickTick International compatibility.
@@ -413,7 +413,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.4.1` passed 68 automated tests across 23 test files, TypeScript, the official Extension Loader, Git installation, Pi temporary loading, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.4.2` passed 70 automated tests across 24 test files, TypeScript, the official Extension Loader, Git installation, Pi temporary loading, package-content inspection, and credential scanning.
 
 ## Team
 

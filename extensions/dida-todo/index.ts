@@ -5,6 +5,7 @@ import {
   loadConfig,
   resolveBinding,
   resolveDidaCommand,
+  resolvePollIntervalMinutes,
 } from "./config.js";
 import { registerCommands } from "./commands.js";
 import { DidaCliGateway } from "./gateway.js";
@@ -88,10 +89,8 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       overlay.setUI(ctx.ui);
     }
     if (ctx.hasUI) overlay.update(true);
-    if (config.pollIntervalMinutes !== undefined) {
-      stopPollers.get(sessionId)?.();
-      stopPollers.set(sessionId, startTodoPoller(pi, ctx, repository, config.pollIntervalMinutes, () => overlay.update(true)));
-    }
+    stopPollers.get(sessionId)?.();
+    stopPollers.set(sessionId, startTodoPoller(pi, ctx, repository, resolvePollIntervalMinutes(config), () => overlay.update(true)));
   };
 
   registerDidaSetupTool(pi, gateway, config, (sessionId) => setupContexts.get(sessionId), activateBinding);
