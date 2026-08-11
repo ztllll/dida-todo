@@ -244,7 +244,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前版本已通过 53 项自动测试、官方 Extension Loader、Git 安装、Pi 临时加载、包内容与凭据扫描。真实环境仍可能暴露新的边界，欢迎通过 Issues 反馈。
+当前 `v0.4.0` 已通过 22 个测试文件、67 项自动测试、TypeScript、官方 Extension Loader、Git 安装、Pi 临时加载、包内容与凭据扫描。真实环境仍可能暴露新的边界，欢迎通过 Issues 反馈。
 
 ## 开发成员
 
@@ -353,7 +353,7 @@ Create `~/.config/pi-dida-todo/config.json`:
 }
 ```
 
-Exact tmux target matching takes precedence over exact cwd matching. The extension never guesses or creates business projects. `pollIntervalMinutes` is optional (1–1440); the poller checks immediately on startup and then on the interval. It stays silent while Pi is busy, messages are queued, or no prioritized unfinished top-level work exists. Priority 0 tasks are synchronized but treated as drafts: they do not execute, wake the LLM, or produce a reply. Pending-acceptance tasks alone never wake the LLM. A restored display binding does not count as active execution.
+Exact tmux target matching takes precedence over exact cwd matching. By default, an unbound session reuses the unique same-name project or creates one; it never guesses between duplicate names. Set `autoProvisionProject: false` for fully explicit bindings. `pollIntervalMinutes` is optional (1–1440); the poller checks immediately on startup and then on the interval. It stays silent while Pi is busy, messages are queued, or no prioritized unfinished top-level work exists. Priority 0 tasks are synchronized but treated as drafts: they do not execute, wake the LLM, or produce a reply. Pending-acceptance tasks alone never wake the LLM. A restored display binding does not count as active execution.
 
 ## Usage
 
@@ -413,7 +413,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, and UX simplification. The current release passed 59 automated tests, the official Extension Loader, Git installation, Pi temporary loading, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.4.0` passed 67 automated tests across 22 test files, TypeScript, the official Extension Loader, Git installation, Pi temporary loading, package-content inspection, and credential scanning.
 
 ## Team
 
