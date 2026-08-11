@@ -36,11 +36,10 @@ export interface TodoParams {
   includeDeleted?: boolean;
 }
 
-function requireRuntime(sessionId: string): { scope: TodoScope; work: WorkTask } {
+function requireInitializedRuntime(sessionId: string): { scope: TodoScope; work?: WorkTask } {
   const runtime = getSessionRuntime(sessionId);
   if (!runtime) throw new Error("当前 Pi 会话尚未初始化滴答 Todo");
-  if (!runtime.work) throw new Error("当前没有活动工作任务。请让用户说“检查 Todo”，再用内部 todo_work 选择工作");
-  return { scope: runtime.scope, work: runtime.work };
+  return { scope: runtime.scope, ...(runtime.work ? { work: runtime.work } : {}) };
 }
 
 function listText(tasks: Task[], status?: TaskStatus, includeDeleted = false): string {
@@ -82,7 +81,16 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
     async execute(_id, rawParams, signal, _update, ctx) {
       const params = rawParams as TodoParams;
       const sessionId = ctx.sessionManager.getSessionId();
-      const { scope, work } = requireRuntime(sessionId);
+      const initialized = requireInitializedRuntime(sessionId);
+      const scope = initialized.scope;
+      let work = initialized.work;
+      if (!work) {
+        if (params.action !== "create" || !params.subject) {
+          throw new Error("当前没有活动工作任务。请让用户说“检查 Todo”，再用内部 todo_work 选择工作");
+        }
+        work = await repository.createWork(scope, params.subject, signal);
+        updateSessionWork(sessionId, work);
+      }
       let nextWork = work;
       let text = "";
       switch (params.action) {
