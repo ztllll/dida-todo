@@ -10,6 +10,14 @@ function utcTimestamp(date: Date): string {
   return date.toISOString().replace("Z", "+0000");
 }
 
+export const ACCEPTANCE_REMINDERS = [
+  "TRIGGER:PT0S",
+  "TRIGGER:PT2M",
+  "TRIGGER:PT4M",
+  "TRIGGER:PT6M",
+  "TRIGGER:PT8M",
+] as const;
+
 export function classifyAcceptanceTask(task: DidaTask): boolean {
   return task.tags?.includes("pi-todo-acceptance") === true;
 }
@@ -51,7 +59,7 @@ export function buildAcceptanceTaskInput(
     startDate: date,
     dueDate: date,
     timeZone: source.timeZone ?? "Asia/Shanghai",
-    reminders: ["TRIGGER:PT0S"],
+    reminders: [...ACCEPTANCE_REMINDERS],
     priority: source.priority ?? 0,
     items: [],
     tags: ["pi-todo-acceptance"],

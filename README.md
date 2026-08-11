@@ -71,7 +71,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 全部 Checklist 完成
 → 根据每一步 resolution 生成完成报告
 → 幂等创建/复用 🧑‍🔬 待验收 Todo
-→ 设置默认两分钟后的准时提醒
+→ 设置默认两分钟后的提醒，并在准时及其后 2/4/6/8 分钟持续催办
 → 验收 Todo 创建成功后，才完成原工作
 ```
 
@@ -105,7 +105,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 ### 最简流程：全局安装 + 登录
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.5.0
+pi install git:github.com/ztllll/dida-todo@v0.5.1
 ```
 
 新开任意 Pi 会话，直接告诉 LLM：
@@ -130,7 +130,7 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 升级：
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.5.0
+pi install git:github.com/ztllll/dida-todo@v0.5.1
 # 或安装 main：pi install git:github.com/ztllll/dida-todo
 ```
 
@@ -244,7 +244,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前 `v0.5.0` 已通过 24 个测试文件、74 项自动测试、TypeScript、官方 Extension Loader、Git 安装、Pi 临时加载、包内容与凭据扫描。真实环境仍可能暴露新的边界，欢迎通过 Issues 反馈。
+当前 `v0.5.1` 已通过 24 个测试文件、74 项自动测试、TypeScript、官方 Extension Loader、Git 安装、Pi 临时加载、包内容与凭据扫描。真实环境仍可能暴露新的边界，欢迎通过 Issues 反馈。
 
 ## 开发成员
 
@@ -309,7 +309,7 @@ One fixed Dida365 project per local project / tmux target
 ## Install
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.5.0
+pi install git:github.com/ztllll/dida-todo@v0.5.1
 ```
 
 In any new Pi session, tell the LLM:
@@ -386,7 +386,7 @@ Internal tools:
 All Checklist steps complete
 → build a report from per-step resolutions
 → create or reuse a pending human-acceptance Todo
-→ schedule a default reminder two minutes later
+→ schedule a reminder two minutes later plus follow-ups at +2/+4/+6/+8 minutes
 → create a starter comment so the feedback entry point is visible
 → only then complete the source work
 ```
@@ -413,7 +413,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.5.0` passed 74 automated tests across 24 test files, TypeScript, the official Extension Loader, Git installation, Pi temporary loading, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.5.1` passed 74 automated tests across 24 test files, TypeScript, the official Extension Loader, Git installation, Pi temporary loading, package-content inspection, and credential scanning.
 
 ## Team
 

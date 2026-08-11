@@ -24,7 +24,13 @@ describe("人类验收闭环", () => {
       priority: 5,
       startDate: "2026-08-10T11:12:00.000+0000",
       dueDate: "2026-08-10T11:12:00.000+0000",
-      reminders: ["TRIGGER:PT0S"],
+      reminders: [
+        "TRIGGER:PT0S",
+        "TRIGGER:PT2M",
+        "TRIGGER:PT4M",
+        "TRIGGER:PT6M",
+        "TRIGGER:PT8M",
+      ],
       tags: ["pi-todo-acceptance"],
     });
     expect(input.content).toContain("实现全文搜索并新增 8 项测试");

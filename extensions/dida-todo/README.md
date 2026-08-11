@@ -79,7 +79,7 @@ list / switch / next / refresh / finish_current
 全部 Checklist 完成
 → 根据 Checklist 与 metadata.resolution 生成报告
 → 幂等创建或复用待验收 Todo
-→ 设置默认两分钟后的准时提醒
+→ 设置默认两分钟后的提醒，并在准时及其后 2/4/6/8 分钟持续催办
 → 验收 Todo 创建成功后立即写入评论入口
 → 验收 Todo 与评论创建成功后才完成原工作
 ```
