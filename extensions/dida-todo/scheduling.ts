@@ -6,6 +6,36 @@ function utcTimestamp(date: Date): string {
   return date.toISOString().replace("Z", "+0000");
 }
 
+function localDateKey(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+function scheduleDate(task: DidaTask): string | undefined {
+  return task.startDate ?? task.dueDate;
+}
+
+export function occurrenceKeyForTask(task: DidaTask): string | undefined {
+  return task.repeatFlag ? scheduleDate(task) : undefined;
+}
+
+export function isTaskScheduledForNow(task: DidaTask, now = new Date()): boolean {
+  const scheduled = scheduleDate(task);
+  if (!scheduled) return true;
+  const scheduledDate = new Date(scheduled);
+  if (Number.isNaN(scheduledDate.getTime())) return false;
+  const timeZone = task.timeZone?.trim() || "UTC";
+  if (localDateKey(scheduledDate, timeZone) !== localDateKey(now, timeZone)) return false;
+  if (task.isAllDay === true) return true;
+  return scheduledDate.getTime() <= now.getTime();
+}
+
 export function formatWorkSchedule(task: DidaTask): string {
   const lines = [`优先级: ${PRIORITY_LABELS[task.priority] ?? task.priority}`];
   if (task.startDate) lines.push(`开始: ${task.startDate}`);

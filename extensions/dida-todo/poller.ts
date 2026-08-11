@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { WorkTask } from "./domain.js";
 import type { DidaTodoRepository } from "./repository.js";
 import { getSessionRuntime, updateSessionWork, updateSessionWorks } from "./runtime.js";
-import { isExecutableWork } from "./work-queue.js";
+import { isExecutableWork, isExecutableWorkAt } from "./work-queue.js";
 
 export interface PollState {
   idle: boolean;
@@ -17,8 +17,8 @@ export function pollDecision(state: PollState): "silent" | "trigger" {
   return state.remoteWorkIds.length > 0 ? "trigger" : "silent";
 }
 
-export function selectPolledWork(works: WorkTask[]): WorkTask | undefined {
-  return works.filter(isExecutableWork).sort((left, right) => {
+export function selectPolledWork(works: WorkTask[], now = new Date()): WorkTask | undefined {
+  return works.filter((work) => isExecutableWorkAt(work, now)).sort((left, right) => {
     const priority = (right.remote.priority ?? 0) - (left.remote.priority ?? 0);
     if (priority !== 0) return priority;
     return String(right.remote.createdTime ?? "").localeCompare(String(left.remote.createdTime ?? ""));

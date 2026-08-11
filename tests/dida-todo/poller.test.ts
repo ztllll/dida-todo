@@ -38,6 +38,15 @@ describe("主动 Todo 检查决策", () => {
     expect(pollDecision({ idle: true, hasPendingMessages: false, boundWorkId: "old", remoteWorkIds: ["old", "new"] })).toBe("trigger");
   });
 
+  it("跳过非今天或尚未到开始时间的工作", () => {
+    const now = new Date("2026-08-11T08:30:00.000Z");
+    const today = work("today", 1, "2026-08-10T10:00:00Z");
+    today.remote = { ...today.remote, isAllDay: true, dueDate: "2026-08-11T00:00:00.000+0000", timeZone: "Asia/Shanghai" };
+    const tomorrow = work("tomorrow", 5, "2026-08-10T11:00:00Z");
+    tomorrow.remote = { ...tomorrow.remote, isAllDay: true, dueDate: "2026-08-11T16:00:00.000+0000", timeZone: "Asia/Shanghai" };
+    expect(selectPolledWork([tomorrow, today], now)?.remote.id).toBe("today");
+  });
+
   it("优先选择高优先级工作，同优先级选择最新工作", () => {
     expect(selectPolledWork([
       work("new-low", 1, "2026-08-10T10:00:00Z"),

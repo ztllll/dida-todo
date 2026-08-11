@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCompletionReminderInput, formatWorkSchedule } from "../../extensions/dida-todo/scheduling.js";
+import { buildCompletionReminderInput, formatWorkSchedule, isTaskScheduledForNow, occurrenceKeyForTask } from "../../extensions/dida-todo/scheduling.js";
 import type { DidaTask } from "../../extensions/dida-todo/domain.js";
 
 const task: DidaTask = {
@@ -43,5 +43,28 @@ describe("滴答调度字段", () => {
   it("拒绝不合理的提醒分钟数", () => {
     expect(() => buildCompletionReminderInput(task, 0)).toThrow();
     expect(() => buildCompletionReminderInput(task, 1441)).toThrow();
+  });
+
+  it("按任务时区只放行今天，跳过明天、后天和过期日期", () => {
+    const now = new Date("2026-08-11T08:30:00.000Z"); // Asia/Shanghai 2026-08-11 16:30
+    const base = { ...task, isAllDay: true, startDate: undefined };
+    expect(isTaskScheduledForNow({ ...base, dueDate: "2026-08-09T16:00:00.000+0000" }, now)).toBe(false);
+    expect(isTaskScheduledForNow({ ...base, dueDate: "2026-08-10T16:00:00.000+0000" }, now)).toBe(true);
+    expect(isTaskScheduledForNow({ ...base, dueDate: "2026-08-11T16:00:00.000+0000" }, now)).toBe(false);
+    expect(isTaskScheduledForNow({ ...base, dueDate: "2026-08-12T16:00:00.000+0000" }, now)).toBe(false);
+  });
+
+  it("今天的非全天任务到开始时间才放行，无日期任务保持原行为", () => {
+    const now = new Date("2026-08-11T08:30:00.000Z");
+    expect(isTaskScheduledForNow({ ...task, startDate: "2026-08-11T08:00:00.000+0000", dueDate: undefined }, now)).toBe(true);
+    expect(isTaskScheduledForNow({ ...task, startDate: "2026-08-11T09:00:00.000+0000", dueDate: undefined }, now)).toBe(false);
+    expect(isTaskScheduledForNow({ ...task, startDate: undefined, dueDate: undefined }, now)).toBe(true);
+  });
+
+  it("重复任务的每次日期生成独立 occurrence key", () => {
+    expect(occurrenceKeyForTask({ ...task, repeatFlag: "RRULE:FREQ=DAILY", startDate: "2026-08-11T00:00:00.000+0000" }))
+      .toBe("2026-08-11T00:00:00.000+0000");
+    expect(occurrenceKeyForTask({ ...task, repeatFlag: "RRULE:FREQ=DAILY", startDate: "2026-08-12T00:00:00.000+0000" }))
+      .toBe("2026-08-12T00:00:00.000+0000");
   });
 });

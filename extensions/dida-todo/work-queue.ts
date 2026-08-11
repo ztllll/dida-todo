@@ -1,6 +1,6 @@
 import type { WorkTask } from "./domain.js";
 import type { PendingAcceptance } from "./repository.js";
-import { formatWorkSchedule } from "./scheduling.js";
+import { formatWorkSchedule, isTaskScheduledForNow } from "./scheduling.js";
 import { formatAcceptanceForAgent } from "./acceptance.js";
 
 export function hasUnfinishedTasks(work: WorkTask): boolean {
@@ -10,7 +10,11 @@ export function hasUnfinishedTasks(work: WorkTask): boolean {
 }
 
 export function isExecutableWork(work: WorkTask): boolean {
-  return (work.remote.priority ?? 0) > 0 && hasUnfinishedTasks(work);
+  return isExecutableWorkAt(work, new Date());
+}
+
+export function isExecutableWorkAt(work: WorkTask, now: Date): boolean {
+  return (work.remote.priority ?? 0) > 0 && hasUnfinishedTasks(work) && isTaskScheduledForNow(work.remote, now);
 }
 
 export function nextUnfinishedWork(works: WorkTask[], currentWorkId?: string): WorkTask | undefined {
