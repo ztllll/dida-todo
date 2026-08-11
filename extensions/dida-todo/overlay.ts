@@ -26,9 +26,12 @@ export class TodoOverlay {
   private tui?: TUI;
   private registered = false;
   private collapsed = false;
+  private trackedWorkId?: string;
+  private hiddenCompletedIds = new Set<number>();
 
   constructor(
     private readonly getTasks: () => Task[],
+    private readonly getWorkId: () => string | undefined,
     private readonly getWorkTitle: () => string | undefined,
     private readonly getMaxLines: () => number,
     private readonly collapseKey: string,
@@ -42,8 +45,9 @@ export class TodoOverlay {
     }
   }
 
-  update(_resetCompleted = false): void {
+  update(resetCompleted = false): void {
     if (!this.ui) return;
+    this.refreshCompletedVisibility(resetCompleted);
     const tasks = this.visibleTasks();
     if (!tasks.length) {
       if (this.registered) this.ui.setWidget(WIDGET_KEY, undefined);
@@ -72,6 +76,9 @@ export class TodoOverlay {
   }
 
   hideCompletedFromPreviousTurn(): void {
+    for (const task of this.getTasks()) {
+      if (task.status === "completed") this.hiddenCompletedIds.add(task.id);
+    }
     this.update();
   }
 
@@ -81,23 +88,42 @@ export class TodoOverlay {
     this.tui = undefined;
     this.registered = false;
     this.collapsed = false;
+    this.trackedWorkId = undefined;
+    this.hiddenCompletedIds.clear();
   }
 
   isRegistered(): boolean {
     return this.registered;
   }
 
+  private refreshCompletedVisibility(resetCompleted: boolean): void {
+    const workId = this.getWorkId();
+    const workChanged = workId !== this.trackedWorkId;
+    if (workChanged || resetCompleted) {
+      this.trackedWorkId = workId;
+      this.hiddenCompletedIds = new Set(
+        this.getTasks().filter((task) => task.status === "completed").map((task) => task.id),
+      );
+      return;
+    }
+    const stillCompleted = new Set(this.getTasks().filter((task) => task.status === "completed").map((task) => task.id));
+    this.hiddenCompletedIds = new Set([...this.hiddenCompletedIds].filter((id) => stillCompleted.has(id)));
+  }
+
   private visibleTasks(): Task[] {
-    return this.getTasks().filter((task) => task.status !== "deleted");
+    return this.getTasks().filter(
+      (task) => task.status !== "deleted" && !(task.status === "completed" && this.hiddenCompletedIds.has(task.id)),
+    );
   }
 
   private render(theme: Theme, width: number): string[] {
     const tasks = this.visibleTasks();
     if (!tasks.length) return [];
-    const completed = tasks.filter((task) => task.status === "completed").length;
-    const active = tasks.some((task) => task.status === "pending" || task.status === "in_progress");
+    const allTasks = this.getTasks().filter((task) => task.status !== "deleted");
+    const completed = allTasks.filter((task) => task.status === "completed").length;
+    const active = allTasks.some((task) => task.status === "pending" || task.status === "in_progress");
     const workTitle = this.getWorkTitle();
-    const headingText = `${workTitle ? `${workTitle} · ` : ""}Todos (${completed}/${tasks.length})`;
+    const headingText = `${workTitle ? `${workTitle} · ` : ""}Todos (${completed}/${allTasks.length})`;
     const heading = `${theme.fg(active ? "accent" : "dim", active ? "●" : "○")} ${theme.fg(active ? "accent" : "dim", headingText)}`;
     const truncate = (line: string) => truncateToWidth(line, width, "…");
     if (this.collapsed) return [truncate(heading), truncate(`${theme.fg("dim", "└─")} ${theme.fg("dim", `${this.collapseKey} 展开`)}`), ""];

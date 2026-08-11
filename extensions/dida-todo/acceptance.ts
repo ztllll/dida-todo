@@ -1,10 +1,13 @@
 import type { DidaTask } from "./domain.js";
+import { occurrenceKeyForTask } from "./scheduling.js";
 
 export interface DidaComment {
   id: string;
   title: string;
   createdTime?: string | number;
 }
+
+export const ACCEPTANCE_COMMENT = "💬 请在此处输入验收意见；如果通过，请直接完成此验收任务。";
 
 function utcTimestamp(date: Date): string {
   return date.toISOString().replace("Z", "+0000");
@@ -50,6 +53,7 @@ export function buildAcceptanceTaskInput(
     "- 如果需要调整，请保持任务未完成，并在评论中写明问题或期望；下次 LLM 检查 Todo 时会读取反馈并先向你确认后续处理。",
     "",
     `sourceWorkId: ${source.id}`,
+    ...(occurrenceKeyForTask(source) ? [`sourceOccurrence: ${occurrenceKeyForTask(source)}`] : []),
   ].join("\n");
   return {
     projectId: source.projectId,
@@ -66,8 +70,24 @@ export function buildAcceptanceTaskInput(
   };
 }
 
+function contentField(content: string | undefined, name: string): string | undefined {
+  return content?.split("\n").find((line) => line.startsWith(`${name}: `))?.slice(name.length + 2);
+}
+
+export function acceptanceMatchesSource(task: DidaTask, source: DidaTask): boolean {
+  if (!classifyAcceptanceTask(task) || task.status !== 0) return false;
+  if (contentField(task.content, "sourceWorkId") !== source.id) return false;
+  const occurrence = occurrenceKeyForTask(source);
+  return occurrence ? contentField(task.content, "sourceOccurrence") === occurrence : true;
+}
+
+export function isSystemAcceptanceComment(comment: DidaComment): boolean {
+  return comment.title === ACCEPTANCE_COMMENT;
+}
+
 export function formatAcceptanceForAgent(task: DidaTask, comments: DidaComment[]): string {
-  const feedback = comments.length ? comments.map((comment) => `  - ${comment.title}`).join("\n") : "  - 暂无用户评论";
+  const userComments = comments.filter((comment) => !isSystemAcceptanceComment(comment));
+  const feedback = userComments.length ? userComments.map((comment) => `  - ${comment.title}`).join("\n") : "  - 暂无用户评论";
   return [
     `- ${task.title}（等待人类验收，acceptanceId: ${task.id}）`,
     `  ${task.content?.split("\n").find((line) => line.startsWith("sourceWorkId:")) ?? ""}`,

@@ -7,9 +7,13 @@ class FinishGateway implements DidaGateway {
   created: DidaTask[] = [];
   completed: string[] = [];
   comments: Array<{ taskId: string; title: string }> = [];
-  constructor(public tasks: DidaTask[], private failAcceptance = false) {}
+  constructor(
+    public tasks: DidaTask[],
+    private failAcceptance = false,
+    private failAcceptanceComment = false,
+  ) {}
   async getProjectData(projectId: string): Promise<DidaProjectData> {
-    return { project: { id: projectId, name: "example" }, tasks: structuredClone(this.tasks.filter((task) => task.status === 0)), columns: [] };
+    return { project: { id: projectId, name: "pi-agent" }, tasks: structuredClone(this.tasks.filter((task) => task.status === 0)), columns: [] };
   }
   async getTask(_projectId: string, taskId: string): Promise<DidaTask> {
     const task = this.tasks.find((candidate) => candidate.id === taskId);
@@ -23,9 +27,24 @@ class FinishGateway implements DidaGateway {
     this.created.push(task);
     return structuredClone(task);
   }
-  async updateTask(): Promise<DidaTask> { throw new Error("unused"); }
+  async updateTask(taskId: string, input: Record<string, unknown>): Promise<DidaTask> {
+    const index = this.tasks.findIndex((candidate) => candidate.id === taskId);
+    if (index < 0) throw new Error("not found");
+    const current = this.tasks[index]!;
+    const items = ((input.items ?? current.items ?? []) as NonNullable<DidaTask["items"]>).map((item, itemIndex) => ({
+      ...item,
+      id: item.id ?? `item-${itemIndex + 1}`,
+    }));
+    const updated = { ...current, ...structuredClone(input), id: taskId, items } as DidaTask;
+    this.tasks[index] = updated;
+    return structuredClone(updated);
+  }
   async addTaskComment(_projectId: string, taskId: string, title: string): Promise<void> {
+    if (this.failAcceptanceComment && taskId.startsWith("created-")) throw new Error("create acceptance comment failed");
     this.comments.push({ taskId, title });
+  }
+  async getTaskComments(_projectId: string, taskId: string): Promise<Array<{ id: string; title: string }>> {
+    return this.comments.filter((comment) => comment.taskId === taskId).map((comment, index) => ({ id: `comment-${index + 1}`, title: comment.title }));
   }
   async completeTask(_projectId: string, taskId: string): Promise<void> {
     this.completed.push(taskId);
@@ -35,10 +54,10 @@ class FinishGateway implements DidaGateway {
 }
 
 const scope: TodoScope = {
-  binding: { key: "tmux:example:0.0", projectId: "project" },
-  bindingKey: "tmux:example:0.0",
-  cwd: "/workspace/example-project",
-  tmuxTarget: "example:0.0",
+  binding: { key: "tmux:pi-agent:0.0", projectId: "project" },
+  bindingKey: "tmux:pi-agent:0.0",
+  cwd: "/workspace/pi-agent",
+  tmuxTarget: "pi-agent:0.0",
   sessionId: "session",
 };
 
@@ -68,6 +87,70 @@ function completedWork(): DidaTask {
 }
 
 describe("完成工作强制人类验收", () => {
+  it("最后一个 Checklist 完成时无需 finish_current，自动创建验收 Todo 并完成原任务", async () => {
+    const remote = completedWork();
+    remote.content = encodeManagedContent("需求说明", {
+      schemaVersion: 1,
+      kind: "pi-todo-work",
+      bindingKey: scope.bindingKey,
+      nextId: 3,
+      tasks: [
+        { id: 1, subject: "实现功能", status: "completed", metadata: { resolution: "实现搜索接口" } },
+        { id: 2, subject: "运行测试", status: "pending" },
+      ],
+    });
+    remote.items = [
+      { id: "one", title: "实现功能", status: 1 },
+      { id: "two", title: "运行测试", status: 0 },
+    ];
+    const gateway = new FinishGateway([remote]);
+    const repository = new DidaTodoRepository(gateway);
+
+    const work = await repository.updateTask(scope, "work", 2, {
+      status: "completed",
+      metadata: { resolution: "8 项测试通过" },
+    });
+
+    expect(work.tasks.every((task) => task.status === "completed")).toBe(true);
+    expect(gateway.created).toHaveLength(1);
+    expect(gateway.created[0]?.content).toContain("8 项测试通过");
+    expect(gateway.completed).toEqual(["work"]);
+  });
+
+  it("仍有未完成 Checklist 时不提前创建验收或完成顶层任务", async () => {
+    const remote = completedWork();
+    remote.content = encodeManagedContent("需求说明", {
+      schemaVersion: 1,
+      kind: "pi-todo-work",
+      bindingKey: scope.bindingKey,
+      nextId: 3,
+      tasks: [
+        { id: 1, subject: "实现功能", status: "pending" },
+        { id: 2, subject: "运行测试", status: "pending" },
+      ],
+    });
+    remote.items = [
+      { id: "one", title: "实现功能", status: 0 },
+      { id: "two", title: "运行测试", status: 0 },
+    ];
+    const gateway = new FinishGateway([remote]);
+    const repository = new DidaTodoRepository(gateway);
+
+    await repository.updateTask(scope, "work", 1, { status: "completed" });
+
+    expect(gateway.created).toHaveLength(0);
+    expect(gateway.completed).toEqual([]);
+  });
+
+  it("自动收口创建验收失败时 Checklist 保持完成但顶层任务不得完成", async () => {
+    const gateway = new FinishGateway([completedWork()], true);
+    const repository = new DidaTodoRepository(gateway);
+
+    await expect(repository.updateTask(scope, "work", 2, { status: "completed" })).rejects.toThrow("create acceptance failed");
+    expect(gateway.tasks.find((task) => task.id === "work")?.items?.every((item) => item.status === 1)).toBe(true);
+    expect(gateway.completed).toEqual([]);
+  });
+
   it("finishWork 自动创建验收 Todo 后才完成原任务", async () => {
     const gateway = new FinishGateway([completedWork()]);
     const repository = new DidaTodoRepository(gateway);
@@ -101,7 +184,41 @@ describe("完成工作强制人类验收", () => {
     expect(gateway.created).toHaveLength(0);
     expect(result.acceptanceTask.id).toBe("acceptance");
     expect(gateway.completed).toEqual(["work"]);
-    expect(gateway.comments).toEqual([]);
+    expect(gateway.comments).toEqual([{ taskId: "acceptance", title: "💬 请在此处输入验收意见；如果通过，请直接完成此验收任务。" }]);
+  });
+
+  it("验收已创建但引导评论失败时源任务保持未完成，下次重试复用验收并补评论", async () => {
+    const gateway = new FinishGateway([completedWork()], false, true);
+    const repository = new DidaTodoRepository(gateway);
+
+    await expect(repository.finishWork(scope, "work")).rejects.toThrow("create acceptance comment failed");
+    expect(gateway.created).toHaveLength(1);
+    expect(gateway.completed).toEqual([]);
+
+    const retryGateway = new FinishGateway(gateway.tasks);
+    const retried = await new DidaTodoRepository(retryGateway).finishWork(scope, "work");
+    expect(retried.acceptanceTask.id).toBe("created-1");
+    expect(retryGateway.created).toHaveLength(0);
+    expect(retryGateway.comments).toEqual([{ taskId: "created-1", title: "💬 请在此处输入验收意见；如果通过，请直接完成此验收任务。" }]);
+    expect(retryGateway.completed).toEqual(["work"]);
+  });
+
+  it("空 Checklist 不得被误判为可完成工作", async () => {
+    const remote = completedWork();
+    remote.content = encodeManagedContent("需求说明", {
+      schemaVersion: 1,
+      kind: "pi-todo-work",
+      bindingKey: scope.bindingKey,
+      nextId: 1,
+      tasks: [],
+    });
+    remote.items = [];
+    const gateway = new FinishGateway([remote]);
+    const repository = new DidaTodoRepository(gateway);
+
+    await expect(repository.finishWork(scope, "work")).rejects.toThrow("没有可验收的 Checklist");
+    expect(gateway.created).toHaveLength(0);
+    expect(gateway.completed).toEqual([]);
   });
 
   it("验收 Todo 创建失败时不得完成原工作", async () => {

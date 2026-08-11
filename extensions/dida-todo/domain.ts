@@ -22,6 +22,7 @@ export interface DidaChecklistItem {
   sortOrder?: number;
   startDate?: string;
   timeZone?: string;
+  [key: string]: unknown;
 }
 
 export interface DidaTask {
@@ -64,7 +65,7 @@ export interface DidaProjectData {
   columns: Array<Record<string, unknown>>;
 }
 
-export interface WorkMetadata {
+export interface WorkMetadataV1 {
   schemaVersion: 1;
   kind: "pi-todo-work";
   bindingKey: string;
@@ -75,6 +76,37 @@ export interface WorkMetadata {
   tmuxTarget?: string;
   cwd?: string;
 }
+
+export type WorkOrigin = "pi" | "dida";
+export type WorkLifecycleState = "draft" | "claimed" | "running" | "ready_for_acceptance" | "finalized";
+
+export interface WorkMetadataV2 {
+  schemaVersion: 2;
+  kind: "pi-todo-work";
+  bindingKey: string;
+  origin: WorkOrigin;
+  lifecycle: WorkLifecycleState;
+  migratedFromVersion?: 1;
+  execution?: {
+    occurrence?: string;
+    claimedAt: string;
+    owner?: { hostId: string; sessionId: string; leaseUntil?: string };
+  };
+  finalization?: {
+    occurrence?: string;
+    acceptanceId?: string;
+    commentWritten?: boolean;
+    sourceCompleted?: boolean;
+  };
+  nextId: number;
+  activeTaskId?: number;
+  tasks: Task[];
+  sessionIds?: string[];
+  tmuxTarget?: string;
+  cwd?: string;
+}
+
+export type WorkMetadata = WorkMetadataV1 | WorkMetadataV2;
 
 export interface WorkTask {
   remote: DidaTask;

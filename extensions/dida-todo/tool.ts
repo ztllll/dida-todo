@@ -36,10 +36,10 @@ export interface TodoParams {
   includeDeleted?: boolean;
 }
 
-function requireInitializedRuntime(sessionId: string): { scope: TodoScope; work?: WorkTask } {
+function requireInitializedRuntime(sessionId: string): { scope: TodoScope; work?: WorkTask; works: WorkTask[] } {
   const runtime = getSessionRuntime(sessionId);
   if (!runtime) throw new Error("当前 Pi 会话尚未初始化滴答 Todo");
-  return { scope: runtime.scope, ...(runtime.work ? { work: runtime.work } : {}) };
+  return { scope: runtime.scope, works: runtime.works, ...(runtime.work ? { work: runtime.work } : {}) };
 }
 
 function listText(tasks: Task[], status?: TaskStatus, includeDeleted = false): string {
@@ -74,7 +74,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       "Use todo for multi-step work and keep exactly one task in_progress.",
       "Mark a task in_progress before beginning it and completed immediately after verified completion.",
       "Do not complete tasks with failing tests or unresolved blockers.",
-      "Top-level Dida work selection and completion are handled internally through todo_work; users normally interact through natural language. todo actions operate on checklist steps.",
+      "Top-level Dida work selection is handled internally through todo_work; users normally interact through natural language. todo actions operate on Checklist steps, and completing the last step automatically creates human acceptance and completes the source work.",
       "When completing a task, include metadata.resolution with a concise explanation of how it was solved; it is written back to Dida as a task comment.",
     ],
     parameters: Params,
@@ -85,8 +85,24 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       const scope = initialized.scope;
       let work = initialized.work;
       if (!work) {
+        const readyText = initialized.works.length
+          ? `滴答 Todo 已就绪：已同步 ${initialized.works.length} 个顶层任务，但当前没有已选中的可执行工作。可直接检查 Todo 或创建新 Todo。`
+          : "滴答 Todo 已就绪：当前清单为空。可直接创建 Todo，首个步骤会自动建立顶层工作并同步到滴答。";
+        if (params.action === "list" || params.action === "clear") {
+          return {
+            content: [{ type: "text", text: readyText }],
+            details: {
+              action: params.action,
+              params,
+              tasks: [],
+              nextId: 1,
+              ready: true,
+              didaProjectId: scope.binding.projectId,
+            },
+          };
+        }
         if (params.action !== "create" || !params.subject) {
-          throw new Error("当前没有活动工作任务。请让用户说“检查 Todo”，再用内部 todo_work 选择工作");
+          throw new Error(`${readyText} 当前没有可供 ${params.action} 的步骤。`);
         }
         work = await repository.createWork(scope, params.subject, signal);
         updateSessionWork(sessionId, work);
@@ -157,7 +173,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
           };
       }
       if (nextWork !== work) {
-        updateSessionWork(sessionId, nextWork);
+        updateSessionWork(sessionId, nextWork.remote.status === 0 ? nextWork : undefined);
         onWorkChanged();
       }
       return {

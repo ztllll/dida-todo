@@ -1,4 +1,5 @@
 import type { DidaChecklistItem, DidaTask, Task, TaskStatus, WorkMetadata, WorkTask } from "./domain.js";
+import { migrateWorkMetadata } from "./work-lifecycle.js";
 
 const START = "<!-- pi-dida-todo:start -->";
 const END = "<!-- pi-dida-todo:end -->";
@@ -35,7 +36,7 @@ export function decodeMetadata(content: string | undefined): WorkMetadata | unde
   try {
     const value = JSON.parse(raw) as Partial<WorkMetadata>;
     if (
-      value.schemaVersion !== 1 ||
+      (value.schemaVersion !== 1 && value.schemaVersion !== 2) ||
       value.kind !== "pi-todo-work" ||
       typeof value.bindingKey !== "string" ||
       typeof value.nextId !== "number" ||
@@ -43,26 +44,26 @@ export function decodeMetadata(content: string | undefined): WorkMetadata | unde
     ) {
       return undefined;
     }
-    return {
+    const metadata = {
       ...value,
-      schemaVersion: 1,
       kind: "pi-todo-work",
       tasks: value.tasks.map(cloneTask),
     } as WorkMetadata;
+    return migrateWorkMetadata(metadata);
   } catch {
     return undefined;
   }
 }
 
-export function metadataToItems(metadata: WorkMetadata): DidaChecklistItem[] {
+export function metadataToItems(metadata: WorkMetadata, remoteItems: DidaChecklistItem[] = []): DidaChecklistItem[] {
+  const byId = new Map(remoteItems.filter((item) => item.id).map((item) => [item.id as string, item]));
   return metadata.tasks
     .filter((task) => task.status !== "deleted")
     .map((task, index) => ({
-      ...(task.itemId ? { id: task.itemId } : {}),
+      ...(task.itemId ? structuredClone(byId.get(task.itemId) ?? { id: task.itemId }) : {}),
       title: task.subject,
       status: task.status === "completed" ? 1 : 0,
       sortOrder: -(index + 1) * 1099511627776,
-      isAllDay: false,
     }));
 }
 
@@ -108,7 +109,7 @@ export function decodeWorkTask(remote: DidaTask): WorkTask | undefined {
     });
   }
 
-  const normalizedMetadata = { ...metadata, nextId, tasks };
+  const normalizedMetadata = migrateWorkMetadata({ ...metadata, nextId, tasks });
   return {
     remote,
     metadata: normalizedMetadata,

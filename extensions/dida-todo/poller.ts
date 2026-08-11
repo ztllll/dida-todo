@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { WorkTask } from "./domain.js";
 import type { DidaTodoRepository } from "./repository.js";
 import { getSessionRuntime, updateSessionWork, updateSessionWorks } from "./runtime.js";
-import { isExecutableWork, isExecutableWorkAt } from "./work-queue.js";
+import { isExecutableWork, rankExecutableWorks } from "./work-queue.js";
 
 export interface PollState {
   idle: boolean;
@@ -18,11 +18,7 @@ export function pollDecision(state: PollState): "silent" | "trigger" {
 }
 
 export function selectPolledWork(works: WorkTask[], now = new Date()): WorkTask | undefined {
-  return works.filter((work) => isExecutableWorkAt(work, now)).sort((left, right) => {
-    const priority = (right.remote.priority ?? 0) - (left.remote.priority ?? 0);
-    if (priority !== 0) return priority;
-    return String(right.remote.createdTime ?? "").localeCompare(String(left.remote.createdTime ?? ""));
-  })[0];
+  return rankExecutableWorks(works, now)[0];
 }
 
 export function startTodoPoller(
@@ -47,14 +43,16 @@ export function startTodoPoller(
     try {
       const sync = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true });
       const executableWorks = sync.works.filter(isExecutableWork);
+      const finalizationFailureIds = sync.finalizationFailures.map((failure) => failure.workId);
       if (pollDecision({
         idle: ctx.isIdle(),
         hasPendingMessages: ctx.hasPendingMessages(),
         boundWorkId: getSessionRuntime(sessionId)?.work?.remote.id,
-        remoteWorkIds: executableWorks.map((work) => work.remote.id),
+        remoteWorkIds: [...executableWorks.map((work) => work.remote.id), ...finalizationFailureIds],
         pendingAcceptanceIds: sync.acceptances.map(({ remote }) => remote.id),
       }) !== "trigger") {
         updateSessionWorks(sessionId, sync.works, runtime.work?.remote.id);
+        onWorkChanged();
         return;
       }
       const selected = selectPolledWork(executableWorks);
@@ -62,15 +60,22 @@ export function startTodoPoller(
       if (selected) updateSessionWork(sessionId, selected);
       onWorkChanged();
       pi.sendUserMessage(
-        "检查 Todo：定时轮询发现已设置优先级的普通未完成工作，请同步并按顺序执行；无优先级任务视为草稿并静默跳过。执行过程中更新 Todo，完成后继续下一个工作，直到队列为空或需要用户确认。",
+        finalizationFailureIds.length
+          ? "检查 Todo：有工作已完成全部 Checklist，但自动创建人类验收 Todo 失败。请刷新并向用户报告具体错误；源任务仍保持未完成，不要重复执行 Checklist。"
+          : "检查 Todo：定时轮询发现已设置优先级的普通未完成工作，请同步并按顺序执行；无优先级任务视为草稿并静默跳过。执行过程中更新 Todo，完成后继续下一个工作，直到队列为空或需要用户确认。",
         { deliverAs: "followUp" },
       );
     } finally {
       running = false;
     }
   };
-  void poll();
-  const timer = setInterval(() => void poll(), intervalMinutes * 60_000);
+  const reportPollError = (error: unknown) => {
+    // Polling is opportunistic: a remote outage must never become an unhandled
+    // rejection that terminates Pi. Foreground actions surface their own errors.
+    if (process.env.PI_DIDA_TODO_DEBUG === "1") console.error("dida-todo poll failed", error);
+  };
+  void poll().catch(reportPollError);
+  const timer = setInterval(() => { void poll().catch(reportPollError); }, intervalMinutes * 60_000);
   timer.unref();
   return () => {
     stopped = true;

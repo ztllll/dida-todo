@@ -10,7 +10,7 @@ import {
 import { registerCommands } from "./commands.js";
 import { DidaCliGateway } from "./gateway.js";
 import { TodoOverlay } from "./overlay.js";
-import { DidaTodoRepository } from "./repository.js";
+import { DidaTodoRepository, type SyncOpenWorksResult } from "./repository.js";
 import {
   clearActiveSession,
   getActiveRuntime,
@@ -48,6 +48,7 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
 
   const overlay = new TodoOverlay(
     getActiveTasks,
+    () => getActiveRuntime()?.work?.remote.id,
     () => getActiveRuntime()?.work?.remote.title,
     () => config.maxWidgetLines ?? DEFAULT_MAX_WIDGET_LINES,
     config.collapseKey ?? DEFAULT_COLLAPSE_KEY,
@@ -68,7 +69,10 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     });
   }
 
-  const activateBinding = async (ctx: ExtensionContext, binding: import("./domain.js").ProjectBinding): Promise<void> => {
+  const activateBinding = async (
+    ctx: ExtensionContext,
+    binding: import("./domain.js").ProjectBinding,
+  ): Promise<SyncOpenWorksResult> => {
     const sessionId = ctx.sessionManager.getSessionId();
     const current = setupContexts.get(sessionId) ?? { cwd: ctx.cwd };
     const scope = {
@@ -78,7 +82,16 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       ...(current.tmuxTarget ? { tmuxTarget: current.tmuxTarget } : {}),
       sessionId,
     };
-    const sync = await repository.syncOpenWorks(scope, { adoptUnmanaged: true }, ctx.signal);
+    let sync: SyncOpenWorksResult;
+    try {
+      sync = await repository.syncOpenWorks(scope, { adoptUnmanaged: true }, ctx.signal);
+    } catch (error) {
+      if (isDidaAuthenticationError(error)) {
+        if (ctx.hasUI) ctx.ui.notify("滴答登录已过期。直接告诉 LLM“登录滴答”以重新授权；无需 /reload。", "warning");
+        throw new Error("滴答登录已过期；请调用 dida_todo_setup login 重新授权后重试。");
+      }
+      throw error;
+    }
     const works = sync.works;
     const executableWorks = works.filter(isExecutableWork);
     const work = executableWorks.length === 1 && config.autoResumeSingle !== false ? executableWorks[0] : undefined;
@@ -91,9 +104,16 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     if (ctx.hasUI) overlay.update(true);
     stopPollers.get(sessionId)?.();
     stopPollers.set(sessionId, startTodoPoller(pi, ctx, repository, resolvePollIntervalMinutes(config), () => overlay.update(true)));
+    return sync;
   };
 
-  registerDidaSetupTool(pi, gateway, config, (sessionId) => setupContexts.get(sessionId), activateBinding);
+  registerDidaSetupTool(
+    pi,
+    gateway,
+    config,
+    (sessionId) => setupContexts.get(sessionId),
+    async (ctx, binding) => { await activateBinding(ctx, binding); },
+  );
 
   pi.on("session_start", async (_event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
@@ -122,9 +142,25 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       }
     }
     if (!binding) return;
-    await activateBinding(ctx, binding);
+    const sync = await activateBinding(ctx, binding);
     const runtime = getSessionRuntime(sessionId);
+    if (ctx.hasUI && runtime) {
+      if (runtime.works.length === 0) {
+        ctx.ui.notify("滴答 Todo 已就绪：当前清单为空，可直接口述任务；首个 Todo 会自动建立顶层工作。", "info");
+      } else if (!runtime.work && runtime.works.every((candidate) => !isExecutableWork(candidate))) {
+        ctx.ui.notify(`滴答 Todo 已就绪：已同步 ${runtime.works.length} 个顶层任务；当前没有满足优先级和时间条件的可执行工作。`, "info");
+      }
+    }
     const executableWorks = runtime?.works.filter(isExecutableWork) ?? [];
+    if (ctx.hasUI && sync.finalizationFailures.length) {
+      ctx.ui.notify(
+        [
+          "以下工作已完成全部 Checklist，但自动创建验收 Todo 失败；源任务仍保持未完成：",
+          ...sync.finalizationFailures.map((failure) => `- ${failure.title}：${failure.error}`),
+        ].join("\n"),
+        "error",
+      );
+    }
     if (ctx.hasUI && !runtime?.work && executableWorks.length > 1) {
       ctx.ui.notify(`当前项目有 ${executableWorks.length} 个已设置优先级的未完成工作任务；可直接说“检查 Todo”让 LLM 按优先级执行`, "warning");
     }
@@ -134,17 +170,29 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     if (!shouldCheckTodoInput(event.text)) return { action: "continue" };
     const runtime = getActiveRuntime();
     if (!runtime) return { action: "continue" };
-    const sync = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true });
+    let sync: SyncOpenWorksResult;
+    try {
+      sync = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true });
+    } catch (error) {
+      if (isDidaAuthenticationError(error)) {
+        throw new Error("滴答登录已过期；请调用 dida_todo_setup login 重新授权后重试。");
+      }
+      throw error;
+    }
     updateSessionWorks(runtime.scope.sessionId, sync.works, runtime.work?.remote.id);
     const refreshed = getActiveRuntime();
     const firstExecutable = sync.works.find(isExecutableWork);
     if (!refreshed?.work && firstExecutable) updateSessionWork(runtime.scope.sessionId, firstExecutable);
     overlay.update(true);
-    const injected = [formatWorkQueueForAgent(sync.works, sync.adoptedWorkIds.length, sync.acceptances), "", event.text].join("\n");
+    const injected = [
+      formatWorkQueueForAgent(sync.works, sync.adoptedWorkIds.length, sync.acceptances, sync.finalizationFailures),
+      "",
+      event.text,
+    ].join("\n");
     return { action: "transform", text: injected };
   });
 
-  pi.on("agent_start", () => overlay.hideCompletedFromPreviousTurn());
+  pi.on("agent_settled", () => overlay.hideCompletedFromPreviousTurn());
 
   pi.on("session_shutdown", async (_event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();

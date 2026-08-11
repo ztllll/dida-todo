@@ -1,5 +1,8 @@
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { withHostLock } from "./host-lock.js";
 import { decodeWorkTask, encodeManagedContent, metadataToItems, synchronizeItemIds } from "./codec.js";
+import { claimCurrentOccurrence, claimDidaWork, createPiWorkMetadata, migrateWorkMetadata } from "./work-lifecycle.js";
+import { WorkFinalizer } from "./work-finalizer.js";
 import type {
   DidaProjectData,
   DidaTask,
@@ -10,7 +13,7 @@ import type {
   WorkTask,
 } from "./domain.js";
 import { buildCompletionReminderInput } from "./scheduling.js";
-import { buildAcceptanceSummary, buildAcceptanceTaskInput, classifyAcceptanceTask, type DidaComment } from "./acceptance.js";
+import { buildAcceptanceTaskInput, classifyAcceptanceTask, type DidaComment } from "./acceptance.js";
 
 export interface DidaGateway {
   getProjectData(projectId: string, signal?: AbortSignal): Promise<DidaProjectData>;
@@ -27,10 +30,17 @@ export interface PendingAcceptance {
   comments: DidaComment[];
 }
 
+export interface FinalizationFailure {
+  workId: string;
+  title: string;
+  error: string;
+}
+
 export interface SyncOpenWorksResult {
   works: WorkTask[];
   adoptedWorkIds: string[];
   acceptances: PendingAcceptance[];
+  finalizationFailures: FinalizationFailure[];
 }
 
 export interface FinishWorkResult {
@@ -66,11 +76,20 @@ function cloneTask(task: Task): Task {
 }
 
 function taskQueueKey(scope: TodoScope, workId: string): string {
-  return `/tmp/pi-dida-todo-${scope.binding.projectId}-${workId}.lock`;
+  return `work:${scope.binding.projectId}:${workId}`;
+}
+
+async function withWorkLock<T>(scope: TodoScope, workId: string, action: () => Promise<T>): Promise<T> {
+  const key = taskQueueKey(scope, workId);
+  return withFileMutationQueue(`/tmp/${key.replaceAll(":", "-")}.queue`, () => withHostLock(key, action));
 }
 
 export class DidaTodoRepository {
-  constructor(private readonly gateway: DidaGateway) {}
+  private readonly finalizer: WorkFinalizer;
+
+  constructor(private readonly gateway: DidaGateway) {
+    this.finalizer = new WorkFinalizer(gateway);
+  }
 
   async listOpenWorks(scope: TodoScope, signal?: AbortSignal): Promise<WorkTask[]> {
     return (await this.syncOpenWorks(scope, { adoptUnmanaged: false }, signal)).works;
@@ -81,31 +100,33 @@ export class DidaTodoRepository {
     options: { adoptUnmanaged: boolean },
     signal?: AbortSignal,
   ): Promise<SyncOpenWorksResult> {
-    const data = await this.gateway.getProjectData(scope.binding.projectId, signal);
-    const works: WorkTask[] = [];
-    const adoptedWorkIds: string[] = [];
-    const acceptances: PendingAcceptance[] = [];
-    for (const remote of data.tasks) {
-      if (remote.tags?.includes("pi-todo-reminder")) continue;
-      if (classifyAcceptanceTask(remote)) {
-        const comments = this.gateway.getTaskComments
-          ? await this.gateway.getTaskComments(scope.binding.projectId, remote.id, signal)
-          : [];
-        acceptances.push({ remote, comments });
-        continue;
+    const initial = await this.collectOpenWorks(scope, options, signal);
+    const stranded = initial.works.filter((work) => this.finalizer.canAutoFinalize(work));
+    if (!stranded.length) return initial;
+
+    let finalized = false;
+    const finalizationFailures: FinalizationFailure[] = [];
+    for (const work of stranded) {
+      try {
+        await this.finishWork(scope, work.remote.id, signal);
+        finalized = true;
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        finalizationFailures.push({
+          workId: work.remote.id,
+          title: work.remote.title,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
-      let work = decodeWorkTask(remote);
-      if (work) {
-        if (work.metadata.bindingKey === scope.bindingKey) works.push(work);
-        continue;
-      }
-      if (!options.adoptUnmanaged || remote.status !== 0 || remote.tags?.includes("pi-todo-reminder")) continue;
-      work = await this.adoptRemoteTask(scope, remote, signal);
-      works.push(work);
-      adoptedWorkIds.push(remote.id);
     }
-    works.sort((a, b) => String(b.remote.createdTime ?? "").localeCompare(String(a.remote.createdTime ?? "")));
-    return { works, adoptedWorkIds, acceptances };
+    if (!finalized) return { ...initial, finalizationFailures };
+
+    const refreshed = await this.collectOpenWorks(scope, options, signal);
+    return {
+      ...refreshed,
+      adoptedWorkIds: [...new Set([...initial.adoptedWorkIds, ...refreshed.adoptedWorkIds])],
+      finalizationFailures,
+    };
   }
 
   async getWork(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<WorkTask> {
@@ -125,7 +146,11 @@ export class DidaTodoRepository {
 
   async addProgressComment(scope: TodoScope, workId: string, title: string, signal?: AbortSignal): Promise<void> {
     if (!this.gateway.addTaskComment) return;
-    await this.gateway.addTaskComment(scope.binding.projectId, workId, title, signal);
+    try {
+      await this.gateway.addTaskComment(scope.binding.projectId, workId, title, signal);
+    } catch {
+      // Progress comments are best-effort; Checklist state and acceptance finalization remain authoritative.
+    }
   }
 
   async createAcceptanceTask(
@@ -157,16 +182,18 @@ export class DidaTodoRepository {
       ...(item.id ? { itemId: item.id } : {}),
       metadata: { source: "dida" },
     }));
-    let metadata: WorkMetadata = {
-      schemaVersion: 1,
+    let metadata: WorkMetadata = claimDidaWork({
+      schemaVersion: 2,
       kind: "pi-todo-work",
       bindingKey: scope.bindingKey,
+      origin: "dida",
+      lifecycle: "draft",
       nextId: tasks.length + 1,
       tasks,
       sessionIds: [scope.sessionId],
       ...(scope.tmuxTarget ? { tmuxTarget: scope.tmuxTarget } : {}),
       cwd: scope.cwd,
-    };
+    }, remote, scope);
     metadata = synchronizeItemIds(metadata, remote);
     const updated = await this.gateway.updateTask(
       remote.id,
@@ -180,19 +207,20 @@ export class DidaTodoRepository {
 
   async createWork(scope: TodoScope, title: string, signal?: AbortSignal): Promise<WorkTask> {
     if (!title.trim()) throw new Error("工作任务标题不能为空");
-    const metadata: WorkMetadata = {
-      schemaVersion: 1,
-      kind: "pi-todo-work",
-      bindingKey: scope.bindingKey,
-      nextId: 1,
-      tasks: [],
-      sessionIds: [scope.sessionId],
-      ...(scope.tmuxTarget ? { tmuxTarget: scope.tmuxTarget } : {}),
-      cwd: scope.cwd,
-    };
+    const normalizedTitle = title.trim();
+    return withHostLock(`bootstrap:${scope.binding.projectId}:${scope.sessionId}`, async () => {
+      const existing = await this.collectOpenWorks(scope, { adoptUnmanaged: false }, signal);
+      const currentWork = existing.works.find((work) => {
+        const metadata = migrateWorkMetadata(work.metadata);
+        return metadata.origin === "pi"
+          && metadata.execution?.owner?.sessionId === scope.sessionId
+          && work.remote.title === normalizedTitle;
+      });
+      if (currentWork) return currentWork;
+      const metadata: WorkMetadata = createPiWorkMetadata(scope);
     let remote = await this.gateway.createTask(
       {
-        title: title.trim(),
+        title: normalizedTitle,
         projectId: scope.binding.projectId,
         content: encodeManagedContent("", metadata),
         items: [],
@@ -206,7 +234,8 @@ export class DidaTodoRepository {
       this.buildUpdateInput(remote, synced, ""),
       signal,
     );
-    return decodeWorkTask(remote) ?? { remote, metadata: synced, tasks: synced.tasks, userContent: "" };
+      return decodeWorkTask(remote) ?? { remote, metadata: synced, tasks: synced.tasks, userContent: "" };
+    });
   }
 
   async createTask(scope: TodoScope, workId: string, input: CreateTaskInput, signal?: AbortSignal): Promise<WorkTask> {
@@ -239,6 +268,9 @@ export class DidaTodoRepository {
     signal?: AbortSignal,
   ): Promise<WorkTask> {
     return this.mutate(scope, workId, signal, async (work) => {
+      const claimed = input.status === "in_progress"
+        ? claimCurrentOccurrence(work.metadata, work.remote, scope)
+        : work.metadata;
       const index = work.tasks.findIndex((task) => task.id === id);
       if (index < 0) throw new Error(`#${id} not found`);
       const current = work.tasks[index];
@@ -275,40 +307,56 @@ export class DidaTodoRepository {
         updated.metadata = Object.keys(merged).length ? merged : undefined;
       }
       const tasks = work.tasks.map((task, candidate) => (candidate === index ? updated : cloneTask(task)));
-      const metadata: WorkMetadata = { ...work.metadata, tasks };
+      const metadata: WorkMetadata = { ...claimed, tasks };
       if (input.status === "in_progress") metadata.activeTaskId = id;
       else if (metadata.activeTaskId === id && (input.status === "completed" || input.status === "pending" || input.status === "deleted")) {
         delete metadata.activeTaskId;
       }
       return metadata;
-    });
+    }, input.status === "completed" ? id : undefined);
   }
 
   async finishWork(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<FinishWorkResult> {
-    const work = await this.getWork(scope, workId, signal);
-    const unfinished = work.tasks.filter((task) => task.status === "pending" || task.status === "in_progress");
-    if (unfinished.length) throw new Error(`工作任务仍有 ${unfinished.length} 个未完成步骤`);
+    return withWorkLock(scope, workId, async () => {
+      const work = await this.getWork(scope, workId, signal);
+      return this.finishWorkLocked(scope, work, signal);
+    });
+  }
 
+  private async collectOpenWorks(
+    scope: TodoScope,
+    options: { adoptUnmanaged: boolean },
+    signal?: AbortSignal,
+  ): Promise<SyncOpenWorksResult> {
     const data = await this.gateway.getProjectData(scope.binding.projectId, signal);
-    let acceptanceTask = data.tasks.find(
-      (task) => classifyAcceptanceTask(task) && task.status === 0 && task.content?.includes(`sourceWorkId: ${workId}`),
-    );
-    if (!acceptanceTask) {
-      acceptanceTask = await this.gateway.createTask(
-        buildAcceptanceTaskInput(work.remote, 2, buildAcceptanceSummary(work.remote.title, work.tasks)),
-        signal,
-      );
-      if (this.gateway.addTaskComment) {
-        await this.gateway.addTaskComment(
-          scope.binding.projectId,
-          acceptanceTask.id,
-          "💬 请在此处输入验收意见；如果通过，请直接完成此验收任务。",
-          signal,
-        );
+    const works: WorkTask[] = [];
+    const adoptedWorkIds: string[] = [];
+    const acceptances: PendingAcceptance[] = [];
+    for (const remote of data.tasks) {
+      if (remote.tags?.includes("pi-todo-reminder")) continue;
+      if (classifyAcceptanceTask(remote)) {
+        const comments = this.gateway.getTaskComments
+          ? await this.gateway.getTaskComments(scope.binding.projectId, remote.id, signal)
+          : [];
+        acceptances.push({ remote, comments });
+        continue;
       }
+      let work = decodeWorkTask(remote);
+      if (work) {
+        if (work.metadata.bindingKey === scope.bindingKey) works.push(work);
+        continue;
+      }
+      if (!options.adoptUnmanaged || remote.status !== 0 || remote.tags?.includes("pi-todo-reminder")) continue;
+      work = await this.adoptRemoteTask(scope, remote, signal);
+      works.push(work);
+      adoptedWorkIds.push(remote.id);
     }
-    await this.gateway.completeTask(scope.binding.projectId, workId, signal);
-    return { acceptanceTask };
+    works.sort((a, b) => String(b.remote.createdTime ?? "").localeCompare(String(a.remote.createdTime ?? "")));
+    return { works, adoptedWorkIds, acceptances, finalizationFailures: [] };
+  }
+
+  private async finishWorkLocked(scope: TodoScope, work: WorkTask, signal?: AbortSignal): Promise<FinishWorkResult> {
+    return { acceptanceTask: await this.finalizer.finalize(scope, work, signal) };
   }
 
   private async mutate(
@@ -316,11 +364,14 @@ export class DidaTodoRepository {
     workId: string,
     signal: AbortSignal | undefined,
     reducer: (work: WorkTask) => Promise<WorkMetadata>,
+    completedTaskId?: number,
   ): Promise<WorkTask> {
-    return withFileMutationQueue(taskQueueKey(scope, workId), async () => {
+    return withWorkLock(scope, workId, async () => {
       const work = await this.getWork(scope, workId, signal);
+      if (work.remote.status !== 0) throw new Error("已完成的工作任务不能修改 Checklist");
       let metadata = await reducer(work);
-      const desired = metadataToItems(metadata);
+      metadata = migrateWorkMetadata(metadata);
+      const desired = metadataToItems(metadata, work.remote.items ?? []);
       let remote = await this.gateway.updateTask(
         workId,
         this.buildUpdateInput(work.remote, metadata, work.userContent, desired),
@@ -334,6 +385,12 @@ export class DidaTodoRepository {
       );
       const decoded = decodeWorkTask(remote);
       if (!decoded) throw new Error("更新后的滴答任务无法解析为 Pi Todo 工作任务");
+      if (completedTaskId !== undefined) {
+        if (this.finalizer.canAutoFinalize(decoded)) {
+          await this.finishWorkLocked(scope, decoded, signal);
+          decoded.remote.status = 2;
+        }
+      }
       return decoded;
     });
   }
@@ -342,7 +399,7 @@ export class DidaTodoRepository {
     remote: DidaTask,
     metadata: WorkMetadata,
     userContent: string,
-    items = metadataToItems(metadata),
+    items = metadataToItems(metadata, remote.items ?? []),
   ): Record<string, unknown> {
     return {
       id: remote.id,

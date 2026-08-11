@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildAcceptanceTaskInput, classifyAcceptanceTask, formatAcceptanceForAgent } from "../../extensions/dida-todo/acceptance.js";
+import {
+  ACCEPTANCE_COMMENT,
+  acceptanceMatchesSource,
+  buildAcceptanceTaskInput,
+  classifyAcceptanceTask,
+  formatAcceptanceForAgent,
+} from "../../extensions/dida-todo/acceptance.js";
 import type { DidaTask } from "../../extensions/dida-todo/domain.js";
 
 const source: DidaTask = {
@@ -38,6 +44,17 @@ describe("人类验收闭环", () => {
     expect(input.content).toContain("sourceWorkId: source-work");
   });
 
+  it("重复任务按 occurrence 区分验收，不复用上一次实例", () => {
+    const recurring = { ...source, status: 0, repeatFlag: "RRULE:FREQ=DAILY", startDate: "2026-08-11T00:00:00.000+0000" };
+    const input = buildAcceptanceTaskInput(recurring, 2, "完成本次实例", new Date("2026-08-11T01:00:00.000Z"));
+    const acceptance = { ...source, status: 0, tags: ["pi-todo-acceptance"], content: String(input.content) };
+
+    expect(input.content).toContain("sourceOccurrence: 2026-08-11T00:00:00.000+0000");
+    expect(acceptanceMatchesSource(acceptance, recurring)).toBe(true);
+    expect(acceptanceMatchesSource(acceptance, { ...recurring, startDate: "2026-08-12T00:00:00.000+0000" })).toBe(false);
+    expect(acceptanceMatchesSource({ ...acceptance, content: "sourceWorkId: source-work-10" }, source)).toBe(false);
+  });
+
   it("识别待验收任务但不把它分类为普通工作", () => {
     const acceptance = { ...source, status: 0, tags: ["pi-todo-acceptance"], title: "🧑‍🔬 待验收：实现搜索功能" };
     expect(classifyAcceptanceTask(acceptance)).toBe(true);
@@ -47,9 +64,11 @@ describe("人类验收闭环", () => {
   it("把用户评论作为反馈提供给 LLM，但要求先询问而非擅自返工", () => {
     const acceptance = { ...source, status: 0, tags: ["pi-todo-acceptance"], title: "🧑‍🔬 待验收：实现搜索功能" };
     const text = formatAcceptanceForAgent(acceptance, [
+      { id: "system", title: ACCEPTANCE_COMMENT },
       { id: "comment-1", title: "搜索结果排序还不对" },
     ]);
     expect(text).toContain("搜索结果排序还不对");
+    expect(text).not.toContain(ACCEPTANCE_COMMENT);
     expect(text).toContain("先向用户确认");
     expect(text).toContain("不代表实现失败");
   });

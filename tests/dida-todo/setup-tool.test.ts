@@ -41,7 +41,10 @@ describe("LLM setup tool", () => {
 
     expect(gateway.loginCalls).toBe(1);
     expect(activated).toBe("created");
-    expect(result.content[0].text).toContain("login completed");
+    expect(result.content[0].text).toContain("滴答登录完成");
+    expect(result.content[0].text).toContain("立即生效");
+    expect(result.content[0].text).toContain("无需 /reload");
+    expect(result.details.ready).toBe(true);
     expect(config.bindings).toHaveLength(2);
   });
 });

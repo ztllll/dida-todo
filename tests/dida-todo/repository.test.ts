@@ -52,6 +52,9 @@ class FakeGateway implements DidaGateway {
     task.status = 2;
   }
 
+  async addTaskComment(): Promise<void> {}
+  async getTaskComments(): Promise<Array<{ id: string; title: string }>> { return []; }
+
   private assignItemIds(task: DidaTask): DidaTask {
     task.items = (task.items ?? []).map((item) => ({ ...item, id: item.id ?? `item-${this.nextItem++}` }));
     return task;
@@ -79,6 +82,17 @@ describe("滴答 Todo Repository seam", () => {
     expect(reloaded.tasks).toEqual(updated.tasks);
   });
 
+  it("同会话重复 bootstrap 相同标题时复用既有 Pi 工作", async () => {
+    const gateway = new FakeGateway();
+    const repo = new DidaTodoRepository(gateway);
+
+    const first = await repo.createWork(scope, "实现联网 Todo");
+    const second = await repo.createWork(scope, "实现联网 Todo");
+
+    expect(second.remote.id).toBe(first.remote.id);
+    expect(gateway.tasks.size).toBe(1);
+  });
+
   it("将一个步骤标为进行中，再完成步骤和顶层工作", async () => {
     const gateway = new FakeGateway();
     const repo = new DidaTodoRepository(gateway);
@@ -103,9 +117,12 @@ describe("滴答 Todo Repository seam", () => {
   it("只恢复当前绑定下未完成的 Pi 工作任务", async () => {
     const gateway = new FakeGateway();
     const good: WorkMetadata = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       kind: "pi-todo-work",
       bindingKey: scope.bindingKey,
+      origin: "pi",
+      lifecycle: "claimed",
+      execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
       nextId: 1,
       tasks: [],
     };

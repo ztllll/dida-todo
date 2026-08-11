@@ -3,9 +3,12 @@ import { decodeWorkTask, encodeManagedContent, metadataToItems } from "../../ext
 import type { DidaTask, WorkMetadata } from "../../extensions/dida-todo/domain.js";
 
 const metadata: WorkMetadata = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   kind: "pi-todo-work",
   bindingKey: "tmux:example:0.0",
+  origin: "pi",
+  lifecycle: "claimed",
+  execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
   nextId: 3,
   activeTaskId: 2,
   tasks: [

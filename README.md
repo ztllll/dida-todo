@@ -53,7 +53,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 
 - `todo create/update/delete` 会写入滴答 Checklist。
 - 滴答侧的标题修改和完成状态会同步回 Pi。
-- Pi Overlay 展示 `pending / in_progress / completed`。
+- Pi Overlay 长期展示未完成步骤；本轮刚完成的步骤短暂保留到本轮结束后自动隐藏，滴答中的完成历史不会删除。
 - 滴答 Checklist 没有原生“进行中”，该状态由受管元数据保存；滴答侧仍显示未完成。
 
 ### 4. 多工作任务与调度
@@ -65,25 +65,37 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 
 ### 5. 强制人类验收闭环
 
-验收不是靠 LLM“记得做”，而是 Repository 的完成不变量：
+验收不是靠 LLM“记得做”，而是 `WorkFinalizer` 自动触发的完成不变量：
 
 ```text
-全部 Checklist 完成
+最后一个 Checklist 完成
 → 根据每一步 resolution 生成完成报告
 → 幂等创建/复用 🧑‍🔬 待验收 Todo
 → 设置默认两分钟后的提醒，并在准时及其后 2/4/6/8 分钟持续催办
-→ 验收 Todo 创建成功后，才完成原工作
+→ 补齐人类反馈评论入口
+→ 验收 Todo 与评论成功后，才完成原工作并 detach Runtime
 ```
+
+启动、`/todos`、自然语言同步和轮询还会自动修复“Checklist 全完成但顶层未完成”的历史夹生任务；验收失败时源任务保持未完成并明确报错。重复任务按 occurrence 隔离验收。`todo_work finish_current` 只保留为幂等恢复入口，不再承担正确性。
 
 - 人类验收通过：在滴答完成验收 Todo，闭环结束。
 - 需要调整：保持验收 Todo 未完成并评论；下次“检查 Todo”时，LLM 会读取反馈并先询问，再决定是否返工。
 - “尚未点击完成”只代表尚未闭环，不会被自动判定为实现失败。
 
-### 6. 空闲主动轮询
+### 6. 稳定性与并发边界
+
+- `WorkMetadata v2` 显式记录来源、生命周期、当前 occurrence 与 finalization；priority 仅表达调度优先级。
+- priority-0 用户草稿只同步不执行；Pi 自建工作可在 reload 后恢复。
+- 同一宿主的 Checklist 更新、验收、provisioning 与配置写入使用真实跨进程锁，临界区内重新读取远端；崩溃遗留锁会回收。
+- Poller 的远端异常被捕获，不会以未处理 rejection 终止 Pi。
+- 已完成工作拒绝 Checklist mutation；完整 Items 写回会保留远端未知字段、日期与时区。
+- 跨宿主没有公开 Dida CAS/ETag/幂等创建能力时不承诺 strong consistency 或 exactly-once。
+
+### 7. 空闲主动轮询
 
 扩展默认每 **10 分钟**主动轮询；无需用户配置。会话启动或 `/reload` 后立即检查一次，之后按间隔轮询。仅在 Pi 空闲且没有待处理消息时访问滴答；只有设置了低/中/高优先级的普通未完成顶层工作才触发 LLM turn；无优先级任务视为草稿并静默跳过，清单中只有待验收事项时也完全静默。轮询依赖当前 Pi 进程和会话存活，不是系统 daemon。
 
-### 7. 会话独立与永久历史
+### 8. 会话独立与永久历史
 
 - `/new`、会话切换、compact 或 detach 不删除滴答历史。
 - 滴答是唯一任务真源；Pi Runtime 只是当前展示与活动工作缓存。
@@ -105,7 +117,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 ### 最简流程：全局安装 + 登录
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.5.1
+pi install git:github.com/ztllll/dida-todo@v0.6.0
 ```
 
 新开任意 Pi 会话，直接告诉 LLM：
@@ -121,7 +133,10 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 1. tmux 环境取 tmux session 名称，非 tmux 环境取 cwd basename；
 2. 唯一同名清单存在则复用，不存在则创建 TASK/list 清单；
 3. 自动持久化精确 tmux target 与 cwd 双绑定；
-4. 当前会话立即同步并启用，无需填写 projectId。
+4. 当前会话立即同步并启用，无需填写 projectId；
+5. 空清单明确显示“滴答 Todo 已就绪”，直接口述第一项任务即可；首个 Todo 自动建立顶层工作与 Checklist。
+
+完成“登录滴答”的当前会话无需 `/reload` 或第二次配置。新启动的 Pi 会话会自动加载并复用登录状态。只有当某个 Pi 进程已经运行、用户再从外部安装或升级包时，该存量进程受 Pi Loader 生命周期限制需要执行一次 `/reload`；尚未加载的扩展无法自行让旧进程热更新。
 
 存在多个同名清单时扩展拒绝猜测。用户可直接口述“把当前项目绑定到清单 X / projectId Y”，由内部 setup 工具改绑。设置 `autoProvisionProject: false` 可关闭默认自动 provisioning。
 
@@ -130,7 +145,7 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 升级：
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.5.1
+pi install git:github.com/ztllll/dida-todo@v0.6.0
 # 或安装 main：pi install git:github.com/ztllll/dida-todo
 ```
 
@@ -201,6 +216,8 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 检查 Todo
 ```
 
+也可以在空清单中直接口述“添加 Todo：修复登录流程”。`/todos` 与 `todo list` 会把空清单显示为“滴答 Todo 已就绪”，而不是报错；第一项 Todo 会自动创建对应顶层工作。
+
 保持 Pi 会话运行时，扩展默认每 10 分钟在空闲状态主动检查。只有标题的任务会先由 LLM 创建 Checklist；已有 Checklist 的任务会直接按步骤执行。
 
 执行期间你可以在滴答看到 Checklist 完成变化和 Pi 评论。工作结束后，会出现：
@@ -244,7 +261,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前 `v0.5.1` 已通过 24 个测试文件、74 项自动测试、TypeScript、官方 Extension Loader、Git 安装、Pi 临时加载、包内容与凭据扫描。真实环境仍可能暴露新的边界，欢迎通过 Issues 反馈。
+当前 `v0.6.0` 已通过 32 个测试文件、111 项自动测试（另有 1 项默认跳过的隔离真实 Dida 验收）、TypeScript、官方 Extension Loader、包内容与凭据扫描。候选还在当前会话绑定清单完成了真实 CLI 的验收任务、评论、5 个 reminders 与每日重复实例推进验证；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
 
 ## 开发成员
 
@@ -290,12 +307,13 @@ Capture ideas, bugs, and feature requests in Dida365 from your phone or browser.
 
 - **Dida365 as a shared inbox:** humans capture work; the LLM reads and executes it.
 - **Natural-language-first UX:** users keep `/todos` and the Overlay; top-level work management stays internal.
-- **Bidirectional Checklist sync:** titles and completion state flow between Dida365 and Pi.
+- **Bidirectional Checklist sync:** titles and completion state flow between Dida365 and Pi. The Overlay keeps unfinished work visible, briefly shows newly completed items until the turn ends, then hides them without deleting Dida365 history.
 - **Multi-work queue:** the LLM can process all unfinished top-level tasks using priority and time ranges.
 - **Default idle polling:** Pi checks Dida365 every 10 minutes by default, only while idle, and triggers the LLM only for executable unfinished work. The interval is configurable. Priority 0 is treated as a draft and stays silent.
 - **Durable history:** clearing or replacing a Pi session does not delete remote work.
-- **Mandatory human acceptance:** source work cannot complete until a pending acceptance Todo with a completion report and reminder exists.
+- **Mandatory human acceptance:** `WorkFinalizer` prevents source completion until a pending acceptance Todo, report, and feedback comment exist.
 - **Feedback loop:** keep acceptance open and add a comment; the next sync exposes the feedback to the LLM, which asks before rework.
+- **Same-host resilience:** metadata v2 tracks origin/lifecycle/occurrence; real cross-process locks serialize mutation, finalization, provisioning, and config writes. Poller failures are contained. Cross-host strong consistency is not claimed without a Dida CAS/ETag/idempotency API.
 
 ## Model
 
@@ -309,7 +327,7 @@ One fixed Dida365 project per local project / tmux target
 ## Install
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.5.1
+pi install git:github.com/ztllll/dida-todo@v0.6.0
 ```
 
 In any new Pi session, tell the LLM:
@@ -320,7 +338,9 @@ Log in to Dida365
 
 The Git package automatically installs `@suibiji/dida-cli`; no global `dida` command is required. The internal `dida_todo_setup login` tool opens browser OAuth through the bundled CLI. Browser authorization is the only required manual step.
 
-After login, dida-todo automatically derives a project name from the tmux session (or cwd basename), reuses the unique same-name project or creates a TASK/list project, persists exact tmux and cwd bindings, and activates the current session. Users never need to find a projectId. Ask the LLM to rebind by exact name or projectId when needed. Duplicate names fail safely instead of being guessed.
+After login, dida-todo automatically derives a project name from the tmux session (or cwd basename), reuses the unique same-name project or creates a TASK/list project, persists exact tmux and cwd bindings, and activates the current session. An empty project reports **“Dida Todo is ready”** instead of failing; the first Todo automatically creates its top-level work task and Checklist. Users never need to find a projectId. Ask the LLM to rebind by exact name or projectId when needed. Duplicate names fail safely instead of being guessed.
+
+The session that completes `dida_todo_setup login` is ready immediately—no `/reload` or second setup step. New Pi processes load the installed package automatically. Only Pi processes that were already running before an external install or upgrade need one `/reload`, because an extension that has not been loaded cannot hot-reload its host process by itself.
 
 Set `autoProvisionProject: false` to opt out. GitHub is the only release channel; this project is not published to npm.
 
@@ -367,11 +387,14 @@ Ctrl+Shift+T
 Natural-language examples:
 
 ```text
+Add Todo: fix the login flow
 Check Todo
 Work on the latest high-priority task
 Continue the previous work
 Show pending acceptance reports
 ```
+
+An empty Dida project is a ready state, not an error: `/todos` and `todo list` report readiness, and the first Todo bootstraps the top-level work automatically.
 
 Leave the Pi session running and the extension checks while idle every 10 minutes by default. Title-only tasks are queued and decomposed into Checklist steps before execution.
 
@@ -383,15 +406,15 @@ Internal tools:
 ## Human acceptance invariant
 
 ```text
-All Checklist steps complete
+Last Checklist item completes
 → build a report from per-step resolutions
 → create or reuse a pending human-acceptance Todo
 → schedule a reminder two minutes later plus follow-ups at +2/+4/+6/+8 minutes
-→ create a starter comment so the feedback entry point is visible
-→ only then complete the source work
+→ ensure the human feedback comment exists
+→ only then complete the source work and detach the Runtime
 ```
 
-This rule lives in the Repository, not in an LLM prompt, so tools and scripts cannot bypass it.
+This rule is triggered automatically by the Repository; correctness no longer depends on the LLM remembering `finish_current`. Startup, `/todos`, natural-language sync, and polling also repair stranded work whose Checklist is complete while the top-level task remains open. Acceptance failures leave the source task open and are reported explicitly. Recurring tasks isolate acceptance by occurrence, and `finish_current` remains only as an idempotent recovery action.
 
 ## Honest limitations
 
@@ -413,7 +436,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.5.1` passed 74 automated tests across 24 test files, TypeScript, the official Extension Loader, Git installation, Pi temporary loading, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.6.0` passed 111 automated tests across 32 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
 
 ## Team
 

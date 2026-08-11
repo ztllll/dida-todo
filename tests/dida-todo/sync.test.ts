@@ -5,22 +5,34 @@ import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo
 
 class SyncGateway implements DidaGateway {
   comments: Array<{ taskId: string; title: string }> = [];
-  constructor(public tasks: DidaTask[]) {}
+  created: DidaTask[] = [];
+  completed: string[] = [];
+  constructor(public tasks: DidaTask[], private failAcceptance = false) {}
   async getProjectData(projectId: string): Promise<DidaProjectData> {
-    return { project: { id: projectId, name: "example" }, tasks: structuredClone(this.tasks.filter((task) => task.status === 0)), columns: [] };
+    return { project: { id: projectId, name: "pi-agent" }, tasks: structuredClone(this.tasks.filter((task) => task.status === 0)), columns: [] };
   }
   async getTask(_projectId: string, taskId: string): Promise<DidaTask> {
     const task = this.tasks.find((candidate) => candidate.id === taskId);
     if (!task) throw new Error("not found");
     return structuredClone(task);
   }
-  async createTask(): Promise<DidaTask> { throw new Error("unused"); }
+  async createTask(input: Record<string, unknown>): Promise<DidaTask> {
+    if (this.failAcceptance) throw new Error("create acceptance failed");
+    const task = { ...structuredClone(input), id: `created-${this.created.length + 1}`, status: 0, priority: Number(input.priority ?? 0) } as DidaTask;
+    this.tasks.push(task);
+    this.created.push(task);
+    return structuredClone(task);
+  }
   async updateTask(taskId: string, input: Record<string, unknown>): Promise<DidaTask> {
     const index = this.tasks.findIndex((candidate) => candidate.id === taskId);
     this.tasks[index] = { ...this.tasks[index], ...structuredClone(input), id: taskId } as DidaTask;
     return structuredClone(this.tasks[index]);
   }
-  async completeTask(): Promise<void> { throw new Error("unused"); }
+  async completeTask(_projectId: string, taskId: string): Promise<void> {
+    this.completed.push(taskId);
+    const task = this.tasks.find((candidate) => candidate.id === taskId);
+    if (task) task.status = 2;
+  }
   async addTaskComment(_projectId: string, taskId: string, title: string): Promise<void> {
     this.comments.push({ taskId, title });
   }
@@ -30,18 +42,21 @@ class SyncGateway implements DidaGateway {
 }
 
 const scope: TodoScope = {
-  binding: { key: "tmux:example:0.0", projectId: "project-1" },
-  bindingKey: "tmux:example:0.0",
-  cwd: "/workspace/example-project",
-  tmuxTarget: "example:0.0",
+  binding: { key: "tmux:pi-agent:0.0", projectId: "project-1" },
+  bindingKey: "tmux:pi-agent:0.0",
+  cwd: "/workspace/pi-agent",
+  tmuxTarget: "pi-agent:0.0",
   sessionId: "session-1",
 };
 
 function managedTask(): DidaTask {
   const metadata: WorkMetadata = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: "pi-todo-work",
     bindingKey: scope.bindingKey,
+    origin: "pi",
+    lifecycle: "claimed",
+    execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
     nextId: 2,
     tasks: [{ id: 1, subject: "已有步骤", status: "pending", itemId: "managed-item" }],
   };
@@ -129,6 +144,110 @@ describe("项目 Todo 同步 seam", () => {
     expect(result.adoptedWorkIds).toEqual([]);
     expect(result.works.map((work) => work.remote.id)).toEqual(["managed"]);
     expect(gateway.tasks.find((task) => task.id === "reminder")?.content).toContain("完成提醒");
+  });
+
+  it("同步发现全部 Checklist 已完成但顶层未完成时自动补建验收并收口", async () => {
+    const remote = managedTask();
+    remote.content = encodeManagedContent("", {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: scope.bindingKey,
+      origin: "pi",
+      lifecycle: "claimed",
+      execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
+      nextId: 2,
+      tasks: [{ id: 1, subject: "已有步骤", status: "completed", itemId: "managed-item", metadata: { resolution: "已修复" } }],
+    });
+    remote.items = [{ id: "managed-item", title: "已有步骤", status: 1 }];
+    const gateway = new SyncGateway([remote]);
+    const repository = new DidaTodoRepository(gateway);
+
+    const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
+
+    expect(result.works).toEqual([]);
+    expect(result.finalizationFailures).toEqual([]);
+    expect(result.acceptances.map(({ remote: acceptance }) => acceptance.title)).toEqual(["🧑‍🔬 待验收：已有工作"]);
+    expect(gateway.created).toHaveLength(1);
+    expect(gateway.completed).toEqual(["managed"]);
+  });
+
+  it("同步修复夹生任务时复用已有同源验收，不重复创建", async () => {
+    const remote = managedTask();
+    remote.content = encodeManagedContent("", {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: scope.bindingKey,
+      origin: "pi",
+      lifecycle: "claimed",
+      execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
+      nextId: 2,
+      tasks: [{ id: 1, subject: "已有步骤", status: "completed", itemId: "managed-item" }],
+    });
+    remote.items = [{ id: "managed-item", title: "已有步骤", status: 1 }];
+    const acceptance: DidaTask = {
+      id: "acceptance",
+      projectId: scope.binding.projectId,
+      title: "🧑‍🔬 待验收：已有工作",
+      content: "sourceWorkId: managed",
+      status: 0,
+      priority: 0,
+      tags: ["pi-todo-acceptance"],
+    };
+    const gateway = new SyncGateway([remote, acceptance]);
+    const repository = new DidaTodoRepository(gateway);
+
+    const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
+
+    expect(gateway.created).toHaveLength(0);
+    expect(result.finalizationFailures).toEqual([]);
+    expect(gateway.completed).toEqual(["managed"]);
+    expect(result.acceptances.map(({ remote: task }) => task.id)).toEqual(["acceptance"]);
+  });
+
+  it("同步补偿失败时保留夹生工作并返回可观察错误", async () => {
+    const remote = managedTask();
+    remote.content = encodeManagedContent("", {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: scope.bindingKey,
+      origin: "pi",
+      lifecycle: "claimed",
+      execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
+      nextId: 2,
+      tasks: [{ id: 1, subject: "已有步骤", status: "completed", itemId: "managed-item" }],
+    });
+    remote.items = [{ id: "managed-item", title: "已有步骤", status: 1 }];
+    const gateway = new SyncGateway([remote], true);
+    const repository = new DidaTodoRepository(gateway);
+
+    const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
+
+    expect(result.works.map((work) => work.remote.id)).toEqual(["managed"]);
+    expect(result.finalizationFailures).toEqual([
+      { workId: "managed", title: "已有工作", error: "create acceptance failed" },
+    ]);
+    expect(gateway.completed).toEqual([]);
+  });
+
+  it("同步被取消时向上传播 AbortError，不伪装成验收失败", async () => {
+    const remote = managedTask();
+    remote.content = encodeManagedContent("", {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: scope.bindingKey,
+      origin: "pi",
+      lifecycle: "claimed",
+      execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
+      nextId: 2,
+      tasks: [{ id: 1, subject: "已有步骤", status: "completed", itemId: "managed-item" }],
+    });
+    remote.items = [{ id: "managed-item", title: "已有步骤", status: 1 }];
+    const gateway = new SyncGateway([remote], true);
+    const repository = new DidaTodoRepository(gateway);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(repository.syncOpenWorks(scope, { adoptUnmanaged: true }, controller.signal)).rejects.toThrow("create acceptance failed");
   });
 
   it("刷新时导入用户追加的 Item，并保留远端完成状态", async () => {

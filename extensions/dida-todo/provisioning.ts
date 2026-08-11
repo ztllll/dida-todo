@@ -1,6 +1,7 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { withHostLock } from "./host-lock.js";
 import { DEFAULT_CONFIG_PATH, normalizeCwd } from "./config.js";
 import type { DidaProject, DidaTodoConfig, ProjectBinding } from "./domain.js";
 
@@ -83,7 +84,7 @@ async function persistBinding(
   cwd: string,
   tmuxTarget?: string,
 ): Promise<{ config: DidaTodoConfig; binding: ProjectBinding }> {
-  return withFileMutationQueue(path, async () => {
+  return withHostLock(`config:${path}`, () => withFileMutationQueue(path, async () => {
     const latest = await readConfig(path);
     const normalizedCwd = normalizeCwd(cwd);
     const primary: ProjectBinding = {
@@ -110,7 +111,7 @@ async function persistBinding(
     await rename(temporary, path);
     await chmod(path, 0o600);
     return { config: next, binding: primary };
-  });
+  }));
 }
 
 function openProjects(projects: DidaProject[]): DidaProject[] {
@@ -119,17 +120,19 @@ function openProjects(projects: DidaProject[]): DidaProject[] {
 
 export async function ensureProjectBinding(input: ProvisioningInput): Promise<ProvisioningResult> {
   const configPath = input.configPath ?? DEFAULT_CONFIG_PATH;
-  const config = await readConfig(configPath);
   const identity = deriveBindingIdentity(input.cwd, input.tmuxTarget);
-  const projects = openProjects(await input.gateway.listProjects(input.signal));
-  const matches = projects.filter((project) => project.name.trim() === identity.projectName);
-  if (matches.length > 1) {
-    throw new Error(`存在 ${matches.length} 个同名清单“${identity.projectName}”，为避免误绑定，请让 LLM 按 projectId 显式绑定`);
-  }
-  const createdProject = matches.length === 0;
-  const project = matches[0] ?? await input.gateway.createProject(identity.projectName, input.signal);
-  const persisted = await persistBinding(configPath, config, identity, project, input.cwd, input.tmuxTarget);
-  return { ...persisted, project, createdProject };
+  return withHostLock(`provision:${configPath}:${identity.projectName}`, async () => {
+    const config = await readConfig(configPath);
+    const projects = openProjects(await input.gateway.listProjects(input.signal));
+    const matches = projects.filter((project) => project.name.trim() === identity.projectName);
+    if (matches.length > 1) {
+      throw new Error(`存在 ${matches.length} 个同名清单“${identity.projectName}”，为避免误绑定，请让 LLM 按 projectId 显式绑定`);
+    }
+    const createdProject = matches.length === 0;
+    const project = matches[0] ?? await input.gateway.createProject(identity.projectName, input.signal);
+    const persisted = await persistBinding(configPath, config, identity, project, input.cwd, input.tmuxTarget);
+    return { ...persisted, project, createdProject };
+  });
 }
 
 export async function bindExistingProject(input: ExplicitBindingInput): Promise<ProvisioningResult> {

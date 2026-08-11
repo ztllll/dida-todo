@@ -47,9 +47,23 @@ export function registerCommands(pi: ExtensionAPI, repository: DidaTodoRepositor
         refreshed = getSessionRuntime(sessionId);
       }
       onWorkChanged();
+      if (result.finalizationFailures.length) {
+        ctx.ui.notify(
+          [
+            "以下工作已完成全部 Checklist，但自动创建验收 Todo 失败；源任务仍保持未完成：",
+            ...result.finalizationFailures.map((failure) => `- ${failure.title}：${failure.error}`),
+          ].join("\n"),
+          "error",
+        );
+        return;
+      }
       if (!refreshed?.work) {
-        const acceptanceText = result.acceptances.length ? `当前没有未完成工作任务；有 ${result.acceptances.length} 个待人类验收报告。` : "当前没有未完成工作任务。";
-        ctx.ui.notify(acceptanceText, "info");
+        const stateText = result.works.length
+          ? `滴答 Todo 已就绪：已同步 ${result.works.length} 个顶层任务，但当前没有满足优先级和时间条件的可执行工作。`
+          : result.acceptances.length
+            ? `滴答 Todo 已就绪：当前没有未完成工作；有 ${result.acceptances.length} 个待人类验收报告。可直接口述新任务。`
+            : "滴答 Todo 已就绪：当前清单为空。可直接口述新任务，首个 Todo 会自动建立顶层工作并同步到滴答。";
+        ctx.ui.notify(stateText, "info");
         return;
       }
       ctx.ui.notify(todosText(refreshed.work), "info");

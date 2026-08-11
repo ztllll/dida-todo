@@ -51,6 +51,20 @@ describe("零配置项目清单 provisioning", () => {
     expect((await stat(configPath)).mode & 0o777).toBe(0o600);
   });
 
+  it("并发首次 provisioning 在同宿主只创建一个清单", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "dida-provision-"));
+    const configPath = join(dir, "config.json");
+    const gateway = new ProjectGateway([]);
+
+    const [first, second] = await Promise.all([
+      ensureProjectBinding({ gateway, cwd: "/workspace/demo", tmuxTarget: "demo:0.0", configPath }),
+      ensureProjectBinding({ gateway, cwd: "/workspace/demo", tmuxTarget: "demo:0.0", configPath }),
+    ]);
+
+    expect(gateway.created).toEqual(["demo"]);
+    expect([first.binding.projectId, second.binding.projectId]).toEqual(["project-1", "project-1"]);
+  });
+
   it("重复自动初始化保持幂等，不增加绑定或清单", async () => {
     const dir = await mkdtemp(join(tmpdir(), "dida-provision-"));
     const configPath = join(dir, "config.json");

@@ -26,7 +26,7 @@ export function registerDidaSetupTool(
     description: "Log in with the bundled Dida CLI, auto-provision this cwd/tmux target, or bind an existing project by ID/exact name.",
     promptSnippet: "Auto-provision or rebind the Dida project for this Pi target",
     promptGuidelines: [
-      "If dida-todo reports that Dida CLI is not logged in, tell the user to run the bundled dida auth login command, then call this tool with action auto.",
+      "If dida-todo reports that Dida CLI is not logged in, call this tool with action login. Login automatically provisions, persists, and activates the current project; do not ask the user to find the package directory or run a second setup command.",
       "Use bind only when the user explicitly asks to change the project or duplicate names require a projectId.",
     ],
     parameters: Type.Object({
@@ -45,8 +45,8 @@ export function registerDidaSetupTool(
           config.bindings = result.config.bindings;
           await activate(ctx, result.binding);
           return {
-            content: [{ type: "text", text: `Dida CLI login completed. ${result.createdProject ? "Created and bound" : "Bound"} project: ${result.project.name} (${result.project.id}).` }],
-            details: { action: params.action, project: result.project, binding: result.binding, createdProject: result.createdProject },
+            content: [{ type: "text", text: `滴答登录完成，清单“${result.project.name}”已${result.createdProject ? "创建并" : ""}绑定且立即生效。现在可直接口述任务或创建 Todo，无需 /reload 或再次配置。` }],
+            details: { action: params.action, project: result.project, binding: result.binding, createdProject: result.createdProject, ready: true },
           };
         }
         const result = params.action === "bind"
@@ -68,7 +68,7 @@ export function registerDidaSetupTool(
         };
       } catch (error) {
         if (isDidaAuthenticationError(error)) {
-          throw new Error("Dida CLI 尚未登录。dida-todo 已内置 @suibiji/dida-cli；请进入 Pi 安装的 dida-todo Git 包目录运行 ./node_modules/.bin/dida auth login，登录后执行 /reload。无需另装全局 dida 命令。");
+          throw new Error("Dida CLI 尚未登录。请直接告诉 LLM“登录滴答”，由 dida_todo_setup login 打开浏览器授权并在成功后立即创建或复用清单、持久绑定并激活当前会话；无需另装全局 dida、寻找包目录、执行第二次配置或 /reload。");
         }
         throw error;
       }
