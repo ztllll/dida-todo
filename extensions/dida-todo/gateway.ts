@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { DidaProjectData, DidaTask } from "./domain.js";
+import type { DidaProject, DidaProjectData, DidaTask } from "./domain.js";
 import type { DidaGateway } from "./repository.js";
 import type { DidaComment } from "./acceptance.js";
 
@@ -14,6 +14,18 @@ export class DidaCliGateway implements DidaGateway {
     private readonly pi: ExtensionAPI,
     private readonly command = "dida",
   ) {}
+
+  async login(signal?: AbortSignal): Promise<string> {
+    return this.exec(["auth", "login"], signal, 10 * 60_000);
+  }
+
+  async listProjects(signal?: AbortSignal): Promise<DidaProject[]> {
+    return this.execJson(["project", "list", "--json"], signal);
+  }
+
+  async createProject(name: string, signal?: AbortSignal): Promise<DidaProject> {
+    return this.execJson(["project", "create", "--name", name, "--view-mode", "list", "--kind", "TASK", "--json"], signal);
+  }
 
   async getProjectData(projectId: string, signal?: AbortSignal): Promise<DidaProjectData> {
     return this.execJson(["project", "data", projectId, "--json"], signal);
@@ -105,8 +117,8 @@ export class DidaCliGateway implements DidaGateway {
     }
   }
 
-  private async exec(args: string[], signal?: AbortSignal): Promise<string> {
-    const result = await this.pi.exec(this.command, args, { signal, timeout: 30_000 });
+  private async exec(args: string[], signal?: AbortSignal, timeout = 30_000): Promise<string> {
+    const result = await this.pi.exec(this.command, args, { signal, timeout });
     if (result.code !== 0) throw new Error(outputError(result.stderr, result.stdout));
     return result.stdout.trim();
   }

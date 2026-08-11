@@ -19,6 +19,13 @@ describe("项目绑定解析 seam", () => {
     expect(resolveBinding(config, "/workspace/example-project/", undefined)?.projectId).toBe("project-cwd");
   });
 
+  it("默认启用自动 provisioning，也允许显式关闭", () => {
+    const defaults: DidaTodoConfig = { bindings: [] };
+    const disabled: DidaTodoConfig = { bindings: [], autoProvisionProject: false };
+    expect(defaults.autoProvisionProject).toBeUndefined();
+    expect(disabled.autoProvisionProject).toBe(false);
+  });
+
   it("默认使用包内安装的 dida CLI，仍允许显式覆盖", () => {
     expect(resolveDidaCommand({ bindings: [] })).toBe(BUNDLED_DIDA_COMMAND);
     expect(resolveDidaCommand({ bindings: [], didaCommand: "/custom/dida" })).toBe("/custom/dida");

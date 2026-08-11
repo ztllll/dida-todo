@@ -52,6 +52,7 @@ export interface DidaTask {
 export interface DidaProject {
   id: string;
   name: string;
+  closed?: boolean;
   kind?: string;
   viewMode?: string;
   permission?: string;
@@ -95,6 +96,7 @@ export interface DidaTodoConfig {
   maxWidgetLines?: number;
   collapseKey?: string;
   autoResumeSingle?: boolean;
+  autoProvisionProject?: boolean;
   pollIntervalMinutes?: number;
 }
 

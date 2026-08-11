@@ -102,46 +102,39 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 
 ## 安装
 
-### 要求
-
-- Node.js `>=20`
-- Pi Coding Agent
-- 滴答清单账号
-- 一个专用于当前项目或工作目标的滴答清单
-
-### 从 GitHub Release 安装
-
-安装固定版本（推荐，可复现）：
+### 最简流程：全局安装 + 登录
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.3.2
+pi install git:github.com/ztllll/dida-todo@v0.4.0
 ```
 
-安装 main 最新代码：
-
-```bash
-pi install git:github.com/ztllll/dida-todo
-```
-
-升级已安装的 GitHub 包：
-
-```bash
-pi update git:github.com/ztllll/dida-todo
-```
-
-也可以先试用而不写入安装配置：
-
-```bash
-pi -e git:github.com/ztllll/dida-todo@v0.3.2
-```
-
-安装、升级或修改配置后，在交互式 Pi 中执行：
+新开任意 Pi 会话，直接告诉 LLM：
 
 ```text
-/reload
+登录滴答
 ```
 
-本项目当前**只以 GitHub 为正式发布渠道，不发布 npm 包**。包内已依赖 `@suibiji/dida-cli`，无需全局安装 `dida`。
+GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要另装全局 `dida`，也不需要寻找 Git 包目录。内部 `dida_todo_setup login` 会调用包内 CLI 打开浏览器 OAuth。首次浏览器授权是唯一必须由用户完成的交互。
+
+登录成功后，扩展自动完成：
+
+1. tmux 环境取 tmux session 名称，非 tmux 环境取 cwd basename；
+2. 唯一同名清单存在则复用，不存在则创建 TASK/list 清单；
+3. 自动持久化精确 tmux target 与 cwd 双绑定；
+4. 当前会话立即同步并启用，无需填写 projectId。
+
+存在多个同名清单时扩展拒绝猜测。用户可直接口述“把当前项目绑定到清单 X / projectId Y”，由内部 setup 工具改绑。设置 `autoProvisionProject: false` 可关闭默认自动 provisioning。
+
+手工登录回退：进入 dida-todo Git 安装目录运行 `./node_modules/.bin/dida auth login`。
+
+升级：
+
+```bash
+pi install git:github.com/ztllll/dida-todo@v0.4.0
+# 或安装 main：pi install git:github.com/ztllll/dida-todo
+```
+
+本项目只以 GitHub 为正式发布渠道，不发布 npm 包。
 
 ### 冲突迁移
 
@@ -154,17 +147,7 @@ todo 工具
 
 Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须禁用冲突提供者，避免加载顺序决定实际接口。它可以与 `@narumitw/pi-statusline`、`pi-updater` 和纯主题包共存。
 
-## 滴答登录
-
-安装后，进入 Pi 安装的 Git 包目录或任意安装了本项目依赖的目录，运行：
-
-```bash
-./node_modules/.bin/dida auth login
-```
-
-OAuth Token 保存在用户配置目录，不应写入项目或提交到 Git。
-
-## 配置
+## 高级配置
 
 创建：
 
@@ -179,6 +162,7 @@ OAuth Token 保存在用户配置目录，不应写入项目或提交到 Git。
   "maxWidgetLines": 12,
   "collapseKey": "ctrl+shift+t",
   "autoResumeSingle": true,
+  "autoProvisionProject": true,
   "pollIntervalMinutes": 5,
   "bindings": [
     {
@@ -196,7 +180,7 @@ OAuth Token 保存在用户配置目录，不应写入项目或提交到 Git。
 }
 ```
 
-绑定优先级：精确 tmux target → 精确 cwd。扩展不会猜测清单，也不会自动创建业务清单。
+默认自动创建/复用和绑定；手工 `bindings` 仅用于覆盖默认行为。绑定优先级：精确 tmux target → 精确 cwd。多个同名清单时不会猜测。
 
 `pollIntervalMinutes` 可选，范围为 `1–1440` 分钟；未配置时不主动轮询。修改配置后执行 `/reload`。`didaCommand` 是可选高级覆盖；默认解析本项目依赖中的 `@suibiji/dida-cli`。
 
@@ -324,43 +308,25 @@ One fixed Dida365 project per local project / tmux target
 
 ## Install
 
-Requirements: Node.js `>=20`, Pi Coding Agent, a Dida365 account, and a dedicated Dida365 project.
-
-Install a pinned release (recommended):
-
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.3.2
+pi install git:github.com/ztllll/dida-todo@v0.4.0
 ```
 
-Install the latest `main` branch:
+In any new Pi session, tell the LLM:
 
-```bash
-pi install git:github.com/ztllll/dida-todo
+```text
+Log in to Dida365
 ```
 
-Update an installed GitHub package:
+The Git package automatically installs `@suibiji/dida-cli`; no global `dida` command is required. The internal `dida_todo_setup login` tool opens browser OAuth through the bundled CLI. Browser authorization is the only required manual step.
 
-```bash
-pi update git:github.com/ztllll/dida-todo
-```
+After login, dida-todo automatically derives a project name from the tmux session (or cwd basename), reuses the unique same-name project or creates a TASK/list project, persists exact tmux and cwd bindings, and activates the current session. Users never need to find a projectId. Ask the LLM to rebind by exact name or projectId when needed. Duplicate names fail safely instead of being guessed.
 
-Temporary trial:
+Set `autoProvisionProject: false` to opt out. GitHub is the only release channel; this project is not published to npm.
 
-```bash
-pi -e git:github.com/ztllll/dida-todo@v0.3.2
-```
+## Advanced configuration
 
-Run `/reload` after installation, update, or configuration changes. GitHub is the only official release channel. This project is **not published to npm**. `@suibiji/dida-cli` is installed as a dependency, so a global `dida` installation is unnecessary.
-
-Disable `@juicesharp/rpiv-todo` and any extension that also registers `todo` or `/todos`. Pi Loader reports duplicate tool registrations as extension diagnostics; do not rely on load-order precedence.
-
-## Login and configuration
-
-Authenticate through the bundled dependency:
-
-```bash
-./node_modules/.bin/dida auth login
-```
+Manual login fallback: run `./node_modules/.bin/dida auth login` from the Git package directory.
 
 Create `~/.config/pi-dida-todo/config.json`:
 
@@ -369,6 +335,7 @@ Create `~/.config/pi-dida-todo/config.json`:
   "maxWidgetLines": 12,
   "collapseKey": "ctrl+shift+t",
   "autoResumeSingle": true,
+  "autoProvisionProject": true,
   "pollIntervalMinutes": 5,
   "bindings": [
     {

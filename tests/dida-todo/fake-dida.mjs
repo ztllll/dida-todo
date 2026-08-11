@@ -9,7 +9,19 @@ const save = (data) => writeFileSync(storePath, JSON.stringify(data, null, 2));
 const valueAfter = (name) => args[args.indexOf(name) + 1];
 
 let data = load();
-if (args[0] === "project" && args[1] === "data") {
+if (args[0] === "project" && args[1] === "list") {
+  console.log(JSON.stringify(data.projects ?? [data.project].filter(Boolean)));
+} else if (args[0] === "project" && args[1] === "create") {
+  data.projects ??= [data.project].filter(Boolean);
+  const project = {
+    id: `project-${(data.projects.length ?? 0) + 1}`,
+    name: valueAfter("--name"),
+    kind: valueAfter("--kind") ?? "TASK",
+    viewMode: valueAfter("--view-mode") ?? "list",
+    closed: false,
+  };
+  data.projects.push(project); data.project ??= project; save(data); console.log(JSON.stringify(project));
+} else if (args[0] === "project" && args[1] === "data") {
   console.log(JSON.stringify({ project: data.project, tasks: data.tasks.filter((task) => task.status === 0), columns: [] }));
 } else if (args[0] === "task" && args[1] === "get") {
   const task = data.tasks.find((candidate) => candidate.id === args[3]);

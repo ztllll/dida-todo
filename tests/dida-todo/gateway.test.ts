@@ -19,6 +19,10 @@ describe("Dida CLI Adapter seam", () => {
     } as never;
     const gateway = new DidaCliGateway(pi, fake);
 
+    expect((await gateway.listProjects()).map((project) => project.id)).toEqual(["p1"]);
+    const newProject = await gateway.createProject("自动创建项目");
+    expect(newProject).toMatchObject({ name: "自动创建项目", kind: "TASK", viewMode: "list" });
+
     const created = await gateway.createTask({
       title: "实现联网 Todo",
       projectId: "p1",
