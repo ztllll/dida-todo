@@ -114,7 +114,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 安装固定版本（推荐，可复现）：
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.2.3
+pi install git:github.com/ztllll/dida-todo@v0.3.2
 ```
 
 安装 main 最新代码：
@@ -132,7 +132,7 @@ pi update git:github.com/ztllll/dida-todo
 也可以先试用而不写入安装配置：
 
 ```bash
-pi -e git:github.com/ztllll/dida-todo@v0.2.3
+pi -e git:github.com/ztllll/dida-todo@v0.3.2
 ```
 
 安装、升级或修改配置后，在交互式 Pi 中执行：
@@ -152,7 +152,7 @@ todo 工具
 /todos 命令
 ```
 
-`dida-todo` 会在启动时检测冲突并明确报错，不会静默覆盖。它可以与 `@narumitw/pi-statusline`、`pi-updater` 和纯主题包共存。
+Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须禁用冲突提供者，避免加载顺序决定实际接口。它可以与 `@narumitw/pi-statusline`、`pi-updater` 和纯主题包共存。
 
 ## 滴答登录
 
@@ -329,7 +329,7 @@ Requirements: Node.js `>=20`, Pi Coding Agent, a Dida365 account, and a dedicate
 Install a pinned release (recommended):
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.2.3
+pi install git:github.com/ztllll/dida-todo@v0.3.2
 ```
 
 Install the latest `main` branch:
@@ -347,12 +347,12 @@ pi update git:github.com/ztllll/dida-todo
 Temporary trial:
 
 ```bash
-pi -e git:github.com/ztllll/dida-todo@v0.2.3
+pi -e git:github.com/ztllll/dida-todo@v0.3.2
 ```
 
 Run `/reload` after installation, update, or configuration changes. GitHub is the only official release channel. This project is **not published to npm**. `@suibiji/dida-cli` is installed as a dependency, so a global `dida` installation is unnecessary.
 
-Disable `@juicesharp/rpiv-todo` and any extension that also registers `todo` or `/todos`. Pi reports duplicate tool registrations as extension diagnostics; disable conflicting providers before use.
+Disable `@juicesharp/rpiv-todo` and any extension that also registers `todo` or `/todos`. Pi Loader reports duplicate tool registrations as extension diagnostics; do not rely on load-order precedence.
 
 ## Login and configuration
 
@@ -446,7 +446,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, and UX simplification. The current release passed 53 automated tests, the official Extension Loader, Git installation, Pi temporary loading, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, and UX simplification. The current release passed 59 automated tests, the official Extension Loader, Git installation, Pi temporary loading, package-content inspection, and credential scanning.
 
 ## Team
 

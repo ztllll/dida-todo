@@ -1,6 +1,6 @@
 {
   "name": "dida-todo",
-  "version": "0.1.0",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
   "description": "Pi 扩展：以滴答清单为 Todo 真源，支持自然语言执行、双向同步、提醒和强制人类验收闭环。",
