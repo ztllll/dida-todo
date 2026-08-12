@@ -53,10 +53,10 @@ create / update / list / get / delete / clear
 仅供 LLM 内部管理顶层工作队列：
 
 ```text
-list / switch / next / refresh / finish_current
+list / switch / next / refresh / finish_current / acknowledge_feedback / start_rework
 ```
 
-用户无需手工调用。`finish_current` 进入 Repository 完成流程，不负责决定是否创建验收 Todo。
+用户无需手工调用。`finish_current` 进入 Repository 完成流程，不负责决定是否创建验收 Todo。LLM 实际向用户展示评论后调用 `acknowledge_feedback` 写远端确认，防止 Poller 重复唤醒；不得提前确认。`start_rework` 仅在用户明确同意后调用：它创建新的返工工作并关闭被替代的旧验收，不修改已完成源 Checklist。
 
 ## 自动同步
 
@@ -80,13 +80,13 @@ Repository 固化并自动触发以下不变量：
 最后一个 Checklist 完成
 → 根据原任务描述/正文、Checklist 与 metadata.resolution 生成报告
 → 幂等创建或复用待验收 Todo
-→ 设置默认两分钟后的提醒，并在准时及其后 2/4/6/8 分钟持续催办
+→ 设置完成后 +3/+6 分钟两次提醒
 → 补齐评论反馈入口
 → 验收 Todo 与评论成功后才完成原工作
 → detach 当前 Runtime，下一项 Todo 建立新顶层工作
 ```
 
-正确性不再依赖 LLM 记得调用 `todo_work finish_current`；该动作仅保留为幂等恢复入口。启动、`/todos`、自然语言同步与轮询会自动修复 Checklist 已全完成但顶层未完成的夹生任务。验收创建或评论失败时源任务保持未完成，并向用户显式报告错误。重复任务使用 `sourceWorkId + sourceOccurrence` 隔离每次验收。LLM、命令或脚本都不能绕过。待验收 Todo 保持未完成时，LLM 下次检查会读取报告和评论，但不会因“尚未点击完成”擅自判定失败或自动返工；有反馈时先询问用户。人类点击完成后闭环结束。
+正确性不再依赖 LLM 记得调用 `todo_work finish_current`；该动作仅保留为幂等恢复入口。启动、`/todos`、自然语言同步与轮询会自动修复 Checklist 已全完成但顶层未完成的夹生任务。验收创建或评论失败时源任务保持未完成，并向用户显式报告错误。重复任务使用 `sourceWorkId + sourceOccurrence` 隔离每次验收。LLM、命令或脚本都不能绕过。待验收 Todo 保持未完成时，Poller 会发现尚未远端确认的新用户评论、只唤醒一次并写入系统确认评论；LLM 必须先向用户展示反馈，只有用户明确同意后才能调用 `start_rework` 创建新工作、关闭旧验收并继续处理。外部评论绝不直接执行，已完成源 Checklist 绝不回滚。人类点击完成后闭环结束。
 
 ## 调度字段
 
@@ -140,5 +140,5 @@ npm run check
 2. Dida CLI 更新需要发送完整 Items；同宿主已由真实跨进程锁保护。公开 API 未确认提供 CAS/ETag 条件更新或幂等创建 key，因此跨宿主只能检测/拒绝冲突，不能承诺强一致或 exactly-once。
 3. 自动收口需要 gateway 同时支持创建验收、读取评论与写入评论；能力不完整时必须保持源工作未完成。
 4. 默认有 10 分钟一次的会话内空闲轮询，但它只在 Pi 进程和当前会话存活时有效，不是系统级后台服务；Pi 退出后仍由滴答负责提醒。
-5. 轮询仅负责发现满足执行门的任务并触发 LLM，不会在 Pi 忙碌、消息排队、只有草稿或只有待验收任务时打扰用户。
+5. 轮询负责发现满足执行门的任务及待验收中的新用户评论；无评论的待验收保持静默。评论只触发反馈确认，不会被直接执行。
 6. 本工作区不是生产部署位置，未经授权不得复制到全局 Pi 配置。

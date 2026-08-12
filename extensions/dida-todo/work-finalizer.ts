@@ -62,7 +62,7 @@ export class WorkFinalizer {
     return this.gateway.createTask(
       buildAcceptanceTaskInput(
         work.remote,
-        2,
+        3,
         buildAcceptanceSummary(work.remote.title, visible, {
           ...(work.remote.desc ? { description: work.remote.desc } : {}),
           ...(work.userContent ? { content: work.userContent } : {}),

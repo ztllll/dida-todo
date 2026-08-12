@@ -118,6 +118,80 @@ describe("项目 Todo 同步 seam", () => {
     expect(result.acceptances[0]?.comments[0]?.title).toBe("这里还需要优化");
   });
 
+  it("对验收反馈写入幂等远端确认评论，支持 reload 后去重", async () => {
+    const acceptance: DidaTask = {
+      id: "acceptance",
+      projectId: "project-1",
+      title: "🧑‍🔬 待验收：用户灵感任务",
+      content: "完成报告\nsourceWorkId: managed",
+      status: 0,
+      priority: 5,
+      tags: ["pi-todo-acceptance"],
+    };
+    const gateway = new SyncGateway([acceptance]);
+    gateway.comments.push({ taskId: "acceptance", title: "用户反馈" });
+    const repository = new DidaTodoRepository(gateway);
+
+    await repository.acknowledgeAcceptanceFeedback(scope, "acceptance", ["comment-1", "comment-1"]);
+    await repository.acknowledgeAcceptanceFeedback(scope, "acceptance", ["comment-1"]);
+
+    expect(gateway.comments).toEqual([
+      { taskId: "acceptance", title: "用户反馈" },
+      { taskId: "acceptance", title: "🤖 Pi 已读取验收反馈：comment-1" },
+    ]);
+  });
+
+  it("拒绝确认不存在或系统生成的验收评论", async () => {
+    const acceptance: DidaTask = {
+      id: "acceptance",
+      projectId: "project-1",
+      title: "🧑‍🔬 待验收：用户灵感任务",
+      content: "sourceWorkId: managed",
+      status: 0,
+      priority: 1,
+      tags: ["pi-todo-acceptance"],
+    };
+    const gateway = new SyncGateway([acceptance]);
+    gateway.comments.push({ taskId: "acceptance", title: "用户反馈" });
+    const repository = new DidaTodoRepository(gateway);
+
+    await expect(repository.acknowledgeAcceptanceFeedback(scope, "acceptance", ["missing"])).rejects.toThrow("不存在或不是用户反馈");
+  });
+
+  it("用户确认后从验收评论创建新返工工作、关闭旧验收且保持幂等", async () => {
+    const acceptance: DidaTask = {
+      id: "acceptance",
+      projectId: "project-1",
+      title: "🧑‍🔬 待验收：用户灵感任务",
+      content: "完成报告\nsourceWorkId: managed",
+      status: 0,
+      priority: 3,
+      tags: ["pi-todo-acceptance"],
+    };
+    const gateway = new SyncGateway([acceptance]);
+    gateway.comments.push({ taskId: "acceptance", title: "请把排序改为按时间倒序" });
+    const repository = new DidaTodoRepository(gateway);
+
+    const created = await repository.createReworkFromAcceptance(scope, "acceptance");
+    const retried = await repository.createReworkFromAcceptance(scope, "acceptance");
+
+    expect(created.remote.title).toBe("返工：用户灵感任务");
+    expect(created.remote.priority).toBe(3);
+    expect(created.userContent).toContain("请把排序改为按时间倒序");
+    expect(created.tasks[0]).toMatchObject({
+      subject: "按验收反馈返工：用户灵感任务",
+      description: "- 请把排序改为按时间倒序",
+      status: "pending",
+    });
+    expect(retried.remote.id).toBe(created.remote.id);
+    expect(gateway.created).toHaveLength(1);
+    expect(gateway.completed).toEqual(["acceptance"]);
+    expect(gateway.comments).toContainEqual({
+      taskId: "acceptance",
+      title: `🤖 用户已确认返工，新工作：${created.remote.id}`,
+    });
+  });
+
   it("不会把 Pi 创建的独立提醒任务接管成待执行工作，即使旧版本曾写入受管元数据", async () => {
     const reminderMetadata: WorkMetadata = {
       schemaVersion: 1,

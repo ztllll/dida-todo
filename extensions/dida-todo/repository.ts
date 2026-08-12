@@ -13,7 +13,15 @@ import type {
   WorkTask,
 } from "./domain.js";
 import { buildCompletionReminderInput } from "./scheduling.js";
-import { buildAcceptanceTaskInput, classifyAcceptanceTask, type DidaComment } from "./acceptance.js";
+import {
+  ACCEPTANCE_COMMENT,
+  ACCEPTANCE_FEEDBACK_ACK_PREFIX,
+  ACCEPTANCE_REWORK_COMMENT_PREFIX,
+  acceptanceFeedbackAckTitle,
+  buildAcceptanceTaskInput,
+  classifyAcceptanceTask,
+  type DidaComment,
+} from "./acceptance.js";
 
 export interface DidaGateway {
   getProjectData(projectId: string, signal?: AbortSignal): Promise<DidaProjectData>;
@@ -151,6 +159,106 @@ export class DidaTodoRepository {
     } catch {
       // Progress comments are best-effort; Checklist state and acceptance finalization remain authoritative.
     }
+  }
+
+  async acknowledgeAcceptanceFeedback(
+    scope: TodoScope,
+    acceptanceId: string,
+    commentIds: string[],
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (!commentIds.length) return;
+    if (!this.gateway.addTaskComment || !this.gateway.getTaskComments) {
+      throw new Error("Dida gateway 缺少验收评论能力，不能确认反馈已读取");
+    }
+    await withHostLock(`acceptance-feedback:${scope.binding.projectId}:${acceptanceId}`, async () => {
+      const acceptance = await this.gateway.getTask(scope.binding.projectId, acceptanceId, signal);
+      if (!classifyAcceptanceTask(acceptance) || acceptance.status !== 0) {
+        throw new Error(`滴答任务 ${acceptanceId} 不是未完成的待验收任务`);
+      }
+      const comments = await this.gateway.getTaskComments!(scope.binding.projectId, acceptanceId, signal);
+      const userCommentIds = new Set(
+        comments.filter((comment) =>
+          comment.title !== ACCEPTANCE_COMMENT
+          && !comment.title.startsWith(ACCEPTANCE_FEEDBACK_ACK_PREFIX)
+          && !comment.title.startsWith(ACCEPTANCE_REWORK_COMMENT_PREFIX),
+        ).map((comment) => comment.id),
+      );
+      for (const commentId of [...new Set(commentIds)]) {
+        if (!userCommentIds.has(commentId)) throw new Error(`验收评论 ${commentId} 不存在或不是用户反馈`);
+      }
+      const existing = new Set(comments.map((comment) => comment.title));
+      for (const commentId of [...new Set(commentIds)]) {
+        const title = acceptanceFeedbackAckTitle(commentId);
+        if (existing.has(title)) continue;
+        await this.gateway.addTaskComment!(scope.binding.projectId, acceptanceId, title, signal);
+        existing.add(title);
+      }
+    });
+  }
+
+  async createReworkFromAcceptance(
+    scope: TodoScope,
+    acceptanceId: string,
+    signal?: AbortSignal,
+  ): Promise<WorkTask> {
+    if (!this.gateway.addTaskComment || !this.gateway.getTaskComments) {
+      throw new Error("Dida gateway 缺少验收评论能力，不能创建返工工作");
+    }
+    return withHostLock(`acceptance-rework:${scope.binding.projectId}:${acceptanceId}`, async () => {
+      const acceptance = await this.gateway.getTask(scope.binding.projectId, acceptanceId, signal);
+      if (!classifyAcceptanceTask(acceptance)) {
+        throw new Error(`滴答任务 ${acceptanceId} 不是待验收任务`);
+      }
+      const comments = await this.gateway.getTaskComments!(scope.binding.projectId, acceptanceId, signal);
+      const existingReworkId = comments
+        .find((comment) => comment.title.startsWith(ACCEPTANCE_REWORK_COMMENT_PREFIX))
+        ?.title.slice(ACCEPTANCE_REWORK_COMMENT_PREFIX.length);
+      if (existingReworkId) return this.getWork(scope, existingReworkId, signal);
+      if (acceptance.status !== 0) throw new Error(`待验收任务 ${acceptanceId} 已完成，不能创建返工工作`);
+      const userComments = comments.filter((comment) =>
+        comment.title !== ACCEPTANCE_COMMENT
+        && !comment.title.startsWith(ACCEPTANCE_FEEDBACK_ACK_PREFIX)
+        && !comment.title.startsWith(ACCEPTANCE_REWORK_COMMENT_PREFIX),
+      );
+      if (!userComments.length) throw new Error("待验收任务没有用户反馈，不能创建返工工作");
+
+      const sourceTitle = acceptance.title.replace(/^🧑‍🔬 待验收：/, "");
+      const feedback = userComments.map((comment) => `- ${comment.title}`).join("\n");
+      const metadata = createPiWorkMetadata(scope);
+      const firstTask: Task = {
+        id: 1,
+        subject: `按验收反馈返工：${sourceTitle}`,
+        description: feedback,
+        status: "pending",
+        metadata: { sourceAcceptanceId: acceptanceId },
+      };
+      const reworkMetadata: WorkMetadata = { ...metadata, nextId: 2, tasks: [firstTask] };
+      let remote = await this.gateway.createTask({
+        title: `返工：${sourceTitle}`,
+        projectId: scope.binding.projectId,
+        content: encodeManagedContent(`来源待验收：${acceptanceId}\n\n用户反馈：\n${feedback}`, reworkMetadata),
+        items: metadataToItems(reworkMetadata),
+        priority: acceptance.priority ?? 1,
+        tags: ["pi-todo", "pi-todo-rework"],
+      }, signal);
+      const synced = synchronizeItemIds(reworkMetadata, remote);
+      remote = await this.gateway.updateTask(
+        remote.id,
+        this.buildUpdateInput(remote, synced, `来源待验收：${acceptanceId}\n\n用户反馈：\n${feedback}`),
+        signal,
+      );
+      await this.gateway.addTaskComment!(
+        scope.binding.projectId,
+        acceptanceId,
+        `${ACCEPTANCE_REWORK_COMMENT_PREFIX}${remote.id}`,
+        signal,
+      );
+      await this.gateway.completeTask(scope.binding.projectId, acceptanceId, signal);
+      const work = decodeWorkTask(remote);
+      if (!work) throw new Error("创建后的返工任务无法解析为 Pi Todo 工作任务");
+      return work;
+    });
   }
 
   async createAcceptanceTask(

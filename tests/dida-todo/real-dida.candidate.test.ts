@@ -17,14 +17,14 @@ async function raw(args: string[]): Promise<string> {
 }
 
 function testName(suffix: string): string {
-  return `__dida-todo-v060-candidate-${Date.now()}-${suffix}`;
+  return `__dida-todo-real-candidate-${Date.now()}-${suffix}`;
 }
 
 /**
  * Deliberately opt-in live gate. Every task has a unique prefix and is deleted
  * in finally; this test must only target an operator-authorized project.
  */
-describe.skipIf(!enabled)("真实 Dida v0.6.0 候选验收（授权当前清单）", () => {
+describe.skipIf(!enabled)("真实 Dida 候选验收（授权当前清单）", () => {
   it("真实 CLI 完成验收、评论、提醒及重复实例推进", async () => {
     expect(projectId, "Set DIDA_TODO_REAL_PROJECT_ID").toMatch(/\S+/);
     const pi = {
@@ -75,9 +75,19 @@ describe.skipIf(!enabled)("真实 Dida v0.6.0 候选验收（授权当前清单�
       const finalized = await new DidaTodoRepository(gateway).finishWork(scope, work.remote.id);
       createdIds.push(finalized.acceptanceTask.id);
       expect(finalized.acceptanceTask.tags).toContain("pi-todo-acceptance");
-      expect(finalized.acceptanceTask.reminders).toEqual(expect.arrayContaining(["TRIGGER:PT0S", "TRIGGER:PT8M"]));
-      const comments = await gateway.getTaskComments(projectId!, finalized.acceptanceTask.id);
+      expect(finalized.acceptanceTask.reminders).toEqual(["TRIGGER:PT0S", "TRIGGER:PT3M"]);
+      let comments = await gateway.getTaskComments(projectId!, finalized.acceptanceTask.id);
       expect(comments.some((comment) => comment.title.includes("请在此处输入验收意见"))).toBe(true);
+      await gateway.addTaskComment(projectId!, finalized.acceptanceTask.id, "真实反馈：请继续优化");
+      comments = await gateway.getTaskComments(projectId!, finalized.acceptanceTask.id);
+      const feedback = comments.find((comment) => comment.title === "真实反馈：请继续优化");
+      expect(feedback).toBeDefined();
+      const repository = new DidaTodoRepository(gateway);
+      await repository.acknowledgeAcceptanceFeedback(scope, finalized.acceptanceTask.id, [feedback!.id]);
+      const rework = await repository.createReworkFromAcceptance(scope, finalized.acceptanceTask.id);
+      createdIds.push(rework.remote.id);
+      expect(rework.userContent).toContain("真实反馈：请继续优化");
+      expect((await gateway.getTask(projectId!, finalized.acceptanceTask.id)).status).not.toBe(0);
       expect((await gateway.getTask(projectId!, source.id)).status).not.toBe(0);
 
       const occurrence = new Date();

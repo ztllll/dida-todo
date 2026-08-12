@@ -158,7 +158,11 @@ describe("完成工作强制人类验收", () => {
     const result = await repository.finishWork(scope, "work");
 
     expect(gateway.created).toHaveLength(1);
-    expect(gateway.created[0]).toMatchObject({ title: "🧑‍🔬 待验收：实现搜索", tags: ["pi-todo-acceptance"] });
+    expect(gateway.created[0]).toMatchObject({
+      title: "🧑‍🔬 待验收：实现搜索",
+      tags: ["pi-todo-acceptance"],
+      reminders: ["TRIGGER:PT0S", "TRIGGER:PT3M"],
+    });
     expect(gateway.created[0]?.content).toContain("原任务正文：\n需求说明");
     expect(gateway.created[0]?.content).toContain("实现搜索接口");
     expect(gateway.created[0]?.content).toContain("8 项测试通过");

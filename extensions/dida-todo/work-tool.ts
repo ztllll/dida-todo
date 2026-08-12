@@ -9,7 +9,7 @@ import { migrateWorkMetadata } from "./work-lifecycle.js";
 import { formatWorkSchedule } from "./scheduling.js";
 import { isSystemAcceptanceComment } from "./acceptance.js";
 
-export const TODO_WORK_ACTIONS = ["list", "switch", "next", "refresh", "finish_current"] as const;
+export const TODO_WORK_ACTIONS = ["list", "switch", "next", "refresh", "finish_current", "acknowledge_feedback", "start_rework"] as const;
 
 export function selectWorkResult(works: WorkTask[], workId: string): WorkTask {
   const work = works.find((candidate) => candidate.remote.id === workId);
@@ -32,15 +32,20 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
       "Never execute or mention priority-0 Dida work during automatic checks; it is a draft until the user assigns low, medium, or high priority.",
       "Respect Dida priority and time range when ordering work. High priority is 5, medium 3, low 1; none 0 is not executable.",
       "A pending acceptance is not proof of failure; inspect comments and ask the user before starting rework.",
+      "After you have actually shown the acceptance comments to the user, call acknowledge_feedback with the acceptanceId and exact commentIds. This remote acknowledgement prevents repeated poll wakeups and must not happen before the feedback is surfaced.",
+      "Call start_rework only after the user explicitly confirms the surfaced acceptance feedback. It creates a new work from the acceptance comments and closes the superseded acceptance; never reopen or mutate the completed source Checklist.",
       "Completing the last Checklist item automatically creates or reuses the human acceptance Todo and completes the source work. Correctness does not depend on the LLM remembering finish_current.",
       "finish_current remains an idempotent recovery action for older or externally completed work. Then call next and continue until no unfinished work remains or user input is required.",
     ],
     parameters: Type.Object({
       action: StringEnum(TODO_WORK_ACTIONS),
       workId: Type.Optional(Type.String({ description: "Dida top-level work task ID, required for switch" })),
+      acceptanceId: Type.Optional(Type.String({ description: "Pending acceptance task ID, required for acknowledge_feedback/start_rework" })),
+      commentIds: Type.Optional(Type.Array(Type.String(), { description: "Exact user comment IDs that were shown to the user, required for acknowledge_feedback" })),
+      confirmedByUser: Type.Optional(Type.Boolean({ description: "Must be true for start_rework, proving the user explicitly approved the surfaced feedback" })),
     }),
     async execute(_id, rawParams, signal, _update, ctx) {
-      const params = rawParams as { action: (typeof TODO_WORK_ACTIONS)[number]; workId?: string };
+      const params = rawParams as { action: (typeof TODO_WORK_ACTIONS)[number]; workId?: string; acceptanceId?: string; commentIds?: string[]; confirmedByUser?: boolean };
       const sessionId = ctx.sessionManager.getSessionId();
       const runtime = getSessionRuntime(sessionId);
       if (!runtime) throw new Error("当前 Pi 会话尚未初始化滴答 Todo");
@@ -49,10 +54,27 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
       if (params.action === "finish_current" && runtime.work) {
         await repository.finishWork(runtime.scope, runtime.work.remote.id, signal);
       }
+      if (params.action === "acknowledge_feedback") {
+        if (!params.acceptanceId) throw new Error("acceptanceId required for acknowledge_feedback");
+        if (!params.commentIds?.length) throw new Error("commentIds required for acknowledge_feedback");
+        await repository.acknowledgeAcceptanceFeedback(runtime.scope, params.acceptanceId, params.commentIds, signal);
+      }
+      if (params.action === "start_rework" && params.confirmedByUser !== true) {
+        throw new Error("start_rework requires confirmedByUser=true after explicit user approval");
+      }
+      const rework = params.action === "start_rework"
+        ? await repository.createReworkFromAcceptance(
+            runtime.scope,
+            params.acceptanceId ?? (() => { throw new Error("acceptanceId required for start_rework"); })(),
+            signal,
+          )
+        : undefined;
       const sync = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true }, signal);
       updateSessionWorks(sessionId, sync.works);
       let selected: WorkTask | undefined;
-      if (params.action === "switch") {
+      if (rework) {
+        selected = sync.works.find((work) => work.remote.id === rework.remote.id) ?? rework;
+      } else if (params.action === "switch") {
         if (!params.workId) throw new Error("workId required for switch");
         selected = selectWorkResult(sync.works, params.workId);
       } else if (params.action === "next" || params.action === "finish_current") {

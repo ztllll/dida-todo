@@ -30,8 +30,9 @@ describe("主动 Todo 检查决策", () => {
     expect(selectPolledWork([work("draft", 0, "2026-08-10T12:00:00Z")])).toBeUndefined();
   });
 
-  it("只有待验收任务时保持静默", () => {
+  it("只有待验收任务且没有新评论时保持静默；新用户评论触发一次反馈检查", () => {
     expect(pollDecision({ idle: true, hasPendingMessages: false, remoteWorkIds: [], pendingAcceptanceIds: ["accept"] })).toBe("silent");
+    expect(pollDecision({ idle: true, hasPendingMessages: false, remoteWorkIds: [], pendingAcceptanceIds: ["accept"], newAcceptanceFeedbackKeys: ["accept:comment-1"] })).toBe("trigger");
   });
 
   it("自动恢复的 Runtime 绑定不等于 LLM 正在工作，不能阻止轮询", () => {
