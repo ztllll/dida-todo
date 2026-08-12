@@ -16,8 +16,8 @@ function task(id: number, status: Task["status"]): Task {
   return { id, subject: `任务 ${id}`, status };
 }
 
-describe("Todo Overlay 完成项生命周期", () => {
-  it("初始同步时不展示历史完成项", () => {
+describe("Todo Overlay 对话生命周期", () => {
+  it("初始同步时展示当前工作的历史完成项", () => {
     let tasks = [task(1, "completed")];
     const ui = new FakeUI();
     const overlay = new TodoOverlay(() => tasks, () => "work", () => "工作", () => 12, "ctrl+shift+t");
@@ -25,14 +25,15 @@ describe("Todo Overlay 完成项生命周期", () => {
 
     overlay.update(true);
 
-    expect(overlay.isRegistered()).toBe(false);
-    expect(ui.widgets.size).toBe(0);
+    expect(overlay.isRegistered()).toBe(true);
+    expect(ui.widgets.size).toBe(1);
   });
 
-  it("本轮刚完成的项短暂显示，agent settled 后自动卸载 Overlay", () => {
+  it("最后一步完成后跨 agent settled 持续展示，直到新工作取代它", () => {
+    let workId = "work-a";
     let tasks = [task(1, "pending")];
     const ui = new FakeUI();
-    const overlay = new TodoOverlay(() => tasks, () => "work", () => "工作", () => 12, "ctrl+shift+t");
+    const overlay = new TodoOverlay(() => tasks, () => workId, () => "工作", () => 12, "ctrl+shift+t");
     overlay.setUI(ui as never);
     overlay.update(true);
     expect(overlay.isRegistered()).toBe(true);
@@ -40,13 +41,16 @@ describe("Todo Overlay 完成项生命周期", () => {
     tasks = [task(1, "completed")];
     overlay.update();
     expect(overlay.isRegistered()).toBe(true);
+    expect(ui.widgets.size).toBe(1);
 
-    overlay.hideCompletedFromPreviousTurn();
+    workId = "work-b";
+    tasks = [];
+    overlay.update();
     expect(overlay.isRegistered()).toBe(false);
     expect(ui.widgets.size).toBe(0);
   });
 
-  it("切换工作时自动隐藏新工作的历史完成项，只保留未完成项", () => {
+  it("切换工作时展示新工作当前 Checklist", () => {
     let workId = "work-a";
     let tasks = [task(1, "pending")];
     const ui = new FakeUI();
@@ -58,7 +62,7 @@ describe("Todo Overlay 完成项生命周期", () => {
     tasks = [task(1, "completed")];
     overlay.update();
 
-    expect(overlay.isRegistered()).toBe(false);
-    expect(ui.widgets.size).toBe(0);
+    expect(overlay.isRegistered()).toBe(true);
+    expect(ui.widgets.size).toBe(1);
   });
 });

@@ -26,8 +26,6 @@ export class TodoOverlay {
   private tui?: TUI;
   private registered = false;
   private collapsed = false;
-  private trackedWorkId?: string;
-  private hiddenCompletedIds = new Set<number>();
 
   constructor(
     private readonly getTasks: () => Task[],
@@ -47,7 +45,7 @@ export class TodoOverlay {
 
   update(resetCompleted = false): void {
     if (!this.ui) return;
-    this.refreshCompletedVisibility(resetCompleted);
+    void resetCompleted;
     const tasks = this.visibleTasks();
     if (!tasks.length) {
       if (this.registered) this.ui.setWidget(WIDGET_KEY, undefined);
@@ -75,45 +73,20 @@ export class TodoOverlay {
     this.tui?.requestRender(true);
   }
 
-  hideCompletedFromPreviousTurn(): void {
-    for (const task of this.getTasks()) {
-      if (task.status === "completed") this.hiddenCompletedIds.add(task.id);
-    }
-    this.update();
-  }
-
   dispose(): void {
     this.ui?.setWidget(WIDGET_KEY, undefined);
     this.ui = undefined;
     this.tui = undefined;
     this.registered = false;
     this.collapsed = false;
-    this.trackedWorkId = undefined;
-    this.hiddenCompletedIds.clear();
   }
 
   isRegistered(): boolean {
     return this.registered;
   }
 
-  private refreshCompletedVisibility(resetCompleted: boolean): void {
-    const workId = this.getWorkId();
-    const workChanged = workId !== this.trackedWorkId;
-    if (workChanged || resetCompleted) {
-      this.trackedWorkId = workId;
-      this.hiddenCompletedIds = new Set(
-        this.getTasks().filter((task) => task.status === "completed").map((task) => task.id),
-      );
-      return;
-    }
-    const stillCompleted = new Set(this.getTasks().filter((task) => task.status === "completed").map((task) => task.id));
-    this.hiddenCompletedIds = new Set([...this.hiddenCompletedIds].filter((id) => stillCompleted.has(id)));
-  }
-
   private visibleTasks(): Task[] {
-    return this.getTasks().filter(
-      (task) => task.status !== "deleted" && !(task.status === "completed" && this.hiddenCompletedIds.has(task.id)),
-    );
+    return this.getTasks().filter((task) => task.status !== "deleted");
   }
 
   private render(theme: Theme, width: number): string[] {

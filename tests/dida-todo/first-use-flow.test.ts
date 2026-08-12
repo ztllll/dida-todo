@@ -102,7 +102,7 @@ describe("安装登录后的完整首次使用", () => {
     removeSessionRuntime(sessionId);
   });
 
-  it("最后一步自动收口后 detach 当前工作，下一项 Todo 自动建立新的顶层工作", async () => {
+  it("最后一步自动收口后保留完成 Checklist 到当前对话结束，下一项 Todo 才替换新工作", async () => {
     const sessionId = "next-work-session";
     const cwd = "/workspace/demo";
     const tmuxTarget = "demo:0.0";
@@ -135,10 +135,11 @@ describe("安装登录后的完整首次使用", () => {
       status: "completed",
       metadata: { resolution: "第一项完成" },
     }, undefined, undefined, ctx);
-    expect(getSessionRuntime(sessionId)?.work).toBeUndefined();
+    expect(getSessionRuntime(sessionId)?.work?.tasks[0]?.status).toBe("completed");
     const second = await todoTool.execute("create-2", { action: "create", subject: "第二项工作" }, undefined, undefined, ctx);
 
     expect(second.content[0].text).toContain("Created #1");
+    expect(getSessionRuntime(sessionId)?.work?.remote.title).toBe("第二项工作");
     expect(gateway.tasks.filter((task) => task.tags?.includes("pi-todo"))).toHaveLength(2);
     expect(gateway.tasks.some((task) => task.tags?.includes("pi-todo-acceptance"))).toBe(true);
     removeSessionRuntime(sessionId);

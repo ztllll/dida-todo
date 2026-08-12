@@ -107,6 +107,10 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
         work = await repository.createWork(scope, params.subject, signal);
         updateSessionWork(sessionId, work);
       }
+      if (work.remote.status !== 0 && params.action === "create" && params.subject) {
+        work = await repository.createWork(scope, params.subject, signal);
+        updateSessionWork(sessionId, work);
+      }
       let nextWork = work;
       let text = "";
       switch (params.action) {
@@ -173,7 +177,9 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
           };
       }
       if (nextWork !== work) {
-        updateSessionWork(sessionId, nextWork.remote.status === 0 ? nextWork : undefined);
+        // Preserve the completed Checklist in the overlay for the rest of this
+        // conversation. A later todo create replaces it with the next work.
+        updateSessionWork(sessionId, nextWork);
         onWorkChanged();
       }
       return {

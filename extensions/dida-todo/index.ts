@@ -192,8 +192,6 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     return { action: "transform", text: injected };
   });
 
-  pi.on("agent_settled", () => overlay.hideCompletedFromPreviousTurn());
-
   pi.on("session_shutdown", async (_event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     const wasActive = getSessionRuntime(sessionId) === getActiveRuntime();
