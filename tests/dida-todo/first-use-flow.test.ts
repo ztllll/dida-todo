@@ -6,7 +6,7 @@ import type { DidaProject, DidaProjectData, DidaTask, DidaTodoConfig, ProjectBin
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
 import { registerDidaSetupTool } from "../../extensions/dida-todo/setup-tool.js";
 import { registerTodoTool } from "../../extensions/dida-todo/tool.js";
-import { getSessionRuntime, removeSessionRuntime, setSessionRuntime } from "../../extensions/dida-todo/runtime.js";
+import { getSessionRuntime, pendingAcceptanceResults, removeSessionRuntime, setSessionRuntime } from "../../extensions/dida-todo/runtime.js";
 
 class FirstUseGateway implements DidaGateway {
   projects: DidaProject[] = [];
@@ -136,6 +136,9 @@ describe("安装登录后的完整首次使用", () => {
       metadata: { resolution: "第一项完成" },
     }, undefined, undefined, ctx);
     expect(getSessionRuntime(sessionId)?.work?.tasks[0]?.status).toBe("completed");
+    expect(pendingAcceptanceResults(sessionId).sources).toEqual([
+      expect.objectContaining({ title: "第一项工作", status: 2 }),
+    ]);
     const second = await todoTool.execute("create-2", { action: "create", subject: "第二项工作" }, undefined, undefined, ctx);
 
     expect(second.content[0].text).toContain("Created #1");

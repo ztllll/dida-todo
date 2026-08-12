@@ -78,12 +78,14 @@ Repository 固化并自动触发以下不变量：
 
 ```text
 最后一个 Checklist 完成
-→ 根据原任务描述/正文、Checklist 与 metadata.resolution 生成报告
+→ 根据原任务描述/正文、Checklist 与 metadata.resolution 生成安全占位报告
 → 幂等创建或复用待验收 Todo
 → 设置完成后 +3/+6 分钟两次提醒
 → 补齐评论反馈入口
 → 验收 Todo 与评论成功后才完成原工作
-→ detach 当前 Runtime，下一项 Todo 建立新顶层工作
+→ 完成源任务并保留待回填源记录
+→ Agent 最终回复稳定后，原样回填待验收 desc/正文并生成结果型标题
+→ 下一项 Todo 建立新顶层工作
 ```
 
 正确性不再依赖 LLM 记得调用 `todo_work finish_current`；该动作仅保留为幂等恢复入口。启动、`/todos`、自然语言同步与轮询会自动修复 Checklist 已全完成但顶层未完成的夹生任务。验收创建或评论转换失败时保持旧验收并返回可观察错误。重复任务使用 `sourceWorkId + sourceOccurrence` 隔离每次验收。待验收系统引导评论的 `userId` 作为 OAuth 用户身份：同一 `userId` 的后续评论在 Repository 内原子转换为独立返工工作并关闭旧验收；不同账号、缺失 `userId` 或缺失引导评论时 fail closed，完全静默忽略。任务描述/正文只承载报告和说明，不是控制通道；已完成源 Checklist 永不回滚。人类点击完成后闭环结束。

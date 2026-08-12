@@ -37,6 +37,7 @@ describe("人类验收闭环", () => {
         "TRIGGER:PT0S",
         "TRIGGER:PT3M",
       ],
+      desc: "实现全文搜索并新增 8 项测试，全部通过。",
       tags: ["pi-todo-acceptance"],
     });
     expect(input.content).toContain("实现全文搜索并新增 8 项测试");

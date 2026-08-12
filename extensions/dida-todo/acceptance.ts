@@ -82,6 +82,7 @@ export function buildAcceptanceTaskInput(
     projectId: source.projectId,
     title: `🧑‍🔬 待验收：${source.title}`,
     content,
+    desc: summary.trim(),
     isAllDay: false,
     startDate: date,
     dueDate: date,

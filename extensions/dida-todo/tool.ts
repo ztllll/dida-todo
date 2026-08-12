@@ -4,7 +4,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import type { Task, TaskStatus, TodoScope, WorkTask } from "./domain.js";
 import { DidaTodoRepository, type CreateTaskInput, type UpdateTaskInput } from "./repository.js";
-import { getActiveTasks, getSessionRuntime, updateSessionWork } from "./runtime.js";
+import { getActiveTasks, getSessionRuntime, queueAcceptanceResultSource, updateSessionWork } from "./runtime.js";
 
 const Params = Type.Object({
   action: StringEnum(["create", "update", "list", "get", "delete", "clear"] as const),
@@ -180,6 +180,9 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
         // Preserve the completed Checklist in the overlay for the rest of this
         // conversation. A later todo create replaces it with the next work.
         updateSessionWork(sessionId, nextWork);
+        if (params.action === "update" && params.status === "completed" && nextWork.remote.status !== 0) {
+          queueAcceptanceResultSource(sessionId, nextWork.remote);
+        }
         onWorkChanged();
       }
       return {

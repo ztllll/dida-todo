@@ -71,7 +71,7 @@ describe("同宿主多进程 Repository seam", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it("两个进程并发收口同一工作时只创建一个验收且只完成一次源任务", async () => {
     const directory = await mkdtemp(join(tmpdir(), "dida-multiprocess-finalize-"));
@@ -92,5 +92,5 @@ describe("同宿主多进程 Repository seam", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 });

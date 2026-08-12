@@ -10,14 +10,18 @@ import {
 import { registerCommands } from "./commands.js";
 import { DidaCliGateway } from "./gateway.js";
 import { TodoOverlay } from "./overlay.js";
+import { AcceptanceResultUpdater, extractFinalAssistantResponse } from "./acceptance-result.js";
 import { DidaTodoRepository, type SyncOpenWorksResult } from "./repository.js";
 import {
   clearActiveSession,
   getActiveRuntime,
   getActiveTasks,
+  clearPendingAcceptanceResults,
   getSessionRuntime,
+  pendingAcceptanceResults,
   removeSessionRuntime,
   setActiveSession,
+  setLatestFinalResponse,
   setSessionRuntime,
   updateSessionWork,
   updateSessionWorks,
@@ -42,6 +46,7 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
   const config = await loadConfig();
   const gateway = new DidaCliGateway(pi, resolveDidaCommand(config));
   const repository = new DidaTodoRepository(gateway);
+  const acceptanceResultUpdater = new AcceptanceResultUpdater(gateway);
   let activeUI = false;
   const stopPollers = new Map<string, () => void>();
   const setupContexts = new Map<string, { cwd: string; tmuxTarget?: string }>();
@@ -190,6 +195,28 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       event.text,
     ].join("\n");
     return { action: "transform", text: injected };
+  });
+
+  pi.on("agent_end", (event, ctx) => {
+    const finalResponse = extractFinalAssistantResponse(event.messages as never[]);
+    if (finalResponse) setLatestFinalResponse(ctx.sessionManager.getSessionId(), finalResponse);
+  });
+
+  pi.on("agent_settled", async (_event, ctx) => {
+    const sessionId = ctx.sessionManager.getSessionId();
+    const runtime = getSessionRuntime(sessionId);
+    if (!runtime) return;
+    const pending = pendingAcceptanceResults(sessionId);
+    if (!pending.sources.length || !pending.finalResponse) return;
+    try {
+      const deriveTitle = pending.sources.length === 1;
+      for (const source of pending.sources) {
+        await acceptanceResultUpdater.update(runtime.scope, source, pending.finalResponse, ctx.signal, { deriveTitle });
+      }
+      clearPendingAcceptanceResults(sessionId);
+    } catch (error) {
+      if (process.env.PI_DIDA_TODO_DEBUG === "1") console.error("dida-todo acceptance result update failed", error);
+    }
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
