@@ -60,7 +60,14 @@ export class WorkFinalizer {
   private async createAcceptance(work: WorkTask, signal?: AbortSignal): Promise<DidaTask> {
     const visible = visibleTasks(work);
     return this.gateway.createTask(
-      buildAcceptanceTaskInput(work.remote, 2, buildAcceptanceSummary(work.remote.title, visible)),
+      buildAcceptanceTaskInput(
+        work.remote,
+        2,
+        buildAcceptanceSummary(work.remote.title, visible, {
+          ...(work.remote.desc ? { description: work.remote.desc } : {}),
+          ...(work.userContent ? { content: work.userContent } : {}),
+        }),
+      ),
       signal,
     );
   }

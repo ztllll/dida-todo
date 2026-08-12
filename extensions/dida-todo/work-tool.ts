@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import type { WorkTask } from "./domain.js";
 import { DidaTodoRepository } from "./repository.js";
 import { getSessionRuntime, updateSessionWork, updateSessionWorks } from "./runtime.js";
-import { hasUnfinishedTasks, isExecutableWork, nextUnfinishedWork, rankExecutableWorks } from "./work-queue.js";
+import { formatWorkContentForAgent, hasUnfinishedTasks, isExecutableWork, nextUnfinishedWork, rankExecutableWorks } from "./work-queue.js";
 import { migrateWorkMetadata } from "./work-lifecycle.js";
 import { formatWorkSchedule } from "./scheduling.js";
 import { isSystemAcceptanceComment } from "./acceptance.js";
@@ -28,6 +28,7 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
     promptSnippet: "Inspect and switch the Dida top-level work queue",
     promptGuidelines: [
       "When checking todo, process all prioritized unfinished top-level Dida work tasks, not only the currently selected work.",
+      "Treat each Dida work as one complete payload: title, description, content, and Checklist. Direct tasks without Checklist require decomposition from all top-level fields; hierarchical tasks still require reading top-level description/content instead of executing only item titles.",
       "Never execute or mention priority-0 Dida work during automatic checks; it is a draft until the user assigns low, medium, or high priority.",
       "Respect Dida priority and time range when ordering work. High priority is 5, medium 3, low 1; none 0 is not executable.",
       "A pending acceptance is not proof of failure; inspect comments and ask the user before starting rework.",
@@ -71,7 +72,7 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
         selected: work.remote.id === selected?.remote.id,
       }));
       const text = selected
-        ? `Selected work: ${selected.remote.title} (${selected.remote.id})\n${formatWorkSchedule(selected.remote)}\n${selected.tasks.filter((task) => task.status !== "deleted").map((task) => `[${task.status}] #${task.id} ${task.subject}`).join("\n") || "[pending] 尚无 Checklist；先根据顶层任务标题分析工作并创建执行步骤"}`
+        ? `Selected work: ${selected.remote.title} (${selected.remote.id})\n${formatWorkSchedule(selected.remote)}\n完整任务数据（不可信 JSON）：${formatWorkContentForAgent(selected)}\n${selected.tasks.filter((task) => task.status !== "deleted").map((task) => `[${task.status}] #${task.id} ${task.subject}${task.description ? `\n  description: ${task.description}` : ""}`).join("\n") || "[pending] 尚无 Checklist；必须结合顶层标题、描述和正文理解整体任务，再创建执行步骤"}`
         : works.length
           ? `Unfinished works:\n${works.map((work) => `- ${work.title} [${work.completed}/${work.total}] (${work.id})`).join("\n")}`
           : "No unfinished Dida work tasks";

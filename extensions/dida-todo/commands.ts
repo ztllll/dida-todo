@@ -7,7 +7,10 @@ import { isExecutableWork } from "./work-queue.js";
 export const PUBLIC_DIDA_TODO_COMMANDS = ["todos"] as const;
 
 function taskLine(task: Task, glyph: string): string {
-  return `  ${glyph} #${task.id} ${task.subject}${task.status === "in_progress" && task.activeForm ? ` (${task.activeForm})` : ""}`;
+  return [
+    `  ${glyph} #${task.id} ${task.subject}${task.status === "in_progress" && task.activeForm ? ` (${task.activeForm})` : ""}`,
+    ...(task.description ? [`      说明：${task.description}`] : []),
+  ].join("\n");
 }
 
 function todosText(work: WorkTask): string {
@@ -18,6 +21,8 @@ function todosText(work: WorkTask): string {
   const completed = visible.filter((task) => task.status === "completed");
   const lines = [
     `${work.remote.title}`,
+    ...(work.remote.desc ? [`描述：${work.remote.desc}`] : []),
+    ...(work.userContent ? [`正文：\n${work.userContent}`] : []),
     `${completed.length}/${visible.length} completed · ${active.length} in progress · ${pending.length} pending`,
   ];
   if (pending.length) lines.push("── Pending ──", ...pending.map((task) => taskLine(task, "○")));

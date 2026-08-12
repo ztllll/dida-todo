@@ -65,6 +65,40 @@ describe("/todos 空清单状态", () => {
     removeSessionRuntime(sessionId);
   });
 
+  it("活动工作显示标题、描述、正文和 Checklist 的完整内容", async () => {
+    const sessionId = "commands-complete-content";
+    const scope: TodoScope = {
+      binding: { key: "tmux:demo:0.0", projectId: "project", cwd: "/workspace/demo", label: "demo" },
+      bindingKey: "tmux:demo:0.0",
+      cwd: "/workspace/demo",
+      tmuxTarget: "demo:0.0",
+      sessionId,
+    };
+    const work: WorkTask = {
+      remote: { id: "work", projectId: "project", title: "顶层标题", desc: "顶层描述", status: 0, priority: 1 },
+      metadata: { schemaVersion: 1, kind: "pi-todo-work", bindingKey: scope.bindingKey, nextId: 2, tasks: [{ id: 1, subject: "步骤", description: "步骤说明", status: "pending" }] },
+      tasks: [{ id: 1, subject: "步骤", description: "步骤说明", status: "pending" }],
+      userContent: "顶层正文 123321",
+    };
+    setSessionRuntime(sessionId, { scope, works: [work], work });
+    let command: any;
+    const notifications: Array<{ message: string; level: string }> = [];
+    const repository = {
+      async syncOpenWorks() { return { works: [work], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] }; },
+    } as unknown as DidaTodoRepository;
+    registerCommands({ registerCommand(_name: string, value: any) { command = value; } } as never, repository, () => {});
+
+    await command.handler("", {
+      sessionManager: { getSessionId: () => sessionId },
+      ui: { notify(message: string, level: string) { notifications.push({ message, level }); } },
+    });
+
+    expect(notifications[0]?.message).toContain("描述：顶层描述");
+    expect(notifications[0]?.message).toContain("正文：\n顶层正文 123321");
+    expect(notifications[0]?.message).toContain("步骤说明");
+    removeSessionRuntime(sessionId);
+  });
+
   it("已同步草稿但没有可执行工作时不误报清单为空", async () => {
     const sessionId = "commands-draft-session";
     const scope: TodoScope = {

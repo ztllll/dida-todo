@@ -27,13 +27,35 @@ describe("多工作任务执行队列", () => {
     expect(nextUnfinishedWork([first, second, third], "second")?.remote.id).toBe("third");
   });
 
-  it("没有 Checklist 的未完成顶层任务仍是待执行工作", () => {
-    const empty = work("empty", "纯标题任务", []);
+  it("没有 Checklist 的直接任务仍是待执行工作，并完整注入标题、描述和正文", () => {
+    const empty = work("empty", "直接任务标题", []);
+    empty.remote.desc = "直接任务描述";
+    empty.userContent = "正文第一行\n正文第二行：123321";
 
     expect(hasUnfinishedTasks(empty)).toBe(true);
     expect(nextUnfinishedWork([empty])?.remote.id).toBe("empty");
-    expect(formatWorkQueueForAgent([empty])).toContain("[尚无 Checklist，仍需执行]");
-    expect(formatWorkQueueForAgent([empty])).toContain("workId: empty");
+    const text = formatWorkQueueForAgent([empty]);
+    expect(text).toContain("[尚无 Checklist，仍需执行]");
+    expect(text).toContain('"title":"直接任务标题"');
+    expect(text).toContain('"description":"直接任务描述"');
+    expect(text).toContain('"content":"正文第一行\\n正文第二行：123321"');
+    expect(text).toContain('"checklist":[]');
+    expect(text).toContain("必须结合标题、描述和正文理解整体任务");
+    expect(text).toContain("workId: empty");
+  });
+
+  it("分级任务同时注入顶层内容与 Checklist，而不是只读取子任务标题", () => {
+    const hierarchical = work("tree", "分级任务标题", ["pending"]);
+    hierarchical.remote.desc = "顶层描述";
+    hierarchical.userContent = "顶层正文";
+    hierarchical.tasks[0]!.description = "子任务详细说明";
+
+    const text = formatWorkQueueForAgent([hierarchical]);
+    expect(text).toContain('"title":"分级任务标题"');
+    expect(text).toContain('"description":"顶层描述"');
+    expect(text).toContain('"content":"顶层正文"');
+    expect(text).toContain('"subject":"分级任务标题-1"');
+    expect(text).toContain('"description":"子任务详细说明"');
   });
 
   it("无优先级任务保留未完成状态，但不进入自动执行队列", () => {

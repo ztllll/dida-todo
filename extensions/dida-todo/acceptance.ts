@@ -25,12 +25,22 @@ export function classifyAcceptanceTask(task: DidaTask): boolean {
   return task.tags?.includes("pi-todo-acceptance") === true;
 }
 
-export function buildAcceptanceSummary(workTitle: string, tasks: Array<{ subject: string; metadata?: Record<string, unknown> }>): string {
+export function buildAcceptanceSummary(
+  workTitle: string,
+  tasks: Array<{ subject: string; metadata?: Record<string, unknown> }>,
+  original?: { description?: string; content?: string },
+): string {
   const lines = tasks.map((task) => {
     const resolution = typeof task.metadata?.resolution === "string" ? task.metadata.resolution : "已完成";
     return `- ${task.subject}：${resolution}`;
   });
-  return [`工作「${workTitle}」的全部执行步骤已完成。`, "", ...lines].join("\n");
+  return [
+    `工作「${workTitle}」的全部执行步骤已完成。`,
+    ...(original?.description ? ["", `原任务描述：\n${original.description}`] : []),
+    ...(original?.content ? ["", `原任务正文：\n${original.content}`] : []),
+    "",
+    ...lines,
+  ].join("\n");
 }
 
 export function buildAcceptanceTaskInput(

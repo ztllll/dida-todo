@@ -159,6 +159,7 @@ describe("完成工作强制人类验收", () => {
 
     expect(gateway.created).toHaveLength(1);
     expect(gateway.created[0]).toMatchObject({ title: "🧑‍🔬 待验收：实现搜索", tags: ["pi-todo-acceptance"] });
+    expect(gateway.created[0]?.content).toContain("原任务正文：\n需求说明");
     expect(gateway.created[0]?.content).toContain("实现搜索接口");
     expect(gateway.created[0]?.content).toContain("8 项测试通过");
     expect(gateway.completed).toEqual(["work"]);

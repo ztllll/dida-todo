@@ -26,6 +26,37 @@ describe("LLM 工作任务切换工具", () => {
     expect(selectWorkResult([work("empty", [])], "empty").remote.id).toBe("empty");
   });
 
+  it("list 选择工作时返回标题、描述、正文和 Checklist 的完整任务内容", async () => {
+    const sessionId = "complete-work-content";
+    const scope: TodoScope = {
+      binding: { key: "binding", projectId: "project" },
+      bindingKey: "binding",
+      cwd: "/workspace/demo",
+      sessionId,
+    };
+    const selected = work("complete", ["pending"]);
+    selected.remote.title = "顶层标题";
+    selected.remote.desc = "顶层描述";
+    selected.userContent = "顶层正文 123321";
+    selected.tasks[0]!.description = "步骤说明";
+    setSessionRuntime(sessionId, { scope, works: [selected], work: selected });
+    let tool: any;
+    const repository = {
+      async syncOpenWorks() { return { works: [selected], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] }; },
+    } as unknown as DidaTodoRepository;
+    registerTodoWorkTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
+
+    const result = await tool.execute("call", { action: "list" }, undefined, undefined, {
+      sessionManager: { getSessionId: () => sessionId },
+    });
+
+    expect(result.content[0].text).toContain('"title":"顶层标题"');
+    expect(result.content[0].text).toContain('"description":"顶层描述"');
+    expect(result.content[0].text).toContain('"content":"顶层正文 123321"');
+    expect(result.content[0].text).toContain('"description":"步骤说明"');
+    removeSessionRuntime(sessionId);
+  });
+
   it("拒绝用户 priority-0 草稿，但允许恢复 Pi 自建 priority-0 工作", () => {
     expect(() => selectWorkResult([work("draft", [], 0)], "draft")).toThrow("没有设置优先级");
     const piWork = work("pi-work", ["pending"], 0);

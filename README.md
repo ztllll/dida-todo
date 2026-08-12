@@ -25,7 +25,7 @@
 → Checklist 和评论持续回写滴答
 ```
 
-- 支持用户手工创建顶层 Checklist 工作任务；只有标题、尚无 Checklist 的未完成任务也会进入队列，LLM 会先拆分执行步骤。
+- 支持两种滴答工作形态：没有 Checklist 的直接任务，以及带可勾选子任务的分级任务。同步与执行始终把顶层标题、描述、正文和 Checklist 作为一个整体读取；直接任务由 LLM 根据全部顶层内容拆分步骤，分级任务也不会只执行子任务标题。
 - 支持用户在执行过程中新增、改名或完成 Checklist Item。
 - Pi 刷新后会导入这些变化，并保留稳定的内部 Todo ID。
 
@@ -117,7 +117,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 ### 最简流程：全局安装 + 登录
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.1
+pi install git:github.com/ztllll/dida-todo@v0.6.2
 ```
 
 新开任意 Pi 会话，直接告诉 LLM：
@@ -145,7 +145,7 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 升级：
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.1
+pi install git:github.com/ztllll/dida-todo@v0.6.2
 # 或安装 main：pi install git:github.com/ztllll/dida-todo
 ```
 
@@ -218,7 +218,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 
 也可以在空清单中直接口述“添加 Todo：修复登录流程”。`/todos` 与 `todo list` 会把空清单显示为“滴答 Todo 已就绪”，而不是报错；第一项 Todo 会自动创建对应顶层工作。
 
-保持 Pi 会话运行时，扩展默认每 10 分钟在空闲状态主动检查。只有标题的任务会先由 LLM 创建 Checklist；已有 Checklist 的任务会直接按步骤执行。
+保持 Pi 会话运行时，扩展默认每 10 分钟在空闲状态主动检查。没有 Checklist 的直接任务会由 LLM 根据标题、描述和正文创建步骤；已有 Checklist 的分级任务会同时读取顶层标题、描述、正文与全部子任务后执行。
 
 执行期间你可以在滴答看到 Checklist 完成变化和 Pi 评论。工作结束后，会出现：
 
@@ -226,7 +226,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 🧑‍🔬 待验收：实现全文搜索
 ```
 
-其中包含解决摘要、测试结果、原任务 ID、提醒和人类操作说明。
+其中包含原任务描述/正文、解决摘要、测试结果、原任务 ID、提醒和人类操作说明。
 
 ## 诚实的限制
 
@@ -261,7 +261,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前 `v0.6.1` 已通过 32 个测试文件、111 项自动测试（另有 1 项默认跳过的隔离真实 Dida 验收）、TypeScript、官方 Extension Loader、包内容与凭据扫描。候选还在当前会话绑定清单完成了真实 CLI 的验收任务、评论、5 个 reminders 与每日重复实例推进验证；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
+当前 `v0.6.2` 已通过 32 个测试文件、114 项自动测试（另有 1 项默认跳过的隔离真实 Dida 验收）、TypeScript、官方 Extension Loader、包内容与凭据扫描。候选还在当前会话绑定清单完成了真实 CLI 的验收任务、评论、5 个 reminders 与每日重复实例推进验证；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
 
 ## 开发成员
 
@@ -307,7 +307,7 @@ Capture ideas, bugs, and feature requests in Dida365 from your phone or browser.
 
 - **Dida365 as a shared inbox:** humans capture work; the LLM reads and executes it.
 - **Natural-language-first UX:** users keep `/todos` and the Overlay; top-level work management stays internal.
-- **Bidirectional Checklist sync:** titles and completion state flow between Dida365 and Pi. The Overlay keeps unfinished work visible, briefly shows newly completed items until the turn ends, then hides them without deleting Dida365 history.
+- **Complete task semantics:** direct tasks and hierarchical Checklist tasks are both supported. Every execution reads the top-level title, description, body content, and Checklist as one payload. The Overlay retains the complete Checklist for the current conversation, including completed rows.
 - **Multi-work queue:** the LLM can process all unfinished top-level tasks using priority and time ranges.
 - **Default idle polling:** Pi checks Dida365 every 10 minutes by default, only while idle, and triggers the LLM only for executable unfinished work. The interval is configurable. Priority 0 is treated as a draft and stays silent.
 - **Durable history:** clearing or replacing a Pi session does not delete remote work.
@@ -327,7 +327,7 @@ One fixed Dida365 project per local project / tmux target
 ## Install
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.1
+pi install git:github.com/ztllll/dida-todo@v0.6.2
 ```
 
 In any new Pi session, tell the LLM:
@@ -396,7 +396,7 @@ Show pending acceptance reports
 
 An empty Dida project is a ready state, not an error: `/todos` and `todo list` report readiness, and the first Todo bootstraps the top-level work automatically.
 
-Leave the Pi session running and the extension checks while idle every 10 minutes by default. Title-only tasks are queued and decomposed into Checklist steps before execution.
+Leave the Pi session running and the extension checks while idle every 10 minutes by default. Direct tasks without a Checklist are decomposed from their title, description, and body content. Hierarchical tasks are executed from both their top-level content and Checklist items, never item titles alone.
 
 Internal tools:
 
@@ -407,7 +407,7 @@ Internal tools:
 
 ```text
 Last Checklist item completes
-→ build a report from per-step resolutions
+→ build a report from the original description/body and per-step resolutions
 → create or reuse a pending human-acceptance Todo
 → schedule a reminder two minutes later plus follow-ups at +2/+4/+6/+8 minutes
 → ensure the human feedback comment exists
@@ -436,7 +436,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.6.1` passed 111 automated tests across 32 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.6.2` passed 114 automated tests across 32 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
 
 ## Team
 
