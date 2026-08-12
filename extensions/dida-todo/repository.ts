@@ -342,6 +342,17 @@ export class DidaTodoRepository {
       const index = work.tasks.findIndex((task) => task.id === id);
       if (index < 0) throw new Error(`#${id} not found`);
       const current = work.tasks[index];
+      if (current.metadata?.source === "dida") {
+        const changesUserContent = input.subject !== undefined
+          || input.description !== undefined
+          || input.activeForm !== undefined
+          || input.owner !== undefined
+          || input.addBlockedBy !== undefined
+          || input.removeBlockedBy !== undefined
+          || (input.metadata !== undefined && Object.keys(input.metadata).some((key) => key !== "resolution"));
+        if (changesUserContent) throw new Error("用户创建的 Checklist 步骤不允许修改内容；请使用 todo create 追加新步骤");
+        if (input.status === "deleted") throw new Error("用户创建的 Checklist 步骤不允许删除；请保留原步骤并追加新步骤");
+      }
       const updated = cloneTask(current);
       if (input.status !== undefined) {
         if (current.status === "deleted") throw new Error(`illegal transition deleted → ${input.status}`);
@@ -434,7 +445,6 @@ export class DidaTodoRepository {
       works.push(work);
       adoptedWorkIds.push(remote.id);
     }
-    works.sort((a, b) => String(b.remote.createdTime ?? "").localeCompare(String(a.remote.createdTime ?? "")));
     return { works, adoptedWorkIds, acceptances, finalizationFailures };
   }
 

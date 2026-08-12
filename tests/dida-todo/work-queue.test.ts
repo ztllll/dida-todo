@@ -71,6 +71,18 @@ describe("多工作任务执行队列", () => {
     expect(text).toContain("workId: ready");
   });
 
+  it("按优先级降序排列，同优先级保持输入清单顺序", () => {
+    const firstHigh = work("first-high", "先出现高优先级", ["pending"], 5);
+    firstHigh.remote.createdTime = "2026-08-10T08:00:00Z";
+    const low = work("low", "低优先级", ["pending"], 1);
+    const secondHigh = work("second-high", "后出现高优先级", ["pending"], 5);
+    secondHigh.remote.createdTime = "2026-08-10T11:00:00Z";
+
+    const text = formatWorkQueueForAgent([low, firstHigh, secondHigh]);
+    expect(text.indexOf("workId: first-high")).toBeLessThan(text.indexOf("workId: second-high"));
+    expect(text.indexOf("workId: second-high")).toBeLessThan(text.indexOf("workId: low"));
+  });
+
   it("给 Agent 的同步上下文明确要求连续处理全部未完成工作", () => {
     const text = formatWorkQueueForAgent([
       work("first", "最新工作", ["pending"]),

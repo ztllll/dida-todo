@@ -91,8 +91,8 @@ describe("项目 Todo 同步 seam", () => {
     const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
     expect(result.adoptedWorkIds).toEqual(["manual"]);
-    expect(result.works.map((work) => work.remote.id)).toEqual(["manual", "managed"]);
-    expect(result.works[0]?.tasks[0]).toMatchObject({ subject: "交给 LLM 实现", metadata: { source: "dida" } });
+    expect(result.works.map((work) => work.remote.id)).toEqual(["managed", "manual"]);
+    expect(result.works[1]?.tasks[0]).toMatchObject({ subject: "交给 LLM 实现", metadata: { source: "dida" } });
     expect(gateway.tasks.find((task) => task.id === "manual")?.content).toContain("pi-dida-todo:start");
   });
 

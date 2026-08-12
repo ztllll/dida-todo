@@ -48,11 +48,11 @@ describe("主动 Todo 检查决策", () => {
     expect(selectPolledWork([tomorrow, today], now)?.remote.id).toBe("today");
   });
 
-  it("优先选择高优先级工作，同优先级选择最新工作", () => {
+  it("优先选择高优先级工作，同优先级保持滴答清单返回顺序", () => {
     expect(selectPolledWork([
       work("new-low", 1, "2026-08-10T10:00:00Z"),
       work("old-high", 5, "2026-08-10T08:00:00Z"),
       work("new-high", 5, "2026-08-10T11:00:00Z"),
-    ])?.remote.id).toBe("new-high");
+    ])?.remote.id).toBe("old-high");
   });
 });

@@ -76,6 +76,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       "Do not complete tasks with failing tests or unresolved blockers.",
       "Top-level Dida work selection is handled internally through todo_work; users normally interact through natural language. todo actions operate on Checklist steps, and completing the last step automatically creates human acceptance and completes the source work.",
       "When completing a task, include metadata.resolution with a concise explanation of how it was solved; it is written back to Dida as a task comment.",
+      "For user-created Dida works, todo create may append any number of new Checklist steps to the same work. Never rewrite or delete the user's original Checklist text; only advance its execution status and attach metadata.resolution.",
     ],
     parameters: Params,
     async execute(_id, rawParams, signal, _update, ctx) {
