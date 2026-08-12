@@ -14,10 +14,9 @@ import type {
 } from "./domain.js";
 import { buildCompletionReminderInput } from "./scheduling.js";
 import {
-  ACCEPTANCE_COMMENT,
-  ACCEPTANCE_FEEDBACK_ACK_PREFIX,
   ACCEPTANCE_REWORK_COMMENT_PREFIX,
-  acceptanceFeedbackAckTitle,
+  acceptanceReworkId,
+  authorizedAcceptanceFeedback,
   buildAcceptanceTaskInput,
   classifyAcceptanceTask,
   type DidaComment,
@@ -113,7 +112,7 @@ export class DidaTodoRepository {
     if (!stranded.length) return initial;
 
     let finalized = false;
-    const finalizationFailures: FinalizationFailure[] = [];
+    const finalizationFailures: FinalizationFailure[] = [...initial.finalizationFailures];
     for (const work of stranded) {
       try {
         await this.finishWork(scope, work.remote.id, signal);
@@ -133,7 +132,7 @@ export class DidaTodoRepository {
     return {
       ...refreshed,
       adoptedWorkIds: [...new Set([...initial.adoptedWorkIds, ...refreshed.adoptedWorkIds])],
-      finalizationFailures,
+      finalizationFailures: [...finalizationFailures, ...refreshed.finalizationFailures],
     };
   }
 
@@ -161,42 +160,6 @@ export class DidaTodoRepository {
     }
   }
 
-  async acknowledgeAcceptanceFeedback(
-    scope: TodoScope,
-    acceptanceId: string,
-    commentIds: string[],
-    signal?: AbortSignal,
-  ): Promise<void> {
-    if (!commentIds.length) return;
-    if (!this.gateway.addTaskComment || !this.gateway.getTaskComments) {
-      throw new Error("Dida gateway 缺少验收评论能力，不能确认反馈已读取");
-    }
-    await withHostLock(`acceptance-feedback:${scope.binding.projectId}:${acceptanceId}`, async () => {
-      const acceptance = await this.gateway.getTask(scope.binding.projectId, acceptanceId, signal);
-      if (!classifyAcceptanceTask(acceptance) || acceptance.status !== 0) {
-        throw new Error(`滴答任务 ${acceptanceId} 不是未完成的待验收任务`);
-      }
-      const comments = await this.gateway.getTaskComments!(scope.binding.projectId, acceptanceId, signal);
-      const userCommentIds = new Set(
-        comments.filter((comment) =>
-          comment.title !== ACCEPTANCE_COMMENT
-          && !comment.title.startsWith(ACCEPTANCE_FEEDBACK_ACK_PREFIX)
-          && !comment.title.startsWith(ACCEPTANCE_REWORK_COMMENT_PREFIX),
-        ).map((comment) => comment.id),
-      );
-      for (const commentId of [...new Set(commentIds)]) {
-        if (!userCommentIds.has(commentId)) throw new Error(`验收评论 ${commentId} 不存在或不是用户反馈`);
-      }
-      const existing = new Set(comments.map((comment) => comment.title));
-      for (const commentId of [...new Set(commentIds)]) {
-        const title = acceptanceFeedbackAckTitle(commentId);
-        if (existing.has(title)) continue;
-        await this.gateway.addTaskComment!(scope.binding.projectId, acceptanceId, title, signal);
-        existing.add(title);
-      }
-    });
-  }
-
   async createReworkFromAcceptance(
     scope: TodoScope,
     acceptanceId: string,
@@ -211,17 +174,14 @@ export class DidaTodoRepository {
         throw new Error(`滴答任务 ${acceptanceId} 不是待验收任务`);
       }
       const comments = await this.gateway.getTaskComments!(scope.binding.projectId, acceptanceId, signal);
-      const existingReworkId = comments
-        .find((comment) => comment.title.startsWith(ACCEPTANCE_REWORK_COMMENT_PREFIX))
-        ?.title.slice(ACCEPTANCE_REWORK_COMMENT_PREFIX.length);
-      if (existingReworkId) return this.getWork(scope, existingReworkId, signal);
+      const existingReworkId = acceptanceReworkId(comments);
+      if (existingReworkId) {
+        if (acceptance.status === 0) await this.gateway.completeTask(scope.binding.projectId, acceptanceId, signal);
+        return this.getWork(scope, existingReworkId, signal);
+      }
       if (acceptance.status !== 0) throw new Error(`待验收任务 ${acceptanceId} 已完成，不能创建返工工作`);
-      const userComments = comments.filter((comment) =>
-        comment.title !== ACCEPTANCE_COMMENT
-        && !comment.title.startsWith(ACCEPTANCE_FEEDBACK_ACK_PREFIX)
-        && !comment.title.startsWith(ACCEPTANCE_REWORK_COMMENT_PREFIX),
-      );
-      if (!userComments.length) throw new Error("待验收任务没有用户反馈，不能创建返工工作");
+      const userComments = authorizedAcceptanceFeedback(comments);
+      if (!userComments.length) throw new Error("待验收任务没有未处理的本人评论，不能创建返工工作");
 
       const sourceTitle = acceptance.title.replace(/^🧑‍🔬 待验收：/, "");
       const feedback = userComments.map((comment) => `- ${comment.title}`).join("\n");
@@ -440,13 +400,28 @@ export class DidaTodoRepository {
     const works: WorkTask[] = [];
     const adoptedWorkIds: string[] = [];
     const acceptances: PendingAcceptance[] = [];
+    const finalizationFailures: FinalizationFailure[] = [];
     for (const remote of data.tasks) {
       if (remote.tags?.includes("pi-todo-reminder")) continue;
       if (classifyAcceptanceTask(remote)) {
         const comments = this.gateway.getTaskComments
           ? await this.gateway.getTaskComments(scope.binding.projectId, remote.id, signal)
           : [];
-        acceptances.push({ remote, comments });
+        if (authorizedAcceptanceFeedback(comments).length) {
+          try {
+            works.push(await this.createReworkFromAcceptance(scope, remote.id, signal));
+          } catch (error) {
+            if (signal?.aborted) throw error;
+            acceptances.push({ remote, comments });
+            finalizationFailures.push({
+              workId: remote.id,
+              title: remote.title,
+              error: `创建验收返工失败：${error instanceof Error ? error.message : String(error)}`,
+            });
+          }
+        } else {
+          acceptances.push({ remote, comments });
+        }
         continue;
       }
       let work = decodeWorkTask(remote);
@@ -460,7 +435,7 @@ export class DidaTodoRepository {
       adoptedWorkIds.push(remote.id);
     }
     works.sort((a, b) => String(b.remote.createdTime ?? "").localeCompare(String(a.remote.createdTime ?? "")));
-    return { works, adoptedWorkIds, acceptances, finalizationFailures: [] };
+    return { works, adoptedWorkIds, acceptances, finalizationFailures };
   }
 
   private async finishWorkLocked(scope: TodoScope, work: WorkTask, signal?: AbortSignal): Promise<FinishWorkResult> {

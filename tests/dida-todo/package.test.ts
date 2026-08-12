@@ -6,7 +6,7 @@ const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.ur
 describe("dida-todo Pi Package manifest", () => {
   it("使用正式名称并只发布 dida-todo 扩展", () => {
     expect(pkg.name).toBe("dida-todo");
-    expect(pkg.version).toBe("0.6.3");
+    expect(pkg.version).toBe("0.6.4");
     expect(pkg.private).toBe(true);
     expect(pkg.keywords).toContain("pi-package");
     expect(pkg.pi.extensions).toEqual(["./extensions/dida-todo"]);

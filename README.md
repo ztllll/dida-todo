@@ -79,7 +79,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 启动、`/todos`、自然语言同步和轮询还会自动修复“Checklist 全完成但顶层未完成”的历史夹生任务；验收失败时源任务保持未完成并明确报错。重复任务按 occurrence 隔离验收。`todo_work finish_current` 只保留为幂等恢复入口，不再承担正确性。
 
 - 人类验收通过：在滴答完成验收 Todo，闭环结束。
-- 需要调整：保持验收 Todo 未完成并评论；Poller 会发现尚未处理的新评论、唤醒一次并向你展示反馈。只有你明确同意后，LLM 才创建新的返工工作、关闭旧验收并继续处理；不会回滚已完成源 Checklist，也不会把外部评论直接当作指令执行。
+- 需要调整：保持验收 Todo 未完成，并使用当前滴答 OAuth 账号直接评论。Repository 会核对评论 `userId`：本人评论自动创建独立返工工作、关闭旧验收并继续处理；其他账号或缺失身份的评论完全静默忽略。任务描述区继续承载报告和说明，不作为控制通道；已完成源 Checklist 不回滚。
 - “尚未点击完成”只代表尚未闭环，不会被自动判定为实现失败。
 
 ### 6. 稳定性与并发边界
@@ -117,7 +117,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 ### 最简流程：全局安装 + 登录
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.3
+pi install git:github.com/ztllll/dida-todo@v0.6.4
 ```
 
 新开任意 Pi 会话，直接告诉 LLM：
@@ -145,7 +145,7 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 升级：
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.3
+pi install git:github.com/ztllll/dida-todo@v0.6.4
 # 或安装 main：pi install git:github.com/ztllll/dida-todo
 ```
 
@@ -261,7 +261,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前 `v0.6.3` 已通过 32 个测试文件、122 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、官方 Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论读取确认、返工工作创建/旧验收关闭及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
+当前 `v0.6.4` 已通过 32 个测试文件、117 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、官方 Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工/旧验收关闭及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
 
 ## 开发成员
 
@@ -312,7 +312,7 @@ Capture ideas, bugs, and feature requests in Dida365 from your phone or browser.
 - **Default idle polling:** Pi checks Dida365 every 10 minutes by default, only while idle, and triggers the LLM only for executable unfinished work. The interval is configurable. Priority 0 is treated as a draft and stays silent.
 - **Durable history:** clearing or replacing a Pi session does not delete remote work.
 - **Mandatory human acceptance:** `WorkFinalizer` prevents source completion until a pending acceptance Todo, report, and feedback comment exist.
-- **Feedback loop:** keep acceptance open and add a comment. Polling surfaces each unacknowledged comment once and records a remote acknowledgement. After explicit user confirmation, `start_rework` creates a new work task and closes the superseded acceptance without reopening the completed source Checklist.
+- **Identity-gated feedback loop:** keep acceptance open and comment with the current Dida OAuth account. The Repository matches the comment `userId` against the acceptance system-comment author, atomically creates a separate rework, and closes the superseded acceptance. Other or missing identities are silently ignored; descriptions remain non-control data.
 - **Same-host resilience:** metadata v2 tracks origin/lifecycle/occurrence; real cross-process locks serialize mutation, finalization, provisioning, and config writes. Poller failures are contained. Cross-host strong consistency is not claimed without a Dida CAS/ETag/idempotency API.
 
 ## Model
@@ -327,7 +327,7 @@ One fixed Dida365 project per local project / tmux target
 ## Install
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.3
+pi install git:github.com/ztllll/dida-todo@v0.6.4
 ```
 
 In any new Pi session, tell the LLM:
@@ -413,7 +413,7 @@ Last Checklist item completes
 → ensure the human feedback comment exists
 → only then complete the source work and detach the Runtime
 
-New acceptance feedback is surfaced once by the idle poller and acknowledged remotely. It is never executed directly. After explicit user confirmation, `start_rework` creates a separate work task from the comments, closes the superseded acceptance, and runs a fresh acceptance cycle.
+Acceptance comments are identity-gated inside the Repository. A comment whose `userId` matches the acceptance system-comment author is atomically converted into a separate rework and the superseded acceptance is closed. Other or missing identities are silently ignored. The completed source Checklist is never reopened, and the rework runs a fresh acceptance cycle.
 ```
 
 This rule is triggered automatically by the Repository; correctness no longer depends on the LLM remembering `finish_current`. Startup, `/todos`, natural-language sync, and polling also repair stranded work whose Checklist is complete while the top-level task remains open. Acceptance failures leave the source task open and are reported explicitly. Recurring tasks isolate acceptance by occurrence, and `finish_current` remains only as an idempotent recovery action.
@@ -438,7 +438,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.6.3` passed 122 default automated tests across 32 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.6.4` passed 117 default automated tests across 32 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
 
 ## Team
 

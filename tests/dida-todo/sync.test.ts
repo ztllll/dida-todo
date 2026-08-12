@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { encodeManagedContent } from "../../extensions/dida-todo/codec.js";
+import { ACCEPTANCE_COMMENT, formatAcceptanceForAgent } from "../../extensions/dida-todo/acceptance.js";
 import type { DidaProjectData, DidaTask, TodoScope, WorkMetadata } from "../../extensions/dida-todo/domain.js";
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
 
 class SyncGateway implements DidaGateway {
-  comments: Array<{ taskId: string; title: string }> = [];
+  comments: Array<{ taskId: string; title: string; userId?: string | number }> = [];
   created: DidaTask[] = [];
   completed: string[] = [];
   constructor(public tasks: DidaTask[], private failAcceptance = false) {}
@@ -34,10 +35,10 @@ class SyncGateway implements DidaGateway {
     if (task) task.status = 2;
   }
   async addTaskComment(_projectId: string, taskId: string, title: string): Promise<void> {
-    this.comments.push({ taskId, title });
+    this.comments.push({ taskId, title, ...(title === ACCEPTANCE_COMMENT ? { userId: "owner" } : {}) });
   }
-  async getTaskComments(_projectId: string, taskId: string): Promise<Array<{ id: string; title: string }>> {
-    return this.comments.filter((comment) => comment.taskId === taskId).map((comment, index) => ({ id: `comment-${index + 1}`, title: comment.title }));
+  async getTaskComments(_projectId: string, taskId: string): Promise<Array<{ id: string; title: string; userId?: string | number }>> {
+    return this.comments.filter((comment) => comment.taskId === taskId).map((comment, index) => ({ id: `comment-${index + 1}`, title: comment.title, ...(comment.userId !== undefined ? { userId: comment.userId } : {}) }));
   }
 }
 
@@ -95,7 +96,7 @@ describe("项目 Todo 同步 seam", () => {
     expect(gateway.tasks.find((task) => task.id === "manual")?.content).toContain("pi-dida-todo:start");
   });
 
-  it("同步待验收任务和用户评论，但不接管成普通工作", async () => {
+  it("同 OAuth 用户评论在同步时自动创建返工工作并关闭旧验收", async () => {
     const acceptance: DidaTask = {
       id: "acceptance",
       projectId: "project-1",
@@ -107,18 +108,24 @@ describe("项目 Todo 同步 seam", () => {
       reminders: ["TRIGGER:PT0S"],
     };
     const gateway = new SyncGateway([managedTask(), acceptance]);
-    gateway.comments.push({ taskId: "acceptance", title: "这里还需要优化" });
+    gateway.comments.push({ taskId: "acceptance", title: ACCEPTANCE_COMMENT, userId: "owner" });
+    gateway.comments.push({ taskId: "acceptance", title: "这里还需要优化", userId: "owner" });
     const repository = new DidaTodoRepository(gateway);
 
     const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
+    const repeated = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
-    expect(result.adoptedWorkIds).toEqual([]);
-    expect(result.works.map((work) => work.remote.id)).toEqual(["managed"]);
-    expect(result.acceptances).toHaveLength(1);
-    expect(result.acceptances[0]?.comments[0]?.title).toBe("这里还需要优化");
+    expect(result.works.map((work) => work.remote.title)).toContain("返工：用户灵感任务");
+    const rework = result.works.find((work) => work.remote.title === "返工：用户灵感任务")!;
+    expect(rework.userContent).toContain("这里还需要优化");
+    expect(rework?.tasks[0]?.description).toContain("这里还需要优化");
+    expect(result.acceptances).toEqual([]);
+    expect(repeated.works.filter((work) => work.remote.title === "返工：用户灵感任务")).toHaveLength(1);
+    expect(gateway.created).toHaveLength(1);
+    expect(gateway.completed).toEqual(["acceptance"]);
   });
 
-  it("对验收反馈写入幂等远端确认评论，支持 reload 后去重", async () => {
+  it("异账号或缺失 userId 的验收评论完全忽略，不展示、不建返工、不完成验收", async () => {
     const acceptance: DidaTask = {
       id: "acceptance",
       projectId: "project-1",
@@ -128,68 +135,44 @@ describe("项目 Todo 同步 seam", () => {
       priority: 5,
       tags: ["pi-todo-acceptance"],
     };
-    const gateway = new SyncGateway([acceptance]);
-    gateway.comments.push({ taskId: "acceptance", title: "用户反馈" });
+    const gateway = new SyncGateway([managedTask(), acceptance]);
+    gateway.comments.push({ taskId: "acceptance", title: ACCEPTANCE_COMMENT, userId: "owner" });
+    gateway.comments.push({ taskId: "acceptance", title: "异账号危险指令", userId: "other" });
+    gateway.comments.push({ taskId: "acceptance", title: "匿名指令" });
     const repository = new DidaTodoRepository(gateway);
 
-    await repository.acknowledgeAcceptanceFeedback(scope, "acceptance", ["comment-1", "comment-1"]);
-    await repository.acknowledgeAcceptanceFeedback(scope, "acceptance", ["comment-1"]);
+    const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
-    expect(gateway.comments).toEqual([
-      { taskId: "acceptance", title: "用户反馈" },
-      { taskId: "acceptance", title: "🤖 Pi 已读取验收反馈：comment-1" },
-    ]);
+    expect(result.works.map((work) => work.remote.id)).toEqual(["managed"]);
+    expect(result.acceptances).toHaveLength(1);
+    expect(formatAcceptanceForAgent(result.acceptances[0]!.remote, result.acceptances[0]!.comments)).not.toContain("异账号危险指令");
+    expect(formatAcceptanceForAgent(result.acceptances[0]!.remote, result.acceptances[0]!.comments)).not.toContain("匿名指令");
+    expect(gateway.created).toHaveLength(0);
+    expect(gateway.completed).toEqual([]);
   });
 
-  it("拒绝确认不存在或系统生成的验收评论", async () => {
+  it("本人评论自动返工失败时保留旧验收并返回可观察错误", async () => {
     const acceptance: DidaTask = {
       id: "acceptance",
       projectId: "project-1",
       title: "🧑‍🔬 待验收：用户灵感任务",
       content: "sourceWorkId: managed",
       status: 0,
-      priority: 1,
+      priority: 5,
       tags: ["pi-todo-acceptance"],
     };
-    const gateway = new SyncGateway([acceptance]);
-    gateway.comments.push({ taskId: "acceptance", title: "用户反馈" });
+    const gateway = new SyncGateway([managedTask(), acceptance], true);
+    gateway.comments.push({ taskId: "acceptance", title: ACCEPTANCE_COMMENT, userId: "owner" });
+    gateway.comments.push({ taskId: "acceptance", title: "继续优化", userId: "owner" });
     const repository = new DidaTodoRepository(gateway);
 
-    await expect(repository.acknowledgeAcceptanceFeedback(scope, "acceptance", ["missing"])).rejects.toThrow("不存在或不是用户反馈");
-  });
+    const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
-  it("用户确认后从验收评论创建新返工工作、关闭旧验收且保持幂等", async () => {
-    const acceptance: DidaTask = {
-      id: "acceptance",
-      projectId: "project-1",
-      title: "🧑‍🔬 待验收：用户灵感任务",
-      content: "完成报告\nsourceWorkId: managed",
-      status: 0,
-      priority: 3,
-      tags: ["pi-todo-acceptance"],
-    };
-    const gateway = new SyncGateway([acceptance]);
-    gateway.comments.push({ taskId: "acceptance", title: "请把排序改为按时间倒序" });
-    const repository = new DidaTodoRepository(gateway);
-
-    const created = await repository.createReworkFromAcceptance(scope, "acceptance");
-    const retried = await repository.createReworkFromAcceptance(scope, "acceptance");
-
-    expect(created.remote.title).toBe("返工：用户灵感任务");
-    expect(created.remote.priority).toBe(3);
-    expect(created.userContent).toContain("请把排序改为按时间倒序");
-    expect(created.tasks[0]).toMatchObject({
-      subject: "按验收反馈返工：用户灵感任务",
-      description: "- 请把排序改为按时间倒序",
-      status: "pending",
-    });
-    expect(retried.remote.id).toBe(created.remote.id);
-    expect(gateway.created).toHaveLength(1);
-    expect(gateway.completed).toEqual(["acceptance"]);
-    expect(gateway.comments).toContainEqual({
-      taskId: "acceptance",
-      title: `🤖 用户已确认返工，新工作：${created.remote.id}`,
-    });
+    expect(result.acceptances.map(({ remote }) => remote.id)).toEqual(["acceptance"]);
+    expect(result.finalizationFailures).toEqual([
+      { workId: "acceptance", title: "🧑‍🔬 待验收：用户灵感任务", error: "创建验收返工失败：create acceptance failed" },
+    ]);
+    expect(gateway.completed).toEqual([]);
   });
 
   it("不会把 Pi 创建的独立提醒任务接管成待执行工作，即使旧版本曾写入受管元数据", async () => {

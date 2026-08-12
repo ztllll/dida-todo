@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encodeManagedContent } from "../../extensions/dida-todo/codec.js";
+import { ACCEPTANCE_COMMENT } from "../../extensions/dida-todo/acceptance.js";
 import type { DidaProjectData, DidaTask, TodoScope, WorkMetadata } from "../../extensions/dida-todo/domain.js";
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
 
@@ -168,7 +169,7 @@ describe("完成工作强制人类验收", () => {
     expect(gateway.created[0]?.content).toContain("8 项测试通过");
     expect(gateway.completed).toEqual(["work"]);
     expect(result.acceptanceTask.id).toBe("created-1");
-    expect(gateway.comments).toEqual([{ taskId: "created-1", title: "💬 请在此处输入验收意见；如果通过，请直接完成此验收任务。" }]);
+    expect(gateway.comments).toEqual([{ taskId: "created-1", title: ACCEPTANCE_COMMENT }]);
   });
 
   it("已有同源未完成验收 Todo 时复用，不重复创建", async () => {
@@ -189,7 +190,7 @@ describe("完成工作强制人类验收", () => {
     expect(gateway.created).toHaveLength(0);
     expect(result.acceptanceTask.id).toBe("acceptance");
     expect(gateway.completed).toEqual(["work"]);
-    expect(gateway.comments).toEqual([{ taskId: "acceptance", title: "💬 请在此处输入验收意见；如果通过，请直接完成此验收任务。" }]);
+    expect(gateway.comments).toEqual([{ taskId: "acceptance", title: ACCEPTANCE_COMMENT }]);
   });
 
   it("验收已创建但引导评论失败时源任务保持未完成，下次重试复用验收并补评论", async () => {
@@ -204,7 +205,7 @@ describe("完成工作强制人类验收", () => {
     const retried = await new DidaTodoRepository(retryGateway).finishWork(scope, "work");
     expect(retried.acceptanceTask.id).toBe("created-1");
     expect(retryGateway.created).toHaveLength(0);
-    expect(retryGateway.comments).toEqual([{ taskId: "created-1", title: "💬 请在此处输入验收意见；如果通过，请直接完成此验收任务。" }]);
+    expect(retryGateway.comments).toEqual([{ taskId: "created-1", title: ACCEPTANCE_COMMENT }]);
     expect(retryGateway.completed).toEqual(["work"]);
   });
 
