@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TodoScope, WorkTask } from "../../extensions/dida-todo/domain.js";
-import { getSessionRuntime, queueWorkFinalization, removeSessionRuntime, setSessionRuntime, updateSessionWorks } from "../../extensions/dida-todo/runtime.js";
+import { getActiveRuntime, getSessionRuntime, queueWorkFinalization, removeSessionRuntime, runtimeForInput, setActiveSession, setSessionRuntime, updateSessionWorks } from "../../extensions/dida-todo/runtime.js";
 
 function work(id: string, priority: number, piOwned = false): WorkTask {
   return {
@@ -30,6 +30,19 @@ const scope: TodoScope = {
 };
 
 describe("Runtime 优先级执行门", () => {
+  it("输入同步按事件 sessionId 选择 Runtime，不误用另一个 active UI session", () => {
+    const activeScope = { ...scope, sessionId: "active-ui" };
+    setSessionRuntime(activeScope.sessionId, { scope: activeScope, works: [] });
+    setSessionRuntime(scope.sessionId, { scope, works: [] });
+    setActiveSession(activeScope.sessionId, {} as never);
+
+    expect(getActiveRuntime()?.scope.sessionId).toBe(activeScope.sessionId);
+    expect(runtimeForInput(scope.sessionId)?.scope.sessionId).toBe(scope.sessionId);
+
+    removeSessionRuntime(activeScope.sessionId);
+    removeSessionRuntime(scope.sessionId);
+  });
+
   it("刷新后不会把唯一的无优先级草稿绑定为当前工作", () => {
     setSessionRuntime(scope.sessionId, { scope, works: [] });
     updateSessionWorks(scope.sessionId, [work("draft", 0)]);

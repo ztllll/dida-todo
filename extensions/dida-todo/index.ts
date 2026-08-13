@@ -25,6 +25,7 @@ import {
   queueAcceptanceResultSource,
   removeSessionRuntime,
   resolveWorkFinalization,
+  runtimeForInput,
   setActiveSession,
   setAllowedTrackingReasons,
   setQueueCheckPermission,
@@ -188,7 +189,7 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     const checkQueue = shouldCheckTodoInput(event.text);
     setQueueCheckPermission(sessionId, checkQueue);
     if (!checkQueue) return { action: "continue" };
-    const runtime = getActiveRuntime();
+    const runtime = runtimeForInput(sessionId);
     if (!runtime) return { action: "continue" };
     let sync: SyncOpenWorksResult;
     try {

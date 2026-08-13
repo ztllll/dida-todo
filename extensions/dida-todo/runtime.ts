@@ -27,6 +27,10 @@ export function getSessionRuntime(sessionId: string): SessionRuntime | undefined
   return sessions.get(sessionId);
 }
 
+export function runtimeForInput(sessionId: string): SessionRuntime | undefined {
+  return sessions.get(sessionId);
+}
+
 export function updateSessionWork(sessionId: string, work: WorkTask | undefined): void {
   const runtime = sessions.get(sessionId);
   if (!runtime) throw new Error(`Pi session ${sessionId} 尚未初始化滴答 Todo`);
