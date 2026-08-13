@@ -4,11 +4,15 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import type { Task, TaskStatus, TodoScope, WorkTask } from "./domain.js";
 import { DidaTodoRepository, type CreateTaskInput, type UpdateTaskInput } from "./repository.js";
-import { getActiveTasks, getSessionRuntime, queueWorkFinalization, resolveWorkFinalization, updateSessionWork } from "./runtime.js";
+import { allowedTrackingReasons, getActiveTasks, getSessionRuntime, queueWorkFinalization, resolveWorkFinalization, updateSessionWork } from "./runtime.js";
+import { TODO_TRACKING_REASONS, type TodoTrackingReason } from "./tracking-policy.js";
 
 const Params = Type.Object({
   action: StringEnum(["create", "update", "list", "get", "delete", "clear"] as const),
   subject: Type.Optional(Type.String({ description: "Task subject line (required for create)" })),
+  trackingReason: Type.Optional(StringEnum(TODO_TRACKING_REASONS, {
+    description: "Required for every create. Use current_work_step only for a genuine additional step of the active Dida work; otherwise use one durable top-level tracking reason. Ordinary chat, Q&A, one-off research, read-only inspection, translation, summarization, or merely using multiple tools are not valid reasons.",
+  })),
   description: Type.Optional(Type.String({ description: "Long-form task description" })),
   activeForm: Type.Optional(Type.String({ description: "Present-continuous label shown while in_progress" })),
   status: Type.Optional(StringEnum(["pending", "in_progress", "completed", "deleted"] as const)),
@@ -24,6 +28,7 @@ const Params = Type.Object({
 export interface TodoParams {
   action: "create" | "update" | "list" | "get" | "delete" | "clear";
   subject?: string;
+  trackingReason?: TodoTrackingReason;
   description?: string;
   activeForm?: string;
   status?: TaskStatus;
@@ -67,11 +72,14 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
   pi.registerTool({
     name: "todo",
     label: "Todo",
-    description: "Manage the execution steps of the current Dida work task. Dida is the source of truth; every mutation is written remotely and reflected in the Pi overlay.",
-    promptSnippet: "Manage Dida-backed work steps and keep remote status current",
+    description: "Manage durable, explicitly tracked Dida work. Do not call for ordinary chat, simple Q&A, one-off research, read-only inspection, translation, rewriting, or summarization. Dida is the source of truth for work that genuinely needs persistent progress.",
+    promptSnippet: "Manage only durable Dida-backed work; never use for ordinary chat or one-off queries",
     promptGuidelines: [
       "When the user asks to check todo, inspect the Dida-synchronized work tasks injected into the prompt, choose the relevant unfinished work, and execute it rather than merely listing it.",
-      "Use todo for multi-step work and keep exactly one task in_progress.",
+      "Use todo only for durable user work that needs persistent progress: the user explicitly requested tracking, a multi-step implementation changes code/config/services, the work must survive across turns/sessions, or background work needs later acceptance. Keep exactly one task in_progress.",
+      "Do not use todo for ordinary chat, simple Q&A, one-off web research, read-only inspection, a short command, diagnosis that does not become implementation, translation, rewriting, or summarization. The number of internal tool calls is never by itself a reason to create Todo.",
+      "Every todo create requires trackingReason. Starting a top-level work requires one durable reason; current_work_step is valid only for a genuine additional step of the active Dida work. Do not invent a reason to bypass this gate.",
+      "Never append unrelated ordinary chat or a separate one-off request to an existing work. If it does not belong to the current durable work, do not call todo.",
       "Mark a task in_progress before beginning it and completed immediately after verified completion.",
       "Do not complete tasks with failing tests or unresolved blockers.",
       "Top-level Dida work selection is handled internally through todo_work; users normally interact through natural language. todo actions operate on Checklist steps, and completing the last step automatically creates human acceptance and completes the source work.",
@@ -85,6 +93,13 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       const initialized = requireInitializedRuntime(sessionId);
       const scope = initialized.scope;
       let work = initialized.work;
+      let startedNewWork = false;
+      if (params.action === "create") {
+        const allowed = allowedTrackingReasons(sessionId);
+        if (!params.trackingReason || !allowed.includes(params.trackingReason)) {
+          throw new Error(`Todo 创建未获当前用户请求授权：trackingReason=${params.trackingReason ?? "missing"}；允许值=${allowed.join(",") || "none"}`);
+        }
+      }
       if (!work) {
         const readyText = initialized.works.length
           ? `滴答 Todo 已就绪：已同步 ${initialized.works.length} 个顶层任务，但当前没有已选中的可执行工作。可直接检查 Todo 或创建新 Todo。`
@@ -105,11 +120,19 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
         if (params.action !== "create" || !params.subject) {
           throw new Error(`${readyText} 当前没有可供 ${params.action} 的步骤。`);
         }
+        if (!params.trackingReason || params.trackingReason === "current_work_step") {
+          throw new Error("trackingReason required：新顶层 Todo 只能使用用户明确追踪、多步骤实施、跨轮恢复或后台验收理由；普通聊天、问答和一次性查询不得创建");
+        }
         work = await repository.createWork(scope, params.subject, signal);
+        startedNewWork = true;
         updateSessionWork(sessionId, work);
       }
       if (work.remote.status !== 0 && params.action === "create" && params.subject) {
+        if (!params.trackingReason || params.trackingReason === "current_work_step") {
+          throw new Error("trackingReason required：新顶层 Todo 只用于需要持久追踪的用户工作");
+        }
         work = await repository.createWork(scope, params.subject, signal);
+        startedNewWork = true;
         updateSessionWork(sessionId, work);
       }
       let nextWork = work;
@@ -117,13 +140,21 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       switch (params.action) {
         case "create": {
           if (!params.subject) throw new Error("subject required for create");
+          if (!startedNewWork && params.trackingReason !== "current_work_step") {
+            throw new Error("trackingReason=current_work_step required：只有确属当前 Dida 工作的后续步骤才能追加");
+          }
           const input: CreateTaskInput = {
             subject: params.subject,
             ...(params.description !== undefined ? { description: params.description } : {}),
             ...(params.activeForm !== undefined ? { activeForm: params.activeForm } : {}),
             ...(params.blockedBy !== undefined ? { blockedBy: params.blockedBy } : {}),
             ...(params.owner !== undefined ? { owner: params.owner } : {}),
-            ...(params.metadata !== undefined ? { metadata: params.metadata } : {}),
+            ...((params.metadata !== undefined || params.trackingReason !== undefined) ? {
+              metadata: {
+                ...(params.metadata ?? {}),
+                ...(params.trackingReason ? { trackingReason: params.trackingReason } : {}),
+              },
+            } : {}),
           };
           nextWork = await repository.createTask(scope, work.remote.id, input, signal);
           resolveWorkFinalization(sessionId, work.remote.id);

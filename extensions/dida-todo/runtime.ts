@@ -1,5 +1,6 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { Task, TodoScope, WorkTask } from "./domain.js";
+import type { TodoTrackingReason } from "./tracking-policy.js";
 import { isExecutableWork } from "./work-queue.js";
 
 export interface SessionRuntime {
@@ -13,6 +14,7 @@ export interface SessionRuntime {
 }
 
 const sessions = new Map<string, SessionRuntime>();
+const trackingPermissions = new Map<string, TodoTrackingReason[]>();
 let activeSessionId = "";
 let ui: ExtensionUIContext | undefined;
 
@@ -47,6 +49,18 @@ export function updateSessionWorks(sessionId: string, works: WorkTask[], preferr
     : undefined;
   const executable = works.filter(isExecutableWork);
   runtime.work = target ?? (executable.length === 1 ? executable[0] : undefined);
+}
+
+export function setAllowedTrackingReasons(sessionId: string, reasons: TodoTrackingReason[]): void {
+  trackingPermissions.set(sessionId, [...new Set(reasons)]);
+}
+
+export function allowedTrackingReasons(sessionId: string): TodoTrackingReason[] {
+  return [...(trackingPermissions.get(sessionId) ?? [])];
+}
+
+export function clearAllowedTrackingReasons(sessionId: string): void {
+  trackingPermissions.delete(sessionId);
 }
 
 export function queueWorkFinalization(sessionId: string, workId: string): void {
@@ -99,6 +113,7 @@ export function clearPendingAcceptanceResults(sessionId: string): void {
 
 export function removeSessionRuntime(sessionId: string): void {
   sessions.delete(sessionId);
+  trackingPermissions.delete(sessionId);
   if (activeSessionId === sessionId) activeSessionId = "";
 }
 

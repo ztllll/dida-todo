@@ -14,6 +14,7 @@ import { AcceptanceResultUpdater, extractFinalAssistantResponse } from "./accept
 import { DidaTodoRepository, type SyncOpenWorksResult } from "./repository.js";
 import {
   clearActiveSession,
+  clearAllowedTrackingReasons,
   getActiveRuntime,
   getActiveTasks,
   clearPendingAcceptanceResults,
@@ -24,6 +25,7 @@ import {
   removeSessionRuntime,
   resolveWorkFinalization,
   setActiveSession,
+  setAllowedTrackingReasons,
   setLatestFinalResponse,
   setSessionRuntime,
   updateSessionWork,
@@ -37,6 +39,7 @@ import { startTodoPoller } from "./poller.js";
 import { ensureProjectBinding, isDidaAuthenticationError } from "./provisioning.js";
 import { registerDidaSetupTool } from "./setup-tool.js";
 import { finalizeWorkAtSettlement } from "./settled-finalization.js";
+import { classifyTodoTrackingReasons } from "./tracking-policy.js";
 
 async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Promise<string | undefined> {
   if (!pane) return undefined;
@@ -175,7 +178,8 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     }
   });
 
-  pi.on("input", async (event) => {
+  pi.on("input", async (event, ctx) => {
+    setAllowedTrackingReasons(ctx.sessionManager.getSessionId(), classifyTodoTrackingReasons(event.text));
     if (!shouldCheckTodoInput(event.text)) return { action: "continue" };
     const runtime = getActiveRuntime();
     if (!runtime) return { action: "continue" };
@@ -231,7 +235,10 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       }
     }
     const pending = pendingAcceptanceResults(sessionId);
-    if (!pending.sources.length || !pending.finalResponse) return;
+    if (!pending.sources.length || !pending.finalResponse) {
+      clearAllowedTrackingReasons(sessionId);
+      return;
+    }
     try {
       const deriveTitle = pending.sources.length === 1;
       for (const source of pending.sources) {
@@ -240,6 +247,8 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       clearPendingAcceptanceResults(sessionId);
     } catch (error) {
       if (process.env.PI_DIDA_TODO_DEBUG === "1") console.error("dida-todo acceptance result update failed", error);
+    } finally {
+      clearAllowedTrackingReasons(sessionId);
     }
   });
 

@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { WorkTask } from "./domain.js";
 import type { DidaTodoRepository } from "./repository.js";
-import { getSessionRuntime, pendingWorkFinalizations, updateSessionWork, updateSessionWorks } from "./runtime.js";
+import { getSessionRuntime, pendingWorkFinalizations, setAllowedTrackingReasons, updateSessionWork, updateSessionWorks } from "./runtime.js";
 import { isExecutableWork, rankExecutableWorks } from "./work-queue.js";
 
 export interface PollState {
@@ -62,6 +62,7 @@ export function startTodoPoller(
       const selected = selectPolledWork(executableWorks);
       updateSessionWorks(sessionId, sync.works, selected?.remote.id);
       if (selected) updateSessionWork(sessionId, selected);
+      setAllowedTrackingReasons(sessionId, ["current_work_step"]);
       onWorkChanged();
       pi.sendUserMessage(
         finalizationFailureIds.length

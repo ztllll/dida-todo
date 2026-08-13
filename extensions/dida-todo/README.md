@@ -38,6 +38,19 @@ ctrl+shift+t 折叠/展开
 
 不公开 `/todo-work` 调试命令。
 
+## Todo 创建门
+
+Todo 表示需要跨工具、跨轮或跨会话持久保存进度的用户工作，不是 Agent 的内部思考清单。普通聊天、简单问答、一次性研究/搜索、只读检查、短命令、诊断但不实施、翻译、润色和总结禁止创建 Todo；工具调用数量不是理由。
+
+每次 `todo create` 必须携带当前用户请求授权的 `trackingReason`：
+
+```text
+user_requested_tracking / multi_step_implementation /
+cross_turn_recovery / background_or_acceptance / current_work_step
+```
+
+输入意图门和工具参数门共同校验：普通消息不会获得任何许可；追加当前工作只能使用 `current_work_step`。理由写入 Checklist metadata，便于审计。
+
 ## LLM 内部工具
 
 ### `todo`

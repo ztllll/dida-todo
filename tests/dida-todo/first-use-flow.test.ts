@@ -6,7 +6,7 @@ import type { DidaProject, DidaProjectData, DidaTask, DidaTodoConfig, ProjectBin
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
 import { registerDidaSetupTool } from "../../extensions/dida-todo/setup-tool.js";
 import { registerTodoTool } from "../../extensions/dida-todo/tool.js";
-import { getSessionRuntime, pendingAcceptanceResults, removeSessionRuntime, setSessionRuntime } from "../../extensions/dida-todo/runtime.js";
+import { getSessionRuntime, pendingAcceptanceResults, removeSessionRuntime, setAllowedTrackingReasons, setSessionRuntime } from "../../extensions/dida-todo/runtime.js";
 
 class FirstUseGateway implements DidaGateway {
   projects: DidaProject[] = [];
@@ -91,7 +91,12 @@ describe("安装登录后的完整首次使用", () => {
     const ctx = { cwd, sessionManager: { getSessionId: () => sessionId } };
 
     const login = await setupTool.execute("login", { action: "login" }, undefined, undefined, ctx);
-    const created = await todoTool.execute("todo", { action: "create", subject: "修复登录流程" }, undefined, undefined, ctx);
+    setAllowedTrackingReasons(sessionId, ["multi_step_implementation", "current_work_step"]);
+    const created = await todoTool.execute("todo", {
+      action: "create",
+      subject: "修复登录流程",
+      trackingReason: "multi_step_implementation",
+    }, undefined, undefined, ctx);
 
     expect(login.details.ready).toBe(true);
     expect(created.content[0].text).toContain("Created #1");
@@ -128,7 +133,12 @@ describe("安装登录后的完整首次使用", () => {
     const ctx = { cwd, sessionManager: { getSessionId: () => sessionId } };
 
     await setupTool.execute("login", { action: "login" }, undefined, undefined, ctx);
-    await todoTool.execute("create-1", { action: "create", subject: "第一项工作" }, undefined, undefined, ctx);
+    setAllowedTrackingReasons(sessionId, ["user_requested_tracking", "current_work_step"]);
+    await todoTool.execute("create-1", {
+      action: "create",
+      subject: "第一项工作",
+      trackingReason: "user_requested_tracking",
+    }, undefined, undefined, ctx);
     await todoTool.execute("complete-1", {
       action: "update",
       id: 1,
@@ -137,7 +147,11 @@ describe("安装登录后的完整首次使用", () => {
     }, undefined, undefined, ctx);
     expect(getSessionRuntime(sessionId)?.work?.tasks[0]?.status).toBe("completed");
     expect(pendingAcceptanceResults(sessionId).sources).toEqual([]);
-    const second = await todoTool.execute("create-2", { action: "create", subject: "第二项工作" }, undefined, undefined, ctx);
+    const second = await todoTool.execute("create-2", {
+      action: "create",
+      subject: "第二项工作",
+      trackingReason: "current_work_step",
+    }, undefined, undefined, ctx);
 
     expect(second.content[0].text).toContain("Created #2");
     expect(getSessionRuntime(sessionId)?.work?.remote.title).toBe("第一项工作");
