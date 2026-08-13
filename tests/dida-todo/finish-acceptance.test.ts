@@ -172,6 +172,22 @@ describe("完成工作强制人类验收", () => {
     expect(gateway.comments).toEqual([{ taskId: "created-1", title: ACCEPTANCE_COMMENT }]);
   });
 
+  it("完成顶层前强制把远端 Checklist Items 全部标记完成", async () => {
+    const remote = completedWork();
+    remote.items = [
+      { id: "one", title: "实现功能", status: 0 },
+      { id: "two", title: "运行测试", status: 0 },
+    ];
+    const gateway = new FinishGateway([remote]);
+    const repository = new DidaTodoRepository(gateway);
+
+    await repository.finishWork(scope, "work");
+
+    const persisted = await gateway.getTask(scope.binding.projectId, "work");
+    expect(persisted.items?.map((item) => item.status)).toEqual([1, 1]);
+    expect(persisted.status).toBe(2);
+  });
+
   it("已有同源未完成验收 Todo 时复用，不重复创建", async () => {
     const acceptance: DidaTask = {
       id: "acceptance",

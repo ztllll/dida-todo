@@ -64,6 +64,26 @@ describe("工作任务编解码 seam", () => {
     expect(decoded?.metadata.nextId).toBe(4);
   });
 
+  it("Pi 已完成步骤不会被远端陈旧 pending Item 降级", () => {
+    const remote: DidaTask = {
+      id: "work-1",
+      projectId: "project-1",
+      title: "实现联网 Todo",
+      content: encodeManagedContent("", metadata),
+      status: 0,
+      priority: 0,
+      items: [
+        { id: "item-a", title: "研究接口", status: 0 },
+        { id: "item-b", title: "实现适配器", status: 0 },
+      ],
+    };
+
+    const decoded = decodeWorkTask(remote);
+
+    expect(decoded?.tasks[0]?.status).toBe("completed");
+    expect(decoded?.tasks[1]?.status).toBe("in_progress");
+  });
+
   it("以滴答 Item 的标题和完成状态刷新展示状态", () => {
     const remote: DidaTask = {
       id: "work-1",

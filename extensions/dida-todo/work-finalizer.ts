@@ -5,6 +5,8 @@ import { isWorkReadyForFinalization } from "./work-type.js";
 
 export interface FinalizerGateway {
   getProjectData(projectId: string, signal?: AbortSignal): Promise<{ tasks: DidaTask[] }>;
+  getTask(projectId: string, taskId: string, signal?: AbortSignal): Promise<DidaTask>;
+  updateTask(taskId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<DidaTask>;
   createTask(input: Record<string, unknown>, signal?: AbortSignal): Promise<DidaTask>;
   completeTask(projectId: string, taskId: string, signal?: AbortSignal): Promise<void>;
   addTaskComment?(projectId: string, taskId: string, title: string, signal?: AbortSignal): Promise<void>;
@@ -56,8 +58,35 @@ export class WorkFinalizer {
     if (!comments.some((comment) => comment.title === ACCEPTANCE_COMMENT)) {
       await this.gateway.addTaskComment(scope.binding.projectId, acceptance.id, ACCEPTANCE_COMMENT, signal);
     }
+    await this.completeRemoteItems(scope, work.remote.id, signal);
     await this.gateway.completeTask(scope.binding.projectId, work.remote.id, signal);
     return acceptance;
+  }
+
+  private async completeRemoteItems(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<void> {
+    const current = await this.gateway.getTask(scope.binding.projectId, workId, signal);
+    if (!current.items?.length || current.items.every((item) => item.status === 1 || item.status === 2)) return;
+    const items = current.items.map((item) => ({ ...structuredClone(item), status: 1 }));
+    const updated = await this.gateway.updateTask(workId, {
+      id: current.id,
+      projectId: current.projectId,
+      title: current.title,
+      content: current.content ?? "",
+      items,
+      tags: current.tags ?? [],
+      priority: current.priority ?? 0,
+      ...(current.desc !== undefined ? { desc: current.desc } : {}),
+      ...(current.isAllDay !== undefined ? { isAllDay: current.isAllDay } : {}),
+      ...(current.startDate !== undefined ? { startDate: current.startDate } : {}),
+      ...(current.dueDate !== undefined ? { dueDate: current.dueDate } : {}),
+      ...(current.timeZone !== undefined ? { timeZone: current.timeZone } : {}),
+      ...(current.reminders !== undefined ? { reminders: current.reminders } : {}),
+      ...(current.repeatFlag !== undefined ? { repeatFlag: current.repeatFlag } : {}),
+      ...(current.sortOrder !== undefined ? { sortOrder: current.sortOrder } : {}),
+    }, signal);
+    if ((updated.items ?? []).some((item) => item.status !== 1 && item.status !== 2)) {
+      throw new Error("Checklist 子项未能全部标记完成，拒绝完成顶层任务");
+    }
   }
 
   private async createAcceptance(work: WorkTask, signal?: AbortSignal): Promise<DidaTask> {
