@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Task, TodoScope, WorkTask } from "./domain.js";
 import { DidaTodoRepository } from "./repository.js";
-import { getSessionRuntime, updateSessionWork, updateSessionWorks } from "./runtime.js";
+import { getSessionRuntime, pendingWorkFinalizations, updateSessionWork, updateSessionWorks } from "./runtime.js";
 import { isExecutableWork } from "./work-queue.js";
 
 export const PUBLIC_DIDA_TODO_COMMANDS = ["todos"] as const;
@@ -43,7 +43,10 @@ export function registerCommands(pi: ExtensionAPI, repository: DidaTodoRepositor
     handler: async (_args, ctx) => {
       const sessionId = ctx.sessionManager.getSessionId();
       const runtime = runtimeFor(ctx);
-      const result = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true });
+      const result = await repository.syncOpenWorks(runtime.scope, {
+        adoptUnmanaged: true,
+        deferFinalizationWorkIds: pendingWorkFinalizations(sessionId),
+      });
       updateSessionWorks(sessionId, result.works, runtime.work?.remote.id);
       let refreshed = getSessionRuntime(sessionId);
       const firstExecutable = result.works.find(isExecutableWork);

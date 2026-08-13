@@ -88,7 +88,7 @@ function completedWork(): DidaTask {
 }
 
 describe("完成工作强制人类验收", () => {
-  it("最后一个 Checklist 完成时无需 finish_current，自动创建验收 Todo 并完成原任务", async () => {
+  it("Repository 显式完成最后一个 Checklist 时仍可原子创建验收并完成原任务", async () => {
     const remote = completedWork();
     remote.content = encodeManagedContent("需求说明", {
       schemaVersion: 1,

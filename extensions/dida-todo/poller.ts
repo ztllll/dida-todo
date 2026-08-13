@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { WorkTask } from "./domain.js";
 import type { DidaTodoRepository } from "./repository.js";
-import { getSessionRuntime, updateSessionWork, updateSessionWorks } from "./runtime.js";
+import { getSessionRuntime, pendingWorkFinalizations, updateSessionWork, updateSessionWorks } from "./runtime.js";
 import { isExecutableWork, rankExecutableWorks } from "./work-queue.js";
 
 export interface PollState {
@@ -42,7 +42,10 @@ export function startTodoPoller(
     if (!ctx.isIdle() || ctx.hasPendingMessages()) return;
     running = true;
     try {
-      const sync = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true });
+      const sync = await repository.syncOpenWorks(runtime.scope, {
+        adoptUnmanaged: true,
+        deferFinalizationWorkIds: pendingWorkFinalizations(sessionId),
+      });
       const executableWorks = sync.works.filter(isExecutableWork);
       const finalizationFailureIds = sync.finalizationFailures.map((failure) => failure.workId);
       if (pollDecision({

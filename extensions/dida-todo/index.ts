@@ -19,7 +19,10 @@ import {
   clearPendingAcceptanceResults,
   getSessionRuntime,
   pendingAcceptanceResults,
+  pendingWorkFinalizations,
+  queueAcceptanceResultSource,
   removeSessionRuntime,
+  resolveWorkFinalization,
   setActiveSession,
   setLatestFinalResponse,
   setSessionRuntime,
@@ -33,6 +36,7 @@ import { registerTodoWorkTool } from "./work-tool.js";
 import { startTodoPoller } from "./poller.js";
 import { ensureProjectBinding, isDidaAuthenticationError } from "./provisioning.js";
 import { registerDidaSetupTool } from "./setup-tool.js";
+import { finalizeWorkAtSettlement } from "./settled-finalization.js";
 
 async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Promise<string | undefined> {
   if (!pane) return undefined;
@@ -177,7 +181,10 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     if (!runtime) return { action: "continue" };
     let sync: SyncOpenWorksResult;
     try {
-      sync = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true });
+      sync = await repository.syncOpenWorks(runtime.scope, {
+        adoptUnmanaged: true,
+        deferFinalizationWorkIds: pendingWorkFinalizations(runtime.scope.sessionId),
+      });
     } catch (error) {
       if (isDidaAuthenticationError(error)) {
         throw new Error("滴答登录已过期；请调用 dida_todo_setup login 重新授权后重试。");
@@ -206,6 +213,23 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     const sessionId = ctx.sessionManager.getSessionId();
     const runtime = getSessionRuntime(sessionId);
     if (!runtime) return;
+    for (const workId of pendingWorkFinalizations(sessionId)) {
+      try {
+        const result = await finalizeWorkAtSettlement(repository, runtime.scope, workId, ctx.signal);
+        if (result.state === "not-ready") {
+          resolveWorkFinalization(sessionId, workId);
+          continue;
+        }
+        updateSessionWork(sessionId, result.work);
+        queueAcceptanceResultSource(sessionId, result.work.remote);
+        resolveWorkFinalization(sessionId, workId);
+        if (runtime === getActiveRuntime()) overlay.update(true);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (ctx.hasUI) ctx.ui.notify(`待验收收口失败，源任务仍保持未完成：${message}`, "error");
+        if (process.env.PI_DIDA_TODO_DEBUG === "1") console.error("dida-todo settled finalization failed", error);
+      }
+    }
     const pending = pendingAcceptanceResults(sessionId);
     if (!pending.sources.length || !pending.finalResponse) return;
     try {

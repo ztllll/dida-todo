@@ -7,6 +7,7 @@ export interface SessionRuntime {
   work?: WorkTask;
   works: WorkTask[];
   lastSyncAt?: string;
+  pendingFinalizationWorkIds?: string[];
   pendingAcceptanceResultSources?: WorkTask["remote"][];
   latestFinalResponse?: string;
 }
@@ -40,9 +41,29 @@ export function updateSessionWorks(sessionId: string, works: WorkTask[], preferr
   runtime.works = works;
   runtime.lastSyncAt = new Date().toISOString();
   const targetId = preferredWorkId ?? runtime.work?.remote.id;
-  const target = targetId ? works.find((work) => work.remote.id === targetId && isExecutableWork(work)) : undefined;
+  const deferred = new Set(runtime.pendingFinalizationWorkIds ?? []);
+  const target = targetId
+    ? works.find((work) => work.remote.id === targetId && (isExecutableWork(work) || deferred.has(work.remote.id)))
+    : undefined;
   const executable = works.filter(isExecutableWork);
   runtime.work = target ?? (executable.length === 1 ? executable[0] : undefined);
+}
+
+export function queueWorkFinalization(sessionId: string, workId: string): void {
+  const runtime = sessions.get(sessionId);
+  if (!runtime) throw new Error(`Pi session ${sessionId} 尚未初始化滴答 Todo`);
+  runtime.pendingFinalizationWorkIds ??= [];
+  if (!runtime.pendingFinalizationWorkIds.includes(workId)) runtime.pendingFinalizationWorkIds.push(workId);
+}
+
+export function pendingWorkFinalizations(sessionId: string): string[] {
+  return [...(sessions.get(sessionId)?.pendingFinalizationWorkIds ?? [])];
+}
+
+export function resolveWorkFinalization(sessionId: string, workId: string): void {
+  const runtime = sessions.get(sessionId);
+  if (!runtime?.pendingFinalizationWorkIds) return;
+  runtime.pendingFinalizationWorkIds = runtime.pendingFinalizationWorkIds.filter((candidate) => candidate !== workId);
 }
 
 export function queueAcceptanceResultSource(sessionId: string, source: WorkTask["remote"]): void {

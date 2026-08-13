@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { WorkTask } from "./domain.js";
 import { DidaTodoRepository } from "./repository.js";
-import { getSessionRuntime, updateSessionWork, updateSessionWorks } from "./runtime.js";
+import { getSessionRuntime, pendingWorkFinalizations, updateSessionWork, updateSessionWorks } from "./runtime.js";
 import { formatWorkContentForAgent, hasUnfinishedTasks, isExecutableWork, nextUnfinishedWork, rankExecutableWorks } from "./work-queue.js";
 import { migrateWorkMetadata } from "./work-lifecycle.js";
 import { formatWorkSchedule } from "./scheduling.js";
@@ -49,7 +49,10 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
       if (params.action === "finish_current" && runtime.work) {
         await repository.finishWork(runtime.scope, runtime.work.remote.id, signal);
       }
-      const sync = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true }, signal);
+      const sync = await repository.syncOpenWorks(runtime.scope, {
+        adoptUnmanaged: true,
+        deferFinalizationWorkIds: pendingWorkFinalizations(sessionId),
+      }, signal);
       updateSessionWorks(sessionId, sync.works);
       let selected: WorkTask | undefined;
       if (params.action === "switch") {

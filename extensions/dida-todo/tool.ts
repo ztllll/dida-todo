@@ -4,7 +4,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import type { Task, TaskStatus, TodoScope, WorkTask } from "./domain.js";
 import { DidaTodoRepository, type CreateTaskInput, type UpdateTaskInput } from "./repository.js";
-import { getActiveTasks, getSessionRuntime, queueAcceptanceResultSource, updateSessionWork } from "./runtime.js";
+import { getActiveTasks, getSessionRuntime, queueWorkFinalization, resolveWorkFinalization, updateSessionWork } from "./runtime.js";
 
 const Params = Type.Object({
   action: StringEnum(["create", "update", "list", "get", "delete", "clear"] as const),
@@ -126,6 +126,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
             ...(params.metadata !== undefined ? { metadata: params.metadata } : {}),
           };
           nextWork = await repository.createTask(scope, work.remote.id, input, signal);
+          resolveWorkFinalization(sessionId, work.remote.id);
           const created = nextWork.tasks.at(-1);
           text = `Created #${created?.id}: ${created?.subject} (pending)`;
           break;
@@ -143,7 +144,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
             ...(params.removeBlockedBy !== undefined ? { removeBlockedBy: params.removeBlockedBy } : {}),
           };
           const previous = work.tasks.find((task) => task.id === params.id)?.status;
-          nextWork = await repository.updateTask(scope, work.remote.id, params.id, input, signal);
+          nextWork = await repository.updateTask(scope, work.remote.id, params.id, input, signal, { deferFinalization: true });
           const currentTask = nextWork.tasks.find((task) => task.id === params.id);
           const current = currentTask?.status;
           text = `Updated #${params.id}${previous !== current ? ` (${previous} → ${current})` : ""}`;
@@ -181,8 +182,11 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
         // Preserve the completed Checklist in the overlay for the rest of this
         // conversation. A later todo create replaces it with the next work.
         updateSessionWork(sessionId, nextWork);
-        if (params.action === "update" && params.status === "completed" && nextWork.remote.status !== 0) {
-          queueAcceptanceResultSource(sessionId, nextWork.remote);
+        const visible = nextWork.tasks.filter((task) => task.status !== "deleted");
+        if (visible.length > 0 && visible.every((task) => task.status === "completed")) {
+          queueWorkFinalization(sessionId, nextWork.remote.id);
+        } else {
+          resolveWorkFinalization(sessionId, nextWork.remote.id);
         }
         onWorkChanged();
       }

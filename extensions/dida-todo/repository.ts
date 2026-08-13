@@ -104,11 +104,12 @@ export class DidaTodoRepository {
 
   async syncOpenWorks(
     scope: TodoScope,
-    options: { adoptUnmanaged: boolean },
+    options: { adoptUnmanaged: boolean; deferFinalizationWorkIds?: string[] },
     signal?: AbortSignal,
   ): Promise<SyncOpenWorksResult> {
     const initial = await this.collectOpenWorks(scope, options, signal);
-    const stranded = initial.works.filter((work) => this.finalizer.canAutoFinalize(work));
+    const deferred = new Set(options.deferFinalizationWorkIds ?? []);
+    const stranded = initial.works.filter((work) => !deferred.has(work.remote.id) && this.finalizer.canAutoFinalize(work));
     if (!stranded.length) return initial;
 
     let finalized = false;
@@ -334,6 +335,7 @@ export class DidaTodoRepository {
     id: number,
     input: UpdateTaskInput,
     signal?: AbortSignal,
+    options: { deferFinalization?: boolean } = {},
   ): Promise<WorkTask> {
     return this.mutate(scope, workId, signal, async (work) => {
       const claimed = input.status === "in_progress"
@@ -392,7 +394,7 @@ export class DidaTodoRepository {
         delete metadata.activeTaskId;
       }
       return metadata;
-    }, input.status === "completed" ? id : undefined);
+    }, input.status === "completed" && !options.deferFinalization ? id : undefined);
   }
 
   async finishWork(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<FinishWorkResult> {

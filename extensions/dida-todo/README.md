@@ -78,6 +78,7 @@ Repository 固化并自动触发以下不变量：
 
 ```text
 最后一个 Checklist 完成
+→ 等待 Agent settled 并重新确认仍无未完成步骤
 → 根据原任务描述/正文、Checklist 与 metadata.resolution 生成安全占位报告
 → 幂等创建或复用待验收 Todo
 → 设置完成后 +3/+6 分钟两次提醒
