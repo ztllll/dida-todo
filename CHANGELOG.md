@@ -4,12 +4,18 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.14] - 2026-08-13
+
+### Changed
+
+- Restore idle automatic claiming for due, unfinished Dida work with priority low/medium/high. The trusted Poller checks immediately on binding activation and every 10 minutes by default, stays silent while Pi is busy or messages are pending, grants only its generated follow-up turn queue access, and continues to skip priority-0 drafts, acceptance-only queues, future work, and expired occurrences.
+- Keep exact `检查todo` as the immediate manual trigger while preserving the authorization barrier against LLM-initiated scans, ordinary Todo mutations, and near-match phrases.
+
 ### Documentation
 
 - Add a first-party feasibility study for OpenClaw, Claude Code, and Codex CLI. Record the decision to keep the accepted Pi adapter isolated while introducing a future host-neutral Todo Engine, per-host packages, one-time host-scoped Turn Grants, and default per-adapter project namespaces. No non-Pi adapter is implemented or deployed.
 - Add `DEVELOPMENT.md` and an executable multi-CLI adapter development guide with repository entry order, module map, target interfaces, per-host hook mappings, TDD phases, security gates, test matrix, issue/PR/handoff templates, and Definition of Done so another LLM can start from verified constraints instead of repeating the research.
 - Clarify recurring task scheduling: synchronization can observe a future occurrence, but priority never bypasses the task-local date/time gate. Timed tasks execute only on the scheduled day at or after `startDate` (falling back to `dueDate`); all-day tasks use only the calendar-date gate.
-- Clarify that the legacy Poller is no-op. Reaching a scheduled time does not wake Pi; execution starts only on the next exact `检查todo` queue check.
 - Document the safe live-upgrade boundary: installing a Git package replaces the shared checkout and dependencies but does not reload existing Pi processes. Busy sessions must become idle before installation and then use `/reload` or a new process.
 
 ## [0.6.13] - 2026-08-13
@@ -116,7 +122,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.13...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.14...HEAD
+[0.6.14]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.14
 [0.6.13]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.13
 [0.6.12]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.12
 [0.6.11]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.11

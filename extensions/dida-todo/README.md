@@ -27,7 +27,7 @@ ctrl+shift+t 折叠/展开
 
 `/todos` 每次都会先同步滴答，并显示当前工作的顶层标题、描述、正文和完整 Checklist，因此能看到用户在滴答新增、改名或完成的 Item。Overlay 参考旧 Pi Todo 保持简洁，只显示 Checklist 状态行，并在当前工作对话内持续展示：步骤完成后仍保留已完成行，直到新工作取代它或会话关闭；完整任务语义由同步上下文、`todo_work` 和 `/todos` 提供。
 
-整个队列只接受一个固定口令：
+整个队列可由空闲 Poller 自动领取，也可用固定口令立即触发：
 
 ```text
 检查todo
@@ -68,7 +68,7 @@ create / update / list / get / delete / clear
 list / switch / next / refresh / finish_current
 ```
 
-用户无需手工调用。只有同轮精确口令 `检查todo` 才授权 `list/switch/next/refresh`；`finish_current` 无该授权时只收口当前工作，不扫描或切换下一项。待验收评论的身份判定和返工创建均在 Repository 同步 seam 内自动完成，不暴露手工确认动作。
+用户无需手工调用。只有同轮精确口令 `检查todo` 或可信空闲 Poller 发现 priority>0 且已到期工作时，才授权 `list/switch/next/refresh`；`finish_current` 无该授权时只收口当前工作，不扫描或切换下一项。待验收评论的身份判定和返工创建均在 Repository 同步 seam 内自动完成，不暴露手工确认动作。
 
 ## 显式同步
 
@@ -82,7 +82,7 @@ list / switch / next / refresh / finish_current
 6. 读取待验收报告及评论；
 7. Overlay 与滴答状态同步。
 
-旧 `pollIntervalMinutes` 配置和 Poller API 仅为兼容保留，当前完全 no-op：不创建 timer、不读 Dida、不发送 follow-up。精确口令触发的显式执行门仍要求优先级大于 0、任务未完成，并满足按 `timeZone` 解释的日期/时间条件。同步可以发现未来循环 occurrence，但 priority 不会绕过时间门：非全天任务必须是计划当天且当前时间不早于 `startDate`（缺失时回退 `dueDate`），全天任务只判断计划日期。提前检查不会预约到点执行；到点后仍需再次完整输入 `检查todo`。过期 occurrence 不自动补跑。
+`pollIntervalMinutes` 默认 10 分钟，可配置为 1–1440。Poller 仅在 Pi 空闲且没有 pending message 时同步；只有优先级大于 0、未完成并满足 `timeZone` 日期/时间门的工作才发送 follow-up 并签发本轮队列授权。同步可以发现未来循环 occurrence，但 priority 不会绕过时间门：非全天任务必须是计划当天且当前时间不早于 `startDate`（缺失时回退 `dueDate`），全天任务只判断计划日期。提前轮询不会预约单项 timer；到点后的下一次轮询自动领取，也可完整输入 `检查todo` 立即触发。过期 occurrence 不自动补跑。
 
 ## 强制人类验收闭环
 

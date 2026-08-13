@@ -48,36 +48,37 @@ startDate ?? dueDate
 
 本意为 10:00 执行的任务必须设置为非全天。若错误设置成全天任务，系统只检查日期，当天第一次显式检查就可能在 10:00 前执行。
 
-### 显式检查，不是后台闹钟
+### 优先级自动领取与显式检查
 
-旧 Poller 永久 no-op，不会：
+Poller 默认每 10 分钟检查一次，但只在 Pi 空闲且没有 pending message 时访问滴答。它只会为以下工作唤醒 LLM：
 
-- 创建 timer；
-- 后台读取滴答；
-- 到达计划时间时唤醒 LLM；
-- 记住一次提前检查并在未来自动发车。
+- `priority > 0`；
+- 普通工作尚未完成；
+- 已通过任务本地日期/时间门。
 
-只有用户输入 trim 后完整等于：
+priority=0 草稿、仅待验收队列、未来或过期 occurrence 都保持静默。Poller 发现符合条件的工作后，由扩展可信 Runtime 为该 follow-up turn 签发短期队列授权；LLM 本身、普通 Todo mutation 和近似口令不能自行获得授权。
+
+用户也可输入 trim 后完整等于：
 
 ```text
 检查todo
 ```
 
-才授权扫描顶层队列。因此提前检查可以发现但过滤未来 occurrence；到达计划时间后仍需再次输入精确口令。
+立即执行同样的队列检查，无需等待下一轮 Poller。
 
-当前语义是：
-
-```text
-到达计划时间 + 下一次精确检查 → 进入执行队列
-```
-
-不是：
+Poller 不会为每个未来任务注册精确 timer。当前语义是：
 
 ```text
-提前发现 → 注册 timer → 到点自动执行
+到达计划时间 + 下一次空闲轮询 → 自动进入执行队列
 ```
 
-如果未来需要无人值守定时执行，应单独设计“用户显式授权、限定 route/任务”的 Scheduler；不能通过恢复扫描所有普通 Todo 的宽泛 Poller 实现。
+或：
+
+```text
+到达计划时间 + 精确检查todo → 立即进入执行队列
+```
+
+因此默认 10 分钟间隔下，自动领取最多会晚一个轮询周期；需要更低延迟可调整 `pollIntervalMinutes`，但不应绕过空闲、优先级和时间门。
 
 ### 循环 occurrence 隔离
 
@@ -167,18 +168,18 @@ The effective timestamp is `startDate ?? dueDate`, interpreted with the task's `
 - Future day/time: visible to synchronization but excluded from execution.
 - Invalid timestamp: rejected.
 
-An early exact check does not register a timer. The legacy Poller is permanently no-op: it does not read Dida365 in the background, create timers, wake the LLM, or remember an early scan. Execution requires another exact `检查todo` at or after the scheduled time.
+The poller checks every 10 minutes by default, but only while Pi is idle and has no pending messages. It wakes the LLM only for due, unfinished ordinary work with priority greater than zero. Priority-zero drafts, acceptance-only queues, future occurrences, and expired occurrences stay silent. A trusted poller follow-up receives a short-lived queue grant from the extension Runtime; the LLM, ordinary Todo mutations, and near-match phrases cannot mint that grant.
 
-Current behavior is:
+Exact `检查todo` triggers the same queue check immediately. The poller does not register an exact timer for each future task. Current behavior is:
 
 ```text
-scheduled time reached + next exact queue check -> executable
+scheduled time reached + next idle poll -> automatically executable
 ```
 
-not:
+or:
 
 ```text
-early discovery -> timer registration -> automatic execution
+scheduled time reached + exact 检查todo -> immediately executable
 ```
 
 For recurring tasks, the current `startDate ?? dueDate` forms the occurrence key. Claims, finalization, and acceptance matching are occurrence-scoped, so one completed occurrence cannot finalize the next one.

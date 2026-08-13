@@ -12,7 +12,7 @@
 
 `dida-todo` 是一个面向 [Pi Coding Agent](https://github.com/earendil-works/pi) 的开源扩展。它保留熟悉的 `todo` 工具、`/todos` 命令和编辑器上方 Overlay，但将**滴答清单（Dida365）设为持久任务真源**。
 
-你可以在手机或网页端随时把灵感、缺陷和需求写入一个固定滴答清单；只有对 Pi 完整输入固定口令 `检查todo`，LLM 才会同步并执行顶层队列。口述添加、追加、修改、完成或删除 Todo 只执行对应操作，不会顺手扫描其他工作。一次用户消息中的相关要求归入一个顶层工作，全部完成后只生成一条带提醒的**待验收 Todo**。
+你可以在手机或网页端随时把灵感、缺陷和需求写入一个固定滴答清单；设置低/中/高优先级后，空闲 Pi 会按轮询周期自动同步、领取并执行已到时间的工作，也可完整输入固定口令 `检查todo` 立即触发。口述添加、追加、修改、完成或删除 Todo 只执行对应操作，不会顺手扫描其他工作。一次用户消息中的相关要求归入一个顶层工作，全部完成后只生成一条带提醒的**待验收 Todo**。
 
 ## 功能亮点
 
@@ -81,7 +81,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 | 当天 10:00 或之后 | 是 | 是 |
 | 第二天才检查遗漏的 occurrence | 是 | 否，不自动补跑 |
 
-提前同步不会注册 10:00 timer。当前 Poller 完全 no-op，因此到点不会自动唤醒 Pi；必须在到点后再次完整输入 `检查todo`。如果任务本意是 10:00 执行，必须设置为非全天，否则当天首次显式检查就可能执行。完整边界见 [`docs/operations/recurring-scheduling-and-live-upgrades.md`](docs/operations/recurring-scheduling-and-live-upgrades.md)。
+提前轮询不会为单项任务注册 10:00 timer；Poller 会在后续周期重新同步，因此实际领取时间是“到达计划时间后的下一次空闲轮询”，也可在到点后输入 `检查todo` 立即执行。如果任务本意为 10:00，必须设置成非全天，否则当天首次轮询就可能执行。完整边界见 [`docs/operations/recurring-scheduling-and-live-upgrades.md`](docs/operations/recurring-scheduling-and-live-upgrades.md)。
 
 ### 5. 强制人类验收闭环
 
@@ -109,13 +109,13 @@ Direct Work 的全部 Execution Steps 完成，或 Checklist Work 明确声明�
 - `WorkMetadata v2` 显式记录来源、生命周期、当前 occurrence 与 finalization；priority 仅表达调度优先级。
 - priority-0 统一视为用户草稿，只同步不执行；Pi 自建工作必须是 low/medium/high，历史错误数据会在锁内重读后迁移为 low。
 - 同一宿主的 Checklist 更新、优先级迁移、验收、provisioning 与配置写入使用真实跨进程锁，临界区内重新读取远端；崩溃遗留锁会回收。
-- 旧 Poller API 和 `pollIntervalMinutes` 配置仅为兼容保留，当前完全 no-op：不创建 timer、不读取滴答、不唤醒 LLM。
+- Poller 默认每 10 分钟在 Pi 空闲且没有 pending message 时同步；只有 priority>0、未完成且通过日期/时间门的普通工作才唤醒 LLM。priority-0 草稿和仅待验收队列保持静默。
 - 已完成工作拒绝 Checklist mutation；完整 Items 写回会保留远端未知字段、日期与时区。
 - 跨宿主没有公开 Dida CAS/ETag/幂等创建能力时不承诺 strong consistency 或 exactly-once。
 
 ### 7. 显式队列检查
 
-扩展不会在启动时或后台定时扫描、接管和执行普通工作。只有用户完整输入 `检查todo` 才产生本轮短期队列授权；`todo_work list/switch/next/refresh` 在无授权时会在远端访问前拒绝。`/todos` 仍是显式只读刷新命令，添加或修改当前 Todo 也只操作当前工作。
+扩展通过两条可信入口签发本轮短期队列授权：用户完整输入 `检查todo`，或空闲 Poller 发现 priority>0 且已到期的普通工作。LLM 自己、普通 Todo mutation 和近似口令都不能签发授权；`todo_work list/switch/next/refresh` 在无授权时会在远端访问前拒绝。`/todos` 仍是显式只读刷新命令，添加或修改当前 Todo 也只操作当前工作。
 
 ### 8. 链接与文件交付
 
@@ -153,7 +153,7 @@ Direct Work 的全部 Execution Steps 完成，或 Checklist Work 明确声明�
 ### 最简流程：全局安装 + 登录
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.13
+pi install git:github.com/ztllll/dida-todo@v0.6.14
 ```
 
 新开任意 Pi 会话，直接告诉 LLM：
@@ -182,7 +182,7 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 升级：
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.13
+pi install git:github.com/ztllll/dida-todo@v0.6.14
 # 或安装 main：pi install git:github.com/ztllll/dida-todo
 ```
 
@@ -235,7 +235,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 
 默认自动创建/复用和绑定；手工 `bindings` 仅用于覆盖默认行为。绑定优先级：精确 tmux target → 精确 cwd。多个同名清单时不会猜测。
 
-`pollIntervalMinutes` 仅为旧配置兼容保留，当前不启动后台轮询；是否设置该字段都不会定时读取滴答或唤醒 Agent。完整输入 `检查todo` 后，显式队列检查仍会按任务 `timeZone`、日期和时间判断是否到期：非今天或尚未到点的任务静默跳过，无日期任务按优先级执行。`didaCommand` 是可选高级覆盖；默认解析本项目依赖中的 `@suibiji/dida-cli`。
+`pollIntervalMinutes` 默认是 **10 分钟**，可设置为 `1–1440`。Poller 仅在 Pi 空闲且没有 pending message 时同步；priority>0 的工作还必须通过任务 `timeZone`、日期和时间门，未来、过期或尚未到点的 occurrence 静默跳过，无日期任务按优先级执行。完整输入 `检查todo` 可立即触发同样的队列检查。`didaCommand` 是可选高级覆盖；默认解析本项目依赖中的 `@suibiji/dida-cli`。
 
 ## 使用示例
 
@@ -256,7 +256,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 
 也可以在空清单中直接口述“添加 Todo：修复登录流程”。`/todos` 与 `todo list` 会把空清单显示为“滴答 Todo 已就绪”，而不是报错；第一项 Todo 会自动创建对应顶层工作。
 
-扩展不会后台主动检查。只有完整输入 `检查todo` 才同步并执行队列；没有 Checklist 的直接任务会由 LLM 根据任务名、描述和正文创建内部执行步骤，已有 Checklist 的分级任务会同时读取汇总标题、描述、正文与全部子任务。
+扩展默认每 10 分钟在空闲状态主动检查并领取 priority>0 且已到期的工作；完整输入 `检查todo` 可立即同步并执行队列。没有 Checklist 的直接任务会由 LLM 根据任务名、描述和正文创建内部执行步骤，已有 Checklist 的分级任务会同时读取汇总标题、描述、正文与全部子任务。
 
 执行期间你可以在滴答看到 Checklist 完成变化和 Pi 评论。工作结束后，会出现：
 
@@ -299,7 +299,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前 `v0.6.13` 已通过 39 个测试文件、178 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、官方 Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
+当前 `v0.6.14` 已通过 39 个测试文件、178 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、官方 Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
 
 ## 开发成员
 
@@ -347,7 +347,7 @@ Capture ideas, bugs, and feature requests in Dida365 from your phone or browser.
 - **Natural-language-first UX:** users keep `/todos` and the Overlay; top-level work management stays internal.
 - **Complete task semantics:** Direct work uses one LLM-organized task name plus detailed description/body, with duplicate UI headings removed. Checklist work uses an aggregate LLM-generated title that must differ from concrete Items.
 - **Batched acceptance:** related clauses in one user request stay in one top-level work and produce one final response and one acceptance. Appending a new Item revokes any stale ready-for-acceptance state.
-- **Explicit multi-work queue:** only exact `检查todo` authorizes queue synchronization/switching. The legacy poller is a no-op and never reads Dida365 or wakes the agent.
+- **Priority-driven automatic queue:** while Pi is idle, the poller synchronizes every 10 minutes by default and wakes the LLM only for due, unfinished work with priority 1/3/5. Exact `检查todo` triggers the same queue check immediately; ordinary mutations and near-match phrases never scan unrelated work.
 - **Recurring time gate:** synchronization may observe a future occurrence, but priority cannot bypass its schedule. Timed work runs only on its task-local day at or after `startDate` (falling back to `dueDate`); all-day work uses the calendar-date gate. Reaching the time does not wake Pi—the next exact queue check is required.
 - **Mandatory priority:** every Pi-created top-level work must choose low/medium/high (1/3/5). Priority 0 is reserved for user drafts; historical Pi priority-0 work migrates to low under a same-host lock.
 - **Durable history:** clearing or replacing a Pi session does not delete remote work.
@@ -369,7 +369,7 @@ One fixed Dida365 project per local project / tmux target
 ## Install
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.13
+pi install git:github.com/ztllll/dida-todo@v0.6.14
 ```
 
 In any new Pi session, tell the LLM:
@@ -416,7 +416,7 @@ Create `~/.config/pi-dida-todo/config.json`:
 }
 ```
 
-Exact tmux target matching takes precedence over exact cwd matching. By default, an unbound session reuses the unique same-name project or creates one; it never guesses between duplicate names. Set `autoProvisionProject: false` for fully explicit bindings. Legacy `pollIntervalMinutes` values remain accepted but are no-op. Exact `检查todo` execution still respects priority and task-local date/time scheduling. Priority 0 is a user draft; Pi-created work is always 1/3/5, and historical Pi priority-0 work is migrated to low.
+Exact tmux target matching takes precedence over exact cwd matching. By default, an unbound session reuses the unique same-name project or creates one; it never guesses between duplicate names. Set `autoProvisionProject: false` for fully explicit bindings. `pollIntervalMinutes` defaults to 10 and accepts 1–1440. Automatic and exact `检查todo` execution both respect priority and task-local date/time scheduling. Priority 0 is a user draft; Pi-created work is always 1/3/5, and historical Pi priority-0 work is migrated to low.
 
 ## Usage
 
@@ -437,7 +437,7 @@ Other natural-language requests add, append, update, complete, or delete only th
 
 An empty Dida project is a ready state, not an error: `/todos` and `todo list` report readiness, and the first Todo bootstraps the top-level work automatically.
 
-There is no background queue scan. Exact `检查todo` explicitly synchronizes eligible work. Direct tasks use their organized task name, description, and body; hierarchical tasks use both their aggregate content and concrete Checklist Items.
+While Pi is idle and has no pending messages, the poller synchronizes every 10 minutes by default and automatically claims due work with priority 1/3/5. Exact `检查todo` synchronizes immediately. Direct tasks use their organized task name, description, and body; hierarchical tasks use both their aggregate content and concrete Checklist Items.
 
 Internal tools:
 
@@ -480,7 +480,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, explicit multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, zero-configuration project provisioning, and UX simplification. Release `v0.6.13` passed 178 default automated tests across 39 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, explicit multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, zero-configuration project provisioning, and UX simplification. Release `v0.6.14` passed 178 default automated tests across 39 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
 
 ## Team
 

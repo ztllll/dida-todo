@@ -20,6 +20,7 @@ import {
   getActiveTasks,
   clearPendingAcceptanceResults,
   getSessionRuntime,
+  hasQueueCheckPermission,
   pendingAcceptanceResults,
   pendingWorkFinalizations,
   queueAcceptanceResultSource,
@@ -35,7 +36,7 @@ import {
   updateSessionWorks,
 } from "./runtime.js";
 import { registerTodoTool } from "./tool.js";
-import { shouldCheckTodoInput } from "./input-sync.js";
+import { shouldAcceptAutomaticPollInput, shouldCheckTodoInput } from "./input-sync.js";
 import { formatWorkQueueForAgent, isExecutableWork } from "./work-queue.js";
 import { registerTodoWorkTool } from "./work-tool.js";
 import { startTodoPoller } from "./poller.js";
@@ -179,16 +180,22 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       );
     }
     if (ctx.hasUI && !runtime?.work && executableWorks.length > 1) {
-      ctx.ui.notify(`当前项目有 ${executableWorks.length} 个已设置优先级的未完成工作任务；只有完整输入“检查todo”才会让 LLM 按优先级执行`, "warning");
+      ctx.ui.notify(`当前项目有 ${executableWorks.length} 个已设置优先级的未完成工作任务；空闲 Poller 会自动领取，也可完整输入“检查todo”立即执行`, "info");
     }
   });
 
   pi.on("input", async (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     setAllowedTrackingReasons(sessionId, classifyTodoTrackingReasons(event.text));
-    const checkQueue = shouldCheckTodoInput(event.text);
+    const manualQueueCheck = shouldCheckTodoInput(event.text);
+    const automaticQueueCheck = shouldAcceptAutomaticPollInput(
+      event.text,
+      event.source,
+      getSessionRuntime(sessionId) !== undefined && hasQueueCheckPermission(sessionId),
+    );
+    const checkQueue = manualQueueCheck || automaticQueueCheck;
     setQueueCheckPermission(sessionId, checkQueue);
-    if (!checkQueue) return { action: "continue" };
+    if (!checkQueue || automaticQueueCheck) return { action: "continue" };
     const runtime = runtimeForInput(sessionId);
     if (!runtime) return { action: "continue" };
     let sync: SyncOpenWorksResult;

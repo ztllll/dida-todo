@@ -25,7 +25,7 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
     description: "Internal LLM tool for synchronizing and moving through Dida top-level work. Users normally control it with natural language, not slash commands. Pending acceptance reports and feedback are included in list/refresh results.",
     promptSnippet: "Inspect and switch the Dida top-level work queue",
     promptGuidelines: [
-      "Only the user's exact trimmed input `检查todo` authorizes list/switch/next/refresh and whole-queue execution. Adding, appending, updating, completing, or deleting Todo must not scan or switch the queue. finish_current may close only the active work unless the same turn has exact queue-check authorization.",
+      "Only the user's exact trimmed input `检查todo` or a trusted dida-todo Poller follow-up with a Runtime-issued queue grant authorizes list/switch/next/refresh and whole-queue execution. The LLM cannot mint this grant. Adding, appending, updating, completing, or deleting Todo must not scan or switch the queue. finish_current may close only the active work unless the same turn has queue-check authorization.",
       "Treat every current user message as one complete request batch: all related requirements in that message belong to one top-level work and one eventual acceptance. Create all necessary Items, finish every clause, and send one unified final response before calling finish_current; never finalize after only the first clause. Follow-up requirements for the same objective append to that work rather than creating a new top-level work.",
       "When checking todo, process all prioritized unfinished top-level Dida work tasks, not only the currently selected work.",
       "Treat each Dida work as one complete payload. Direct work uses top-level title/description/content as the task and executionSteps only as internal progress. Checklist work uses a stable top-level objective plus visible Items that can accumulate across turns and sessions; never split one large objective into a new top-level work per phase.",
@@ -46,7 +46,7 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
       if (!runtime) throw new Error("当前 Pi 会话尚未初始化滴答 Todo");
       const currentId = runtime.work?.remote.id;
       if (params.action !== "finish_current" && !hasQueueCheckPermission(sessionId)) {
-        throw new Error("Todo 队列检查未获授权：只有用户完整输入‘检查todo’时才能调用 todo_work list/switch/next/refresh；添加、追加、修改、完成或删除 Todo 不得主动扫描队列");
+        throw new Error("Todo 队列检查未获授权：只有用户完整输入‘检查todo’或可信 Poller 为本轮签发队列授权时，才能调用 todo_work list/switch/next/refresh；LLM 与普通 Todo 修改不得自行扫描队列");
       }
 
       if (params.action === "finish_current" && runtime.work) {
