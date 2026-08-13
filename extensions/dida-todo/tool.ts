@@ -2,7 +2,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import type { DidaWorkType, Task, TaskStatus, TodoScope, WorkTask } from "./domain.js";
+import type { DidaWorkPriority, DidaWorkType, Task, TaskStatus, TodoScope, WorkTask } from "./domain.js";
 import { DidaTodoRepository, type CreateTaskInput, type UpdateTaskInput } from "./repository.js";
 import { allowedTrackingReasons, getActiveTasks, getSessionRuntime, queueWorkFinalization, resolveWorkFinalization, updateSessionWork } from "./runtime.js";
 import { TODO_TRACKING_REASONS, type TodoTrackingReason } from "./tracking-policy.js";
@@ -10,11 +10,12 @@ import { requiresExplicitWorkCompletion } from "./work-type.js";
 
 const Params = Type.Object({
   action: StringEnum(["create", "update", "list", "get", "delete", "clear"] as const),
-  subject: Type.Optional(Type.String({ description: "Checklist/internal execution step subject (required for create)" })),
-  workTitle: Type.Optional(Type.String({ description: "Stable top-level work title. Required when create starts a new checklist work; must describe the whole objective, not the first step." })),
+  subject: Type.Optional(Type.String({ description: "Required for create. For direct work, use an LLM-organized concise task name. For checklist work, use one concrete Item that is distinct from the aggregate workTitle." })),
+  workTitle: Type.Optional(Type.String({ description: "LLM-generated concise aggregate title for checklist work only. It must summarize the whole objective and must not duplicate the first concrete subject." })),
   workDescription: Type.Optional(Type.String({ description: "Top-level Dida task description, distinct from the Checklist step description." })),
   workContent: Type.Optional(Type.String({ description: "Top-level Dida task body/details, distinct from Checklist Items." })),
   workType: Type.Optional(StringEnum(["direct", "checklist"] as const, { description: "Required when create starts a new work. direct keeps execution steps in managed metadata; checklist writes visible Dida Checklist Items and requires explicit top-level completion." })),
+  workPriority: Type.Optional(StringEnum(["low", "medium", "high"] as const, { description: "Required when create starts a new top-level work. Choose actual urgency/impact: low=1, medium=3, high=5. Priority 0 is reserved for user drafts." })),
   trackingReason: Type.Optional(StringEnum(TODO_TRACKING_REASONS, {
     description: "Required for every create. Use current_work_step only for a genuine additional step of the active Dida work; otherwise use one durable top-level tracking reason. Ordinary chat, Q&A, one-off research, read-only inspection, translation, summarization, or merely using multiple tools are not valid reasons.",
   })),
@@ -37,6 +38,7 @@ export interface TodoParams {
   workDescription?: string;
   workContent?: string;
   workType?: DidaWorkType;
+  workPriority?: DidaWorkPriority;
   trackingReason?: TodoTrackingReason;
   description?: string;
   activeForm?: string;
@@ -48,6 +50,16 @@ export interface TodoParams {
   metadata?: Record<string, unknown>;
   id?: number;
   includeDeleted?: boolean;
+}
+
+const WORK_PRIORITY_VALUES: Record<DidaWorkPriority, 1 | 3 | 5> = { low: 1, medium: 3, high: 5 };
+
+function normalizedTaskText(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+function sameTaskText(left: string, right: string): boolean {
+  return normalizedTaskText(left) === normalizedTaskText(right);
 }
 
 function requireInitializedRuntime(sessionId: string): { scope: TodoScope; work?: WorkTask; works: WorkTask[] } {
@@ -84,11 +96,11 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
     description: "Manage durable, explicitly tracked Dida work. Do not call for ordinary chat, simple Q&A, one-off research, read-only inspection, translation, rewriting, or summarization. Dida is the source of truth for work that genuinely needs persistent progress.",
     promptSnippet: "Manage only durable Dida-backed work; never use for ordinary chat or one-off queries",
     promptGuidelines: [
-      "When the user asks to check todo, inspect the Dida-synchronized work tasks injected into the prompt, choose the relevant unfinished work, and execute it rather than merely listing it.",
+      "Only when the user's trimmed input is exactly `检查todo`, execute the Dida-synchronized queue injected into the prompt. Near matches, add/append/update requests, and ordinary Todo mentions must not scan or switch top-level work.",
       "Use todo only for durable user work that needs persistent progress: the user explicitly requested tracking, a multi-step implementation changes code/config/services, the work must survive across turns/sessions, or background work needs later acceptance. Keep exactly one task in_progress.",
       "Do not use todo for ordinary chat, simple Q&A, one-off web research, read-only inspection, a short command, diagnosis that does not become implementation, translation, rewriting, or summarization. The number of internal tool calls is never by itself a reason to create Todo.",
-      "Every todo create requires trackingReason. Starting a top-level work also requires workType. For checklist work, workTitle is mandatory and must name the whole durable objective separately from the first subject step. current_work_step is valid only for a genuine additional step of the active Dida work.",
-      "Use direct work when the Dida top-level title/description/body is the whole task and Checklist is not useful; internal execution steps stay hidden in managed metadata. Use checklist work for a large durable objective whose visible Dida Items are progress stages across turns or sessions.",
+      "Every todo create requires trackingReason. Starting a top-level work also requires workType and workPriority. Choose low/medium/high from actual urgency and impact (1/3/5); priority 0 is reserved for user drafts and must never be used for Pi-created work. For checklist work, generate a concise aggregate workTitle that summarizes the whole objective and differs from the first concrete subject. For direct work, omit workTitle: subject is the LLM-organized task name and description/workContent carry detailed requirements. current_work_step is valid only for a genuine additional step of the active Dida work.",
+      "Use direct work when one task is sufficient: its Dida title is the organized subject required by Dida, not an extra grouping heading; internal execution steps stay hidden in managed metadata and the UI must not repeat that title. Use checklist work for a large durable objective whose visible Dida Items are concrete progress stages across turns or sessions.",
       "Never append unrelated ordinary chat or a separate one-off request to an existing work. If it does not belong to the current durable work, do not call todo.",
       "Mark a task in_progress before beginning it and completed immediately after verified completion.",
       "Do not complete tasks with failing tests or unresolved blockers.",
@@ -112,7 +124,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       }
       if (!work) {
         const readyText = initialized.works.length
-          ? `滴答 Todo 已就绪：已同步 ${initialized.works.length} 个顶层任务，但当前没有已选中的可执行工作。可直接检查 Todo 或创建新 Todo。`
+          ? `滴答 Todo 已就绪：已同步 ${initialized.works.length} 个顶层任务，但当前没有已选中的可执行工作。完整输入“检查todo”可执行队列，也可直接创建新 Todo。`
           : "滴答 Todo 已就绪：当前清单为空。可直接创建 Todo，首个步骤会自动建立顶层工作并同步到滴答。";
         if (params.action === "list" || params.action === "clear") {
           return {
@@ -134,16 +146,24 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
           throw new Error("trackingReason required：新顶层 Todo 只能使用用户明确追踪、多步骤实施、跨轮恢复或后台验收理由；普通聊天、问答和一次性查询不得创建");
         }
         if (!params.workType) throw new Error("workType required：新工作必须明确 direct 或 checklist");
+        if (!params.workPriority) throw new Error("workPriority required：LLM 新建顶层工作必须根据紧急性和影响选择 low、medium 或 high；priority=0 仅保留给用户草稿");
         if (params.workType === "checklist" && !params.workTitle?.trim()) {
-          throw new Error("workTitle required：Checklist 大任务必须提供稳定顶层标题，不能把首个步骤 subject 当作整个工作");
+          throw new Error("workTitle required：Checklist 大任务必须提供 LLM 智能生成的汇总标题");
+        }
+        if (params.workType === "checklist" && sameTaskText(params.workTitle!, params.subject)) {
+          throw new Error("Checklist 汇总标题不能与首个具体任务相同；workTitle 应概括整组工作，subject 应明确当前 Item");
+        }
+        if (params.workType === "direct" && params.workTitle?.trim()) {
+          throw new Error("Direct 工作没有额外汇总标题：请省略 workTitle，并把智能整理后的任务名放入 subject");
         }
         work = await repository.createWork(
           scope,
-          params.workTitle?.trim() || params.subject,
+          params.workType === "checklist" ? params.workTitle!.trim() : params.subject.trim(),
           signal,
           params.workType,
           params.workContent,
-          params.workDescription,
+          params.workType === "direct" ? params.workDescription ?? params.description : params.workDescription,
+          WORK_PRIORITY_VALUES[params.workPriority],
         );
         startedNewWork = true;
         updateSessionWork(sessionId, work);
@@ -153,14 +173,22 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
           throw new Error("trackingReason required：新顶层 Todo 只用于需要持久追踪的用户工作");
         }
         if (!params.workType) throw new Error("workType required：新工作必须明确 direct 或 checklist");
-        if (params.workType === "checklist" && !params.workTitle?.trim()) throw new Error("workTitle required：Checklist 大任务必须提供稳定顶层标题");
+        if (!params.workPriority) throw new Error("workPriority required：LLM 新建顶层工作必须设置 low、medium 或 high");
+        if (params.workType === "checklist" && !params.workTitle?.trim()) throw new Error("workTitle required：Checklist 大任务必须提供 LLM 智能生成的汇总标题");
+        if (params.workType === "checklist" && sameTaskText(params.workTitle!, params.subject)) {
+          throw new Error("Checklist 汇总标题不能与首个具体任务相同；workTitle 应概括整组工作，subject 应明确当前 Item");
+        }
+        if (params.workType === "direct" && params.workTitle?.trim()) {
+          throw new Error("Direct 工作没有额外汇总标题：请省略 workTitle，并把智能整理后的任务名放入 subject");
+        }
         work = await repository.createWork(
           scope,
-          params.workTitle?.trim() || params.subject,
+          params.workType === "checklist" ? params.workTitle!.trim() : params.subject.trim(),
           signal,
           params.workType,
           params.workContent,
-          params.workDescription,
+          params.workType === "direct" ? params.workDescription ?? params.description : params.workDescription,
+          WORK_PRIORITY_VALUES[params.workPriority],
         );
         startedNewWork = true;
         updateSessionWork(sessionId, work);

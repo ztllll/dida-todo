@@ -16,12 +16,15 @@ function taskLine(task: Task, glyph: string): string {
 function todosText(work: WorkTask): string {
   const visible = work.tasks.filter((task) => task.status !== "deleted");
   if (!visible.length) return "当前工作任务还没有执行步骤。";
+  const mirroredTask = visible.find((task) => task.subject.trim() === work.remote.title.trim());
+  const directTitleIsTask = mirroredTask !== undefined;
+  const duplicateDescription = directTitleIsTask && mirroredTask?.description?.trim() === work.remote.desc?.trim();
   const pending = visible.filter((task) => task.status === "pending");
   const active = visible.filter((task) => task.status === "in_progress");
   const completed = visible.filter((task) => task.status === "completed");
   const lines = [
-    `${work.remote.title}`,
-    ...(work.remote.desc ? [`描述：${work.remote.desc}`] : []),
+    ...(!directTitleIsTask ? [`${work.remote.title}`] : []),
+    ...(work.remote.desc && !duplicateDescription ? [`描述：${work.remote.desc}`] : []),
     ...(work.userContent ? [`正文：\n${work.userContent}`] : []),
     `${completed.length}/${visible.length} completed · ${active.length} in progress · ${pending.length} pending`,
   ];

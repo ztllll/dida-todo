@@ -79,6 +79,7 @@ export interface WorkMetadataV1 {
 
 export type WorkOrigin = "pi" | "dida";
 export type DidaWorkType = "direct" | "checklist";
+export type DidaWorkPriority = "low" | "medium" | "high";
 export type WorkLifecycleState = "draft" | "claimed" | "running" | "ready_for_acceptance" | "finalized";
 
 export interface WorkMetadataV2 {

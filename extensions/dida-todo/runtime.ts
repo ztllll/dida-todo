@@ -15,6 +15,7 @@ export interface SessionRuntime {
 
 const sessions = new Map<string, SessionRuntime>();
 const trackingPermissions = new Map<string, TodoTrackingReason[]>();
+const queueCheckPermissions = new Set<string>();
 let activeSessionId = "";
 let ui: ExtensionUIContext | undefined;
 
@@ -61,6 +62,19 @@ export function allowedTrackingReasons(sessionId: string): TodoTrackingReason[] 
 
 export function clearAllowedTrackingReasons(sessionId: string): void {
   trackingPermissions.delete(sessionId);
+}
+
+export function setQueueCheckPermission(sessionId: string, allowed: boolean): void {
+  if (allowed) queueCheckPermissions.add(sessionId);
+  else queueCheckPermissions.delete(sessionId);
+}
+
+export function hasQueueCheckPermission(sessionId: string): boolean {
+  return queueCheckPermissions.has(sessionId);
+}
+
+export function clearQueueCheckPermission(sessionId: string): void {
+  queueCheckPermissions.delete(sessionId);
 }
 
 export function queueWorkFinalization(sessionId: string, workId: string): void {
@@ -114,6 +128,7 @@ export function clearPendingAcceptanceResults(sessionId: string): void {
 export function removeSessionRuntime(sessionId: string): void {
   sessions.delete(sessionId);
   trackingPermissions.delete(sessionId);
+  queueCheckPermissions.delete(sessionId);
   if (activeSessionId === sessionId) activeSessionId = "";
 }
 

@@ -34,6 +34,11 @@ describe("Todo 持久追踪意图门", () => {
     expect(classifyTodoTrackingReasons("后台运行迁移，完成后通知我验收")).toEqual(expect.arrayContaining(["background_or_acceptance"]));
   });
 
+  it("固定队列检查口令不授权创建或追加 Todo", () => {
+    expect(classifyTodoTrackingReasons("检查todo")).toEqual([]);
+    expect(classifyTodoTrackingReasons("检查 todo")).toEqual([]);
+  });
+
   it("用户批准上一轮方案时视为实施授权", () => {
     expect(classifyTodoTrackingReasons("对，按照这个来")).toEqual(expect.arrayContaining([
       "multi_step_implementation",

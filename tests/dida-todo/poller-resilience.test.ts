@@ -10,12 +10,13 @@ function runtimeContext() {
   };
 }
 
-describe("Poller 韧性", () => {
-  it("同步异常被捕获后保持 timer 存活，后续 tick 仍会执行", async () => {
+describe("后台 Poller 禁用", () => {
+  it("启动后不访问远端、不创建 timer、不发送消息", async () => {
     const originalSetInterval = global.setInterval;
     const originalClearInterval = global.clearInterval;
-    let tick: (() => void) | undefined;
-    let attempts = 0;
+    let timerCalls = 0;
+    let syncCalls = 0;
+    let messageCalls = 0;
     setSessionRuntime("poller-resilience", {
       scope: {
         binding: { key: "tmux:demo:0.0", projectId: "project" },
@@ -25,27 +26,21 @@ describe("Poller 韧性", () => {
       },
       works: [],
     });
-    global.setInterval = ((callback: () => void) => {
-      tick = callback;
+    global.setInterval = ((..._args: unknown[]) => {
+      timerCalls += 1;
       return { unref() {} } as unknown as ReturnType<typeof setInterval>;
     }) as typeof setInterval;
     global.clearInterval = (() => {}) as typeof clearInterval;
     try {
       const repository = {
-        async syncOpenWorks() {
-          attempts += 1;
-          if (attempts === 1) throw new Error("Dida unavailable");
-          return { works: [], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] };
-        },
+        async syncOpenWorks() { syncCalls += 1; throw new Error("不应访问远端"); },
       };
-      const pi = { sendUserMessage() {} };
+      const pi = { sendUserMessage() { messageCalls += 1; } };
       const stop = startTodoPoller(pi as never, runtimeContext() as never, repository as never, 1, () => {});
       await new Promise((done) => setTimeout(done, 0));
-      expect(attempts).toBe(1);
-      expect(tick).toBeDefined();
-      tick?.();
-      await new Promise((done) => setTimeout(done, 0));
-      expect(attempts).toBe(2);
+      expect(syncCalls).toBe(0);
+      expect(timerCalls).toBe(0);
+      expect(messageCalls).toBe(0);
       stop();
     } finally {
       removeSessionRuntime("poller-resilience");

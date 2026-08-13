@@ -2,16 +2,25 @@ import { describe, expect, it, vi } from "vitest";
 import { shouldCheckTodoInput } from "../../extensions/dida-todo/input-sync.js";
 
 describe("自然语言检查 Todo 触发 seam", () => {
+  it("只接受去掉首尾空白后完整等于固定口令‘检查todo’", () => {
+    expect(shouldCheckTodoInput("检查todo")).toBe(true);
+    expect(shouldCheckTodoInput("  检查todo\n")).toBe(true);
+  });
+
   it.each([
-    "检查todo",
     "检查 todo",
+    "检查Todo",
+    "检查todo并执行",
+    "帮我检查todo",
     "看看滴答有没有新任务",
     "读取任务清单然后执行",
     "同步一下 todo",
     "查看待办",
-  ])("识别：%s", (text) => expect(shouldCheckTodoInput(text)).toBe(true));
-
-  it.each(["解释 todo 的原理", "不要检查任务", "普通聊天", "/todo-work status"])("不误触发：%s", (text) =>
-    expect(shouldCheckTodoInput(text)).toBe(false),
-  );
+    "追加 todo 任务",
+    "修改 todo",
+    "不要检查todo",
+    "解释 todo 的原理",
+    "普通聊天",
+    "/todo-work status",
+  ])("其余表达都不触发主动队列检查：%s", (text) => expect(shouldCheckTodoInput(text)).toBe(false));
 });

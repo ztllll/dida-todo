@@ -96,6 +96,7 @@ describe("安装登录后的完整首次使用", () => {
       action: "create",
       workTitle: "修复登录流程",
       workType: "checklist",
+      workPriority: "medium",
       subject: "修复登录流程首个阶段",
       trackingReason: "multi_step_implementation",
     }, undefined, undefined, ctx);
@@ -140,6 +141,7 @@ describe("安装登录后的完整首次使用", () => {
       action: "create",
       workTitle: "跨阶段大任务",
       workType: "checklist",
+      workPriority: "medium",
       subject: "第一项工作",
       trackingReason: "user_requested_tracking",
     }, undefined, undefined, ctx);

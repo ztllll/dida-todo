@@ -58,10 +58,10 @@ describe("Runtime 优先级执行门", () => {
     removeSessionRuntime(scope.sessionId);
   });
 
-  it("Pi 自建的 priority-0 工作在 reload 后仍可恢复", () => {
+  it("Runtime 不再把 Pi priority-0 当作可执行特例；Repository 必须先迁移为 low", () => {
     setSessionRuntime(scope.sessionId, { scope, works: [] });
     updateSessionWorks(scope.sessionId, [work("pi-work", 0, true)]);
-    expect(getSessionRuntime(scope.sessionId)?.work?.remote.id).toBe("pi-work");
+    expect(getSessionRuntime(scope.sessionId)?.work).toBeUndefined();
     removeSessionRuntime(scope.sessionId);
   });
 });

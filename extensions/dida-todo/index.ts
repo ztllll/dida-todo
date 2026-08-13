@@ -15,6 +15,7 @@ import { DidaTodoRepository, type SyncOpenWorksResult } from "./repository.js";
 import {
   clearActiveSession,
   clearAllowedTrackingReasons,
+  clearQueueCheckPermission,
   getActiveRuntime,
   getActiveTasks,
   clearPendingAcceptanceResults,
@@ -26,6 +27,7 @@ import {
   resolveWorkFinalization,
   setActiveSession,
   setAllowedTrackingReasons,
+  setQueueCheckPermission,
   setLatestFinalResponse,
   setSessionRuntime,
   updateSessionWork,
@@ -176,13 +178,16 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       );
     }
     if (ctx.hasUI && !runtime?.work && executableWorks.length > 1) {
-      ctx.ui.notify(`当前项目有 ${executableWorks.length} 个已设置优先级的未完成工作任务；可直接说“检查 Todo”让 LLM 按优先级执行`, "warning");
+      ctx.ui.notify(`当前项目有 ${executableWorks.length} 个已设置优先级的未完成工作任务；只有完整输入“检查todo”才会让 LLM 按优先级执行`, "warning");
     }
   });
 
   pi.on("input", async (event, ctx) => {
-    setAllowedTrackingReasons(ctx.sessionManager.getSessionId(), classifyTodoTrackingReasons(event.text));
-    if (!shouldCheckTodoInput(event.text)) return { action: "continue" };
+    const sessionId = ctx.sessionManager.getSessionId();
+    setAllowedTrackingReasons(sessionId, classifyTodoTrackingReasons(event.text));
+    const checkQueue = shouldCheckTodoInput(event.text);
+    setQueueCheckPermission(sessionId, checkQueue);
+    if (!checkQueue) return { action: "continue" };
     const runtime = getActiveRuntime();
     if (!runtime) return { action: "continue" };
     let sync: SyncOpenWorksResult;
@@ -239,6 +244,7 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     const pending = pendingAcceptanceResults(sessionId);
     if (!pending.sources.length || !pending.finalResponse) {
       clearAllowedTrackingReasons(sessionId);
+      clearQueueCheckPermission(sessionId);
       return;
     }
     try {
@@ -251,6 +257,7 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       if (process.env.PI_DIDA_TODO_DEBUG === "1") console.error("dida-todo acceptance result update failed", error);
     } finally {
       clearAllowedTrackingReasons(sessionId);
+      clearQueueCheckPermission(sessionId);
     }
   });
 

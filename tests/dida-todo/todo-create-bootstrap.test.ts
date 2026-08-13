@@ -83,6 +83,32 @@ describe("todo 空清单首次使用", () => {
     removeSessionRuntime(sessionId);
   });
 
+  it("新顶层工作缺少 workPriority 时在远端写入前拒绝", async () => {
+    const sessionId = "missing-work-priority";
+    const scope: TodoScope = {
+      binding: { key: "tmux:demo:0.0", projectId: "project" },
+      bindingKey: "tmux:demo:0.0",
+      cwd: "/workspace/demo",
+      sessionId,
+    };
+    setSessionRuntime(sessionId, { scope, works: [] });
+    setAllowedTrackingReasons(sessionId, ["user_requested_tracking", "current_work_step"]);
+    let tool: any;
+    let createCalls = 0;
+    const repository = { async createWork() { createCalls += 1; return emptyWork("不应创建"); } } as unknown as DidaTodoRepository;
+    registerTodoTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
+
+    await expect(tool.execute("call", {
+      action: "create",
+      workType: "direct",
+      subject: "整理发布说明",
+      trackingReason: "user_requested_tracking",
+    }, undefined, undefined, { sessionManager: { getSessionId: () => sessionId } })).rejects.toThrow("workPriority required");
+
+    expect(createCalls).toBe(0);
+    removeSessionRuntime(sessionId);
+  });
+
   it("没有持久追踪理由时拒绝 create，且不会创建远端工作", async () => {
     const sessionId = "no-tracking-reason";
     const scope: TodoScope = {
@@ -136,7 +162,53 @@ describe("todo 空清单首次使用", () => {
     removeSessionRuntime(sessionId);
   });
 
-  it("新 Checklist 工作要求 workTitle 与首个步骤 subject 分离", async () => {
+  it("Direct 工作把智能整理后的 subject 作为唯一任务名，并将 description 写入顶层详情", async () => {
+    const sessionId = "direct-title-semantics";
+    const scope: TodoScope = {
+      binding: { key: "tmux:demo:0.0", projectId: "project", cwd: "/workspace/demo" },
+      bindingKey: "tmux:demo:0.0",
+      cwd: "/workspace/demo",
+      tmuxTarget: "demo:0.0",
+      sessionId,
+    };
+    setSessionRuntime(sessionId, { scope, works: [] });
+    let tool: any;
+    const calls: Array<{ title: string; workType?: string; description?: string; priority?: number }> = [];
+    const repository = {
+      async createWork(_scope: TodoScope, title: string, _signal?: AbortSignal, workType?: string, _content?: string, description?: string, priority?: number) {
+        calls.push({ title, workType, description, priority });
+        return emptyWork(title);
+      },
+      async createTask(_scope: TodoScope, _workId: string, input: { subject: string; description?: string }) {
+        const work = emptyWork(input.subject);
+        work.tasks = [{ id: 1, subject: input.subject, description: input.description, status: "pending" }];
+        work.metadata.tasks = work.tasks;
+        work.metadata.nextId = 2;
+        return work;
+      },
+    } as unknown as DidaTodoRepository;
+    registerTodoTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
+    setAllowedTrackingReasons(sessionId, ["user_requested_tracking", "current_work_step"]);
+
+    await tool.execute("call", {
+      action: "create",
+      workType: "direct",
+      workPriority: "medium",
+      subject: "收窄 Todo 检查触发词",
+      description: "只有完整输入检查todo才扫描队列，其他口述只做对应修改。",
+      trackingReason: "user_requested_tracking",
+    }, undefined, undefined, { sessionManager: { getSessionId: () => sessionId } });
+
+    expect(calls).toEqual([{
+      title: "收窄 Todo 检查触发词",
+      workType: "direct",
+      description: "只有完整输入检查todo才扫描队列，其他口述只做对应修改。",
+      priority: 3,
+    }]);
+    removeSessionRuntime(sessionId);
+  });
+
+  it("新 Checklist 工作要求智能汇总 workTitle 与首个具体 subject 分离", async () => {
     const sessionId = "bootstrap-session";
     const scope: TodoScope = {
       binding: { key: "tmux:demo:0.0", projectId: "project", cwd: "/workspace/demo" },
@@ -149,8 +221,8 @@ describe("todo 空清单首次使用", () => {
     let tool: any;
     const calls: string[] = [];
     const repository = {
-      async createWork(_scope: TodoScope, title: string, _signal?: AbortSignal, workType?: string) {
-        calls.push(`work:${title}:${workType}`);
+      async createWork(_scope: TodoScope, title: string, _signal?: AbortSignal, workType?: string, _content?: string, _description?: string, priority?: number) {
+        calls.push(`work:${title}:${workType}:${priority}`);
         return emptyWork(title);
       },
       async createTask(_scope: TodoScope, _workId: string, input: { subject: string }) {
@@ -165,17 +237,30 @@ describe("todo 空清单首次使用", () => {
     registerTodoTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
     setAllowedTrackingReasons(sessionId, ["multi_step_implementation", "current_work_step"]);
 
+    await expect(tool.execute("call", {
+      action: "create",
+      workTitle: "准备更新",
+      workType: "checklist",
+      workPriority: "high",
+      subject: "准备更新",
+      trackingReason: "multi_step_implementation",
+    }, undefined, undefined, {
+      sessionManager: { getSessionId: () => sessionId },
+    })).rejects.toThrow("汇总标题不能与首个具体任务相同");
+    expect(calls).toEqual([]);
+
     const result = await tool.execute("call", {
       action: "create",
       workTitle: "升级 CPA 发布链",
       workType: "checklist",
+      workPriority: "high",
       subject: "准备更新",
       trackingReason: "multi_step_implementation",
     }, undefined, undefined, {
       sessionManager: { getSessionId: () => sessionId },
     });
 
-    expect(calls).toEqual(["work:升级 CPA 发布链:checklist", "task:准备更新"]);
+    expect(calls).toEqual(["work:升级 CPA 发布链:checklist:5", "task:准备更新"]);
     expect(result.content[0].text).toContain("Created #1");
     expect(result.details.tasks[0]?.metadata?.trackingReason).toBe("multi_step_implementation");
     expect(getSessionRuntime(sessionId)?.work?.remote.id).toBe("remote-work");

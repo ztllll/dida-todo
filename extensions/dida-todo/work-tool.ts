@@ -3,9 +3,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { WorkTask } from "./domain.js";
 import { DidaTodoRepository } from "./repository.js";
-import { getSessionRuntime, pendingWorkFinalizations, queueWorkFinalization, updateSessionWork, updateSessionWorks } from "./runtime.js";
+import { getSessionRuntime, hasQueueCheckPermission, pendingWorkFinalizations, queueWorkFinalization, updateSessionWork, updateSessionWorks } from "./runtime.js";
 import { formatWorkContentForAgent, hasUnfinishedTasks, isExecutableWork, nextUnfinishedWork, rankExecutableWorks } from "./work-queue.js";
-import { migrateWorkMetadata } from "./work-lifecycle.js";
 import { formatWorkSchedule } from "./scheduling.js";
 import { authorizedAcceptanceFeedback } from "./acceptance.js";
 
@@ -14,8 +13,7 @@ export const TODO_WORK_ACTIONS = ["list", "switch", "next", "refresh", "finish_c
 export function selectWorkResult(works: WorkTask[], workId: string): WorkTask {
   const work = works.find((candidate) => candidate.remote.id === workId);
   if (!work) throw new Error(`work ${workId} not found`);
-  const resumablePiWork = migrateWorkMetadata(work.metadata).origin === "pi";
-  if ((work.remote.priority ?? 0) <= 0 && !resumablePiWork) throw new Error(`work ${workId} 没有设置优先级`);
+  if ((work.remote.priority ?? 0) <= 0) throw new Error(`work ${workId} 没有设置优先级`);
   if (!hasUnfinishedTasks(work)) throw new Error(`work ${workId} 没有未完成步骤`);
   return work;
 }
@@ -27,6 +25,8 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
     description: "Internal LLM tool for synchronizing and moving through Dida top-level work. Users normally control it with natural language, not slash commands. Pending acceptance reports and feedback are included in list/refresh results.",
     promptSnippet: "Inspect and switch the Dida top-level work queue",
     promptGuidelines: [
+      "Only the user's exact trimmed input `检查todo` authorizes list/switch/next/refresh and whole-queue execution. Adding, appending, updating, completing, or deleting Todo must not scan or switch the queue. finish_current may close only the active work unless the same turn has exact queue-check authorization.",
+      "Treat every current user message as one complete request batch: all related requirements in that message belong to one top-level work and one eventual acceptance. Create all necessary Items, finish every clause, and send one unified final response before calling finish_current; never finalize after only the first clause. Follow-up requirements for the same objective append to that work rather than creating a new top-level work.",
       "When checking todo, process all prioritized unfinished top-level Dida work tasks, not only the currently selected work.",
       "Treat each Dida work as one complete payload. Direct work uses top-level title/description/content as the task and executionSteps only as internal progress. Checklist work uses a stable top-level objective plus visible Items that can accumulate across turns and sessions; never split one large objective into a new top-level work per phase.",
       "Never execute or mention priority-0 Dida work during automatic checks; it is a draft until the user assigns low, medium, or high priority.",
@@ -45,11 +45,38 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
       const runtime = getSessionRuntime(sessionId);
       if (!runtime) throw new Error("当前 Pi 会话尚未初始化滴答 Todo");
       const currentId = runtime.work?.remote.id;
+      if (params.action !== "finish_current" && !hasQueueCheckPermission(sessionId)) {
+        throw new Error("Todo 队列检查未获授权：只有用户完整输入‘检查todo’时才能调用 todo_work list/switch/next/refresh；添加、追加、修改、完成或删除 Todo 不得主动扫描队列");
+      }
 
       if (params.action === "finish_current" && runtime.work) {
         const ready = await repository.markWorkReadyForAcceptance(runtime.scope, runtime.work.remote.id, signal);
         updateSessionWork(sessionId, ready);
         queueWorkFinalization(sessionId, ready.remote.id);
+        if (!hasQueueCheckPermission(sessionId)) {
+          onWorkChanged();
+          return {
+            content: [{ type: "text", text: `Marked current work ready for acceptance: ${ready.remote.title} (${ready.remote.id}). No queue scan or work switch was performed.` }],
+            details: {
+              action: params.action,
+              works: [],
+              selectedWorkId: ready.remote.id,
+              finalizationFailures: [],
+              acceptances: [],
+            },
+          };
+        }
+      } else if (params.action === "finish_current") {
+        return {
+          content: [{ type: "text", text: "No active current work; no queue scan was performed" }],
+          details: {
+            action: params.action,
+            works: [],
+            selectedWorkId: undefined,
+            finalizationFailures: [],
+            acceptances: [],
+          },
+        };
       }
       const sync = await repository.syncOpenWorks(runtime.scope, {
         adoptUnmanaged: true,

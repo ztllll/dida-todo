@@ -59,7 +59,7 @@ describe("多工作任务执行队列", () => {
     expect(text).toContain('"description":"子任务详细说明"');
   });
 
-  it("无优先级任务保留未完成状态，但不进入自动执行队列", () => {
+  it("无优先级任务保留未完成状态，但不进入显式检查执行队列", () => {
     const draft = work("draft", "持续编辑中的草稿", [], 0);
     const ready = work("ready", "已准备执行", [], 1);
 

@@ -282,6 +282,7 @@ export class DidaTodoRepository {
     workType: DidaWorkType = "checklist",
     content?: string,
     description?: string,
+    priority: 1 | 3 | 5 = 1,
   ): Promise<WorkTask> {
     if (!title.trim()) throw new Error("工作任务标题不能为空");
     const normalizedTitle = title.trim();
@@ -303,6 +304,7 @@ export class DidaTodoRepository {
         content: encodeManagedContent(userContent, metadata),
         ...(workType === "checklist" ? { items: [] } : {}),
         ...(description?.trim() ? { desc: description.trim() } : {}),
+        priority,
         tags: ["pi-todo"],
       },
       signal,
@@ -331,9 +333,12 @@ export class DidaTodoRepository {
         ...(input.owner ? { owner: input.owner } : {}),
         ...(input.metadata ? { metadata: { ...input.metadata } } : {}),
       };
+      const metadata = migrateWorkMetadata(work.metadata);
       return {
-        ...work.metadata,
-        nextId: work.metadata.nextId + 1,
+        ...metadata,
+        lifecycle: metadata.lifecycle === "ready_for_acceptance" ? "claimed" : metadata.lifecycle,
+        finalization: metadata.lifecycle === "ready_for_acceptance" ? undefined : metadata.finalization,
+        nextId: metadata.nextId + 1,
         tasks: [...work.tasks.map(cloneTask), task],
       };
     });
@@ -459,7 +464,13 @@ export class DidaTodoRepository {
       }
       let work = decodeWorkTask(remote);
       if (work) {
-        if (work.metadata.bindingKey === scope.bindingKey) works.push(work);
+        if (work.metadata.bindingKey === scope.bindingKey) {
+          const metadata = migrateWorkMetadata(work.metadata);
+          if (metadata.origin === "pi" && (remote.priority ?? 0) <= 0) {
+            work = await this.migratePiWorkPriority(scope, remote.id, signal);
+          }
+          works.push(work);
+        }
         continue;
       }
       if (!options.adoptUnmanaged || remote.status !== 0 || remote.tags?.includes("pi-todo-reminder")) continue;
@@ -472,6 +483,26 @@ export class DidaTodoRepository {
 
   private async finishWorkLocked(scope: TodoScope, work: WorkTask, signal?: AbortSignal): Promise<FinishWorkResult> {
     return { acceptanceTask: await this.finalizer.finalize(scope, work, signal) };
+  }
+
+  private async migratePiWorkPriority(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<WorkTask> {
+    return withWorkLock(scope, workId, async () => {
+      const currentRemote = await this.gateway.getTask(scope.binding.projectId, workId, signal);
+      const current = decodeWorkTask(currentRemote);
+      if (!current) throw new Error(`迁移优先级时滴答任务无法解析为 Pi 工作: ${workId}`);
+      if (current.metadata.bindingKey !== scope.bindingKey) throw new Error(`滴答任务 ${workId} 不属于当前项目绑定`);
+      const metadata = migrateWorkMetadata(current.metadata);
+      if (metadata.origin !== "pi" || (currentRemote.priority ?? 0) > 0) return current;
+      const migrated = await this.gateway.updateTask(
+        workId,
+        this.buildUpdateInput({ ...currentRemote, priority: 1 }, current.metadata, current.userContent),
+        signal,
+      );
+      const decoded = decodeWorkTask(migrated);
+      if (!decoded) throw new Error(`迁移 Pi 工作优先级后无法解析任务: ${workId}`);
+      if ((decoded.remote.priority ?? 0) !== 1) throw new Error(`Pi 工作优先级迁移失败: ${workId}`);
+      return decoded;
+    });
   }
 
   private async mutate(

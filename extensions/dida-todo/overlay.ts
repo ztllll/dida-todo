@@ -4,6 +4,14 @@ import type { Task } from "./domain.js";
 
 const WIDGET_KEY = "dida-todos";
 
+export function overlayHeadingTitle(workTitle: string | undefined, tasks: Task[]): string | undefined {
+  const title = workTitle?.trim();
+  if (!title) return undefined;
+  const visible = tasks.filter((task) => task.status !== "deleted");
+  if (visible.some((task) => task.subject.trim() === title)) return undefined;
+  return title;
+}
+
 function taskLine(task: Task, theme: Theme): string {
   const glyph =
     task.status === "completed"
@@ -95,7 +103,7 @@ export class TodoOverlay {
     const allTasks = this.getTasks().filter((task) => task.status !== "deleted");
     const completed = allTasks.filter((task) => task.status === "completed").length;
     const active = allTasks.some((task) => task.status === "pending" || task.status === "in_progress");
-    const workTitle = this.getWorkTitle();
+    const workTitle = overlayHeadingTitle(this.getWorkTitle(), allTasks);
     const headingText = `${workTitle ? `${workTitle} · ` : ""}Todos (${completed}/${allTasks.length})`;
     const heading = `${theme.fg(active ? "accent" : "dim", active ? "●" : "○")} ${theme.fg(active ? "accent" : "dim", headingText)}`;
     const truncate = (line: string) => truncateToWidth(line, width, "…");

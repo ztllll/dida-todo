@@ -27,14 +27,13 @@ ctrl+shift+t 折叠/展开
 
 `/todos` 每次都会先同步滴答，并显示当前工作的顶层标题、描述、正文和完整 Checklist，因此能看到用户在滴答新增、改名或完成的 Item。Overlay 参考旧 Pi Todo 保持简洁，只显示 Checklist 状态行，并在当前工作对话内持续展示：步骤完成后仍保留已完成行，直到新工作取代它或会话关闭；完整任务语义由同步上下文、`todo_work` 和 `/todos` 提供。
 
-其他操作使用自然语言：
+整个队列只接受一个固定口令：
 
 ```text
-检查 Todo
-处理最新的高优先级任务
-看看待验收报告
-继续上次工作
+检查todo
 ```
+
+添加、追加、修改、完成和删除使用自然语言表达实际意图，不会顺手扫描其他工作。`检查 todo`、`查看滴答任务`、`同步待办` 等近似表达也不会触发队列。
 
 不公开 `/todo-work` 调试命令。
 
@@ -55,7 +54,7 @@ cross_turn_recovery / background_or_acceptance / current_work_step
 
 ### `todo`
 
-管理当前顶层工作的 Execution Steps / Checklist Items。新工作必须明确 `workType`：`direct` 的步骤只保存在 metadata，`checklist` 的步骤写入滴答 Items；新 Checklist 还必须把稳定 `workTitle/workDescription/workContent` 与 Item 的 `subject/description` 分离：
+管理当前顶层工作的 Execution Steps / Checklist Items。新工作必须明确 `workType` 和 `workPriority`。Direct 使用 LLM 整理后的 `subject` 作为 Dida 必填任务名，详细要求放入 description/content，不设置额外汇总标题；Checklist 使用与首个具体 `subject` 不同的智能汇总 `workTitle`。优先级必须为 low/medium/high（1/3/5），priority=0 只保留给用户草稿：
 
 ```text
 create / update / list / get / delete / clear
@@ -69,11 +68,11 @@ create / update / list / get / delete / clear
 list / switch / next / refresh / finish_current
 ```
 
-用户无需手工调用。`finish_current` 进入 Repository 完成流程，不负责决定是否创建验收 Todo。待验收评论的身份判定和返工创建均在 Repository 同步 seam 内自动完成，不暴露手工确认动作。
+用户无需手工调用。只有同轮精确口令 `检查todo` 才授权 `list/switch/next/refresh`；`finish_current` 无该授权时只收口当前工作，不扫描或切换下一项。待验收评论的身份判定和返工创建均在 Repository 同步 seam 内自动完成，不暴露手工确认动作。
 
-## 自动同步
+## 显式同步
 
-用户说“检查 Todo / 查看滴答任务 / 同步待办”时：
+用户完整输入唯一口令 `检查todo` 时：
 
 1. 读取固定清单全部未完成任务；
 2. 自动接管用户手工创建的直接任务或 Checklist 工作；
@@ -83,7 +82,7 @@ list / switch / next / refresh / finish_current
 6. 读取待验收报告及评论；
 7. Overlay 与滴答状态同步。
 
-`pollIntervalMinutes` 默认是 **10 分钟**（可配置范围 1–1440），无需用户手工配置：会话启动或 `/reload` 后立即检查一次，之后在 Pi 空闲且没有待处理消息时定时读取滴答。执行门为：优先级大于 0、任务未完成，并且任务的 `startDate`/`dueDate` 按 `timeZone` 换算后属于今天；非全天任务还必须已经到点。昨天、明天和后天都静默跳过，无日期任务仍只按优先级判断。重复任务完成当前实例后由滴答推进日期，只有新实例到当天才再次执行。无优先级、只有待验收、Pi 忙碌或消息排队时也完全静默。Runtime 中恢复/展示的工作绑定不等于 LLM 正在执行，不会阻止轮询。会话关闭时自动清理 timer。
+旧 `pollIntervalMinutes` 配置和 Poller API 仅为兼容保留，当前完全 no-op：不创建 timer、不读 Dida、不发送 follow-up。精确口令触发的显式执行门仍要求优先级大于 0、任务未完成，并满足按 `timeZone` 解释的日期/时间条件。
 
 ## 强制人类验收闭环
 
@@ -102,7 +101,7 @@ Direct Work 全部 Execution Steps 完成，或 Checklist Work 通过 finish_cur
 → 下一项 Todo 建立新顶层工作
 ```
 
-正确性不再依赖 LLM 记得调用 `todo_work finish_current`；该动作仅保留为幂等恢复入口。启动、`/todos`、自然语言同步与轮询会自动修复 Checklist 已全完成但顶层未完成的夹生任务。验收创建或评论转换失败时保持旧验收并返回可观察错误。重复任务使用 `sourceWorkId + sourceOccurrence` 隔离每次验收。待验收系统引导评论的 `userId` 作为 OAuth 用户身份：同一 `userId` 的后续评论在 Repository 内原子转换为独立返工工作并关闭旧验收；不同账号、缺失 `userId` 或缺失引导评论时 fail closed，完全静默忽略。任务描述/正文只承载报告和说明，不是控制通道；已完成源 Checklist 永不回滚。人类点击完成后闭环结束。
+一条用户消息中的相关要求属于一个完整请求批次：一个顶层工作、全部必要 Items、一个统一最终回复和一条待验收。任何新 Item 追加到 `ready_for_acceptance` 工作时都会撤销旧收口状态；全部完成后必须重新 `finish_current`。启动、`/todos` 与精确口令同步会修复符合完成语义的夹生任务。验收创建或评论转换失败时保持旧验收并返回可观察错误。重复任务使用 `sourceWorkId + sourceOccurrence` 隔离每次验收。待验收系统引导评论的 `userId` 作为 OAuth 用户身份：同一 `userId` 的后续评论在 Repository 内原子转换为独立返工工作并关闭旧验收；不同账号、缺失 `userId` 或缺失引导评论时 fail closed，完全静默忽略。任务描述/正文只承载报告和说明，不是控制通道；已完成源 Checklist 永不回滚。人类点击完成后闭环结束。
 
 ## 调度字段
 
@@ -112,7 +111,7 @@ Direct Work 全部 Execution Steps 完成，或 Checklist Work 通过 finish_cur
 priority / startDate / dueDate / timeZone / isAllDay / reminders / repeatFlag
 ```
 
-Checklist 更新不会覆盖这些字段。
+Checklist 更新不会覆盖这些字段。Pi 新建工作必须主动选择 low/medium/high；历史 Pi priority=0 在同宿主锁内重读后迁移为 low=1，用户手工 priority=0 保持草稿。
 
 ## 安全语义
 
@@ -151,11 +150,15 @@ npm run check
 
 真实写入候选验收默认跳过；仅在显式设置 `DIDA_TODO_REAL_CANDIDATE=1` 和一次性专用 `DIDA_TODO_REAL_PROJECT_ID` 后执行，绝不可指向用户工作清单或生产 route。候选验收必须手工复核：重复实例推进、OAuth 过期后重新登录、两个 Pi 进程并发 Checklist/收口，以及验收评论与 reminders 的真实 CLI 行为。
 
+## 链接与附件
+
+官方 Dida OpenAPI 的 Task/Comment schema 没有附件字段，也没有上传、下载或图片评论 endpoint。因此 dida-todo 不能可靠读取滴答原生附件，也不会调用私有 API 上传结果文件。任务 content、desc 和 Checklist 中的 `http/https` 链接随完整任务载荷注入并作为不可信外部资源处理。API/CLI 虽能读回普通评论链接，但当前普通工作评论不进入执行载荷；待验收评论仅用于身份门控返工。经 tmuxbot 使用时，Telegram/飞书文件可下载到受控本地路径；完成后的真实本地图片/文件可通过最终回复上传回同一精确 IM endpoint。
+
 ## 已知限制
 
 1. 滴答 Item 没有原生 `in_progress`，该状态保存在顶层任务受管元数据中；滴答侧显示为未完成，Pi Overlay 显示为进行中。
 2. Dida CLI 更新需要发送完整 Items；同宿主已由真实跨进程锁保护。公开 API 未确认提供 CAS/ETag 条件更新或幂等创建 key，因此跨宿主只能检测/拒绝冲突，不能承诺强一致或 exactly-once。
 3. 自动收口需要 gateway 同时支持创建验收、读取评论与写入评论；能力不完整时必须保持源工作未完成。
-4. 默认有 10 分钟一次的会话内空闲轮询，但它只在 Pi 进程和当前会话存活时有效，不是系统级后台服务；Pi 退出后仍由滴答负责提醒。
-5. 轮询只负责普通可执行工作；Repository 已把合法本人评论转换为普通返工工作。异账号或缺失身份的评论不会进入队列、不会唤醒、不会展示。
+4. 官方 OpenAPI 不支持原生附件；文件交付依赖当前 IM transport 或外部 HTTPS 链接。
+5. Repository 会把合法本人评论转换为普通返工工作；异账号或缺失身份的评论不会进入队列或展示。
 6. 本工作区不是生产部署位置，未经授权不得复制到全局 Pi 配置。

@@ -18,10 +18,8 @@ export function isExecutableWork(work: WorkTask): boolean {
 }
 
 export function isExecutableWorkAt(work: WorkTask, now: Date): boolean {
-  const metadata = migrateWorkMetadata(work.metadata);
   const explicitlyPrioritized = (work.remote.priority ?? 0) > 0;
-  const resumablePiWork = metadata.origin === "pi" && metadata.lifecycle !== "draft" && metadata.lifecycle !== "finalized";
-  return (explicitlyPrioritized || resumablePiWork) && hasUnfinishedTasks(work) && isTaskScheduledForNow(work.remote, now);
+  return explicitlyPrioritized && hasUnfinishedTasks(work) && isTaskScheduledForNow(work.remote, now);
 }
 
 export function rankExecutableWorks(works: WorkTask[], now = new Date()): WorkTask[] {

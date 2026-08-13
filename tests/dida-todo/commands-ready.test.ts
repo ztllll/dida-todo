@@ -65,6 +65,38 @@ describe("/todos 空清单状态", () => {
     removeSessionRuntime(sessionId);
   });
 
+  it("Direct 工作的同名顶层 title 与唯一任务在 /todos 中只展示一次", async () => {
+    const sessionId = "commands-direct-dedup";
+    const scope: TodoScope = {
+      binding: { key: "tmux:demo:0.0", projectId: "project", cwd: "/workspace/demo" },
+      bindingKey: "tmux:demo:0.0",
+      cwd: "/workspace/demo",
+      sessionId,
+    };
+    const task = { id: 1, subject: "收窄 Todo 检查触发词", description: "具体要求", status: "pending" as const };
+    const work: WorkTask = {
+      remote: { id: "work", projectId: "project", title: task.subject, desc: "具体要求", status: 0, priority: 1 },
+      metadata: { schemaVersion: 2, kind: "pi-todo-work", bindingKey: scope.bindingKey, origin: "pi", lifecycle: "claimed", workType: "direct", execution: { claimedAt: "2026-08-13T00:00:00.000Z" }, nextId: 2, tasks: [task] },
+      tasks: [task],
+      userContent: "",
+    };
+    setSessionRuntime(sessionId, { scope, works: [work], work });
+    let command: any;
+    const notifications: string[] = [];
+    const repository = { async syncOpenWorks() { return { works: [work], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] }; } } as unknown as DidaTodoRepository;
+    registerCommands({ registerCommand(_name: string, value: any) { command = value; } } as never, repository, () => {});
+
+    await command.handler("", {
+      sessionManager: { getSessionId: () => sessionId },
+      ui: { notify(message: string) { notifications.push(message); } },
+    });
+
+    expect(notifications[0]?.split(task.subject)).toHaveLength(2);
+    expect(notifications[0]).toContain("说明：具体要求");
+    expect(notifications[0]).not.toContain("描述：具体要求");
+    removeSessionRuntime(sessionId);
+  });
+
   it("活动工作显示标题、描述、正文和 Checklist 的完整内容", async () => {
     const sessionId = "commands-complete-content";
     const scope: TodoScope = {

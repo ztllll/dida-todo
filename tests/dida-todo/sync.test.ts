@@ -74,6 +74,35 @@ function managedTask(): DidaTask {
 }
 
 describe("项目 Todo 同步 seam", () => {
+  it("历史 Pi 自建 priority=0 工作同步时迁移为 low=1，重新进入跨会话执行队列", async () => {
+    const legacyPi = managedTask();
+    const gateway = new SyncGateway([legacyPi]);
+    const repository = new DidaTodoRepository(gateway);
+
+    const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
+
+    expect(result.works[0]?.remote.priority).toBe(1);
+    expect(gateway.tasks[0]?.priority).toBe(1);
+  });
+
+  it("用户手工 priority=0 任务继续保持草稿，不因迁移 Pi 工作而被改优先级", async () => {
+    const manual: DidaTask = {
+      id: "manual-draft",
+      projectId: scope.binding.projectId,
+      title: "用户草稿",
+      content: "尚未安排",
+      status: 0,
+      priority: 0,
+    };
+    const gateway = new SyncGateway([manual]);
+    const repository = new DidaTodoRepository(gateway);
+
+    const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
+
+    expect(result.works[0]?.remote.priority).toBe(0);
+    expect(gateway.tasks[0]?.priority).toBe(0);
+  });
+
   it("检查项目时自动接管用户手工创建的工作任务", async () => {
     const manual: DidaTask = {
       id: "manual",

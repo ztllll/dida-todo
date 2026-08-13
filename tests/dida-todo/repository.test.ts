@@ -30,7 +30,7 @@ class FakeGateway implements DidaGateway {
       title: input.title as string,
       content: input.content as string,
       status: 0,
-      priority: 0,
+      priority: Number(input.priority ?? 0),
       kind: "CHECKLIST",
       items: structuredClone(input.items as DidaTask["items"]),
     });
@@ -70,6 +70,16 @@ const scope: TodoScope = {
 };
 
 describe("滴答 Todo Repository seam", () => {
+  it("创建 Pi 工作时默认写入可执行低优先级，而不是 priority=0 草稿", async () => {
+    const gateway = new FakeGateway();
+    const repo = new DidaTodoRepository(gateway);
+
+    const created = await repo.createWork(scope, "实现联网 Todo");
+
+    expect(created.remote.priority).toBe(1);
+    expect((await gateway.getTask(scope.binding.projectId, created.remote.id)).priority).toBe(1);
+  });
+
   it("创建工作任务、添加执行步骤并永久读取", async () => {
     const gateway = new FakeGateway();
     const repo = new DidaTodoRepository(gateway);
@@ -80,6 +90,21 @@ describe("滴答 Todo Repository seam", () => {
 
     expect(updated.tasks).toEqual([{ id: 1, subject: "研究现有接口", status: "pending", itemId: "item-1" }]);
     expect(reloaded.tasks).toEqual(updated.tasks);
+  });
+
+  it("Checklist 已 ready 后追加同一请求的新 Item 会撤销收口状态", async () => {
+    const gateway = new FakeGateway();
+    const repo = new DidaTodoRepository(gateway);
+    let work = await repo.createWork(scope, "统一用户请求", undefined, "checklist", "", "", 3);
+    work = await repo.createTask(scope, work.remote.id, { subject: "第一项" });
+    work = await repo.updateTask(scope, work.remote.id, 1, { status: "completed" });
+    work = await repo.markWorkReadyForAcceptance(scope, work.remote.id);
+    expect(work.metadata).toMatchObject({ lifecycle: "ready_for_acceptance" });
+
+    work = await repo.createTask(scope, work.remote.id, { subject: "第二项" });
+
+    expect(work.metadata).toMatchObject({ lifecycle: "claimed" });
+    expect(work.tasks.map((task) => task.subject)).toEqual(["第一项", "第二项"]);
   });
 
   it("同会话重复 bootstrap 相同标题时复用既有 Pi 工作", async () => {
