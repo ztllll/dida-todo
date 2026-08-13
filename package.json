@@ -25,7 +25,9 @@
   ],
   "files": [
     "extensions/dida-todo",
+    "docs/operations",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {

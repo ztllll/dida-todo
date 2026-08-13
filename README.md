@@ -68,6 +68,20 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 - LLM 可遍历全部未完成顶层任务，而不是只处理第一项；大型 Checklist Work 在同一顶层持续追加进度，不按阶段拆成多个顶层 Todo。
 - LLM 新建顶层工作必须根据实际紧急性和影响设置 `workPriority: low | medium | high`，映射为 1/3/5；priority=0 只保留给用户草稿。历史 Pi 自建 priority=0 工作同步时迁移为 low=1。
 - 顶层工作按优先级高→中→低执行；同优先级严格保持滴答清单返回顺序，并保留开始/截止时间、时区、全天、提醒和重复字段。
+- 循环任务可以在同步时被发现，但发现不等于执行。priority 只排序已经通过时间门的工作：非全天任务必须处于任务时区下的计划当天且当前时间不早于 `startDate`（没有时回退 `dueDate`）；全天任务只检查计划日期是否为今天。未来 occurrence 会被过滤，过期 occurrence 不自动补跑。
+
+#### 循环任务执行时机
+
+以每天 10:00 的非全天循环任务为例：
+
+| 执行 `检查todo` 的时间 | 能同步看到任务 | 是否进入执行队列 |
+| --- | --- | --- |
+| 前一天，滴答已推进到明天 10:00 | 是 | 否 |
+| 当天 09:59 | 是 | 否 |
+| 当天 10:00 或之后 | 是 | 是 |
+| 第二天才检查遗漏的 occurrence | 是 | 否，不自动补跑 |
+
+提前同步不会注册 10:00 timer。当前 Poller 完全 no-op，因此到点不会自动唤醒 Pi；必须在到点后再次完整输入 `检查todo`。如果任务本意是 10:00 执行，必须设置为非全天，否则当天首次显式检查就可能执行。完整边界见 [`docs/operations/recurring-scheduling-and-live-upgrades.md`](docs/operations/recurring-scheduling-and-live-upgrades.md)。
 
 ### 5. 强制人类验收闭环
 
@@ -163,6 +177,8 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 pi install git:github.com/ztllll/dida-todo@v0.6.13
 # 或安装 main：pi install git:github.com/ztllll/dida-todo
 ```
+
+**不要在使用 dida-todo 的 Pi 进程正执行任务时直接安装。**Git Package 安装会 reset/clean 共享 checkout 并重新安装依赖，但已运行进程不会自动替换内存中的扩展 Runtime，可能形成“旧 Runtime + 新磁盘文件/CLI/依赖”的混合状态。安全流程是：等待所有相关 pane 完成当前原子任务并 idle → 安装固定版本 → 对每个存量 Pi 执行 `/reload` 或启动新进程 → 再做 `/todos`/隔离 smoke test。安装本身通常不会主动杀死旧 Pi，但忙碌状态下不能保证后续工具调用不受影响。详见[运维边界](docs/operations/recurring-scheduling-and-live-upgrades.md)。
 
 本项目只以 GitHub 为正式发布渠道，不发布 npm 包。
 
@@ -324,6 +340,7 @@ Capture ideas, bugs, and feature requests in Dida365 from your phone or browser.
 - **Complete task semantics:** Direct work uses one LLM-organized task name plus detailed description/body, with duplicate UI headings removed. Checklist work uses an aggregate LLM-generated title that must differ from concrete Items.
 - **Batched acceptance:** related clauses in one user request stay in one top-level work and produce one final response and one acceptance. Appending a new Item revokes any stale ready-for-acceptance state.
 - **Explicit multi-work queue:** only exact `检查todo` authorizes queue synchronization/switching. The legacy poller is a no-op and never reads Dida365 or wakes the agent.
+- **Recurring time gate:** synchronization may observe a future occurrence, but priority cannot bypass its schedule. Timed work runs only on its task-local day at or after `startDate` (falling back to `dueDate`); all-day work uses the calendar-date gate. Reaching the time does not wake Pi—the next exact queue check is required.
 - **Mandatory priority:** every Pi-created top-level work must choose low/medium/high (1/3/5). Priority 0 is reserved for user drafts; historical Pi priority-0 work migrates to low under a same-host lock.
 - **Durable history:** clearing or replacing a Pi session does not delete remote work.
 - **Mandatory human acceptance:** `WorkFinalizer` prevents source completion until a pending acceptance Todo, placeholder report, and feedback comment exist. Once the agent settles, the exact user-visible final response replaces the placeholder in the acceptance description/body and drives a result-oriented title.
@@ -357,6 +374,8 @@ The Git package automatically installs `@suibiji/dida-cli`; no global `dida` com
 After login, dida-todo automatically derives a project name from the tmux session (or cwd basename), reuses the unique same-name project or creates a TASK/list project, persists exact tmux and cwd bindings, and activates the current session. An empty project reports **“Dida Todo is ready”** instead of failing; the first Todo automatically creates its top-level work task and Checklist. Users never need to find a projectId. Ask the LLM to rebind by exact name or projectId when needed. Duplicate names fail safely instead of being guessed.
 
 The session that completes `dida_todo_setup login` is ready immediately—no `/reload` or second setup step. New Pi processes load the installed package automatically. Only Pi processes that were already running before an external install or upgrade need one `/reload`, because an extension that has not been loaded cannot hot-reload its host process by itself.
+
+Do not install a new Git package ref while a Pi process using dida-todo is actively executing work. Installation resets/cleans the shared checkout and reinstalls dependencies while the existing process retains its old in-memory Runtime, creating an unsupported mixed state. Wait for all relevant processes to become idle, install the pinned ref, then `/reload` them or start new processes. See the [operations guide](docs/operations/recurring-scheduling-and-live-upgrades.md).
 
 Set `autoProvisionProject: false` to opt out. GitHub is the only release channel; this project is not published to npm.
 

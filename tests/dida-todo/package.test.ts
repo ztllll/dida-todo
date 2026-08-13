@@ -10,7 +10,13 @@ describe("dida-todo Pi Package manifest", () => {
     expect(pkg.private).toBe(true);
     expect(pkg.keywords).toContain("pi-package");
     expect(pkg.pi.extensions).toEqual(["./extensions/dida-todo"]);
-    expect(pkg.files).toEqual(["extensions/dida-todo", "README.md", "LICENSE"]);
+    expect(pkg.files).toEqual([
+      "extensions/dida-todo",
+      "docs/operations",
+      "README.md",
+      "CHANGELOG.md",
+      "LICENSE",
+    ]);
   });
 
   it("声明运行依赖和 Pi peerDependencies", () => {

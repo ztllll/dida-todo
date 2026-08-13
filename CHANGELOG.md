@@ -1,0 +1,131 @@
+# Changelog
+
+All notable user-visible changes are recorded here. The project is released through pinned GitHub tags and does not publish to npm.
+
+## [Unreleased]
+
+### Documentation
+
+- Clarify recurring task scheduling: synchronization can observe a future occurrence, but priority never bypasses the task-local date/time gate. Timed tasks execute only on the scheduled day at or after `startDate` (falling back to `dueDate`); all-day tasks use only the calendar-date gate.
+- Clarify that the legacy Poller is no-op. Reaching a scheduled time does not wake Pi; execution starts only on the next exact `检查todo` queue check.
+- Document the safe live-upgrade boundary: installing a Git package replaces the shared checkout and dependencies but does not reload existing Pi processes. Busy sessions must become idle before installation and then use `/reload` or a new process.
+
+## [0.6.13] - 2026-08-13
+
+### Fixed
+
+- Scope foreground queue synchronization to the input event's session Runtime instead of whichever TUI session is currently active.
+- Restore exact `检查todo` injection for print/RPC and multi-session use without weakening the exact-phrase authorization gate.
+
+### Verification
+
+- 178 default tests passed; one isolated real-Dida candidate test remains opt-in.
+- TypeScript, package structure, dry-run packaging, credential scanning, and production dependency audit passed.
+
+## [0.6.12] - 2026-08-13
+
+### Changed
+
+- Require the trimmed user input to equal `检查todo` before scanning or switching the top-level queue.
+- Add a second authorization gate to `todo_work list/switch/next/refresh`; Todo mutations and unprivileged `finish_current` no longer scan or switch unrelated work.
+- Make the legacy background Poller permanently silent.
+- Batch related requirements from one user request into one top-level work, one final response, and one human-acceptance task. Appending a new Item revokes stale ready-for-acceptance state.
+- Separate Direct and Checklist title semantics and remove duplicate title/description rendering from the Overlay and `/todos`.
+- Require every Pi-created top-level work to choose low/medium/high priority (1/3/5). Reserve priority 0 for user drafts and migrate historical Pi priority-0 work to low under the same-host lock.
+- Preserve task text links as untrusted input and document that Dida's public OpenAPI has no native attachment upload/download surface; use the active Telegram/Feishu transport for files.
+
+### Verification
+
+- Real isolated Pi runs confirmed that Todo mutations do not invoke `todo_work`, near-match phrases do not scan, exact `检查todo` injects the queue, and a new Direct work is stored as priority 1 and kind `TEXT`.
+
+## [0.6.11] - 2026-08-12
+
+### Changed
+
+- Namespace newly provisioned Dida projects by hostname and exact IM route when tmuxbot inventory can identify it safely.
+- Preserve existing exact bindings without migration or duplicate creation.
+
+## [0.6.10] - 2026-08-12
+
+### Changed
+
+- Separate Direct Work from Checklist Work completion semantics.
+- Before completing a Checklist top-level task, reread, complete, and verify all remote Items.
+
+## [0.6.9] - 2026-08-12
+
+### Changed
+
+- Introduce explicit `direct | checklist` work types.
+- Keep Direct execution steps in managed metadata instead of remote Dida Checklist Items.
+
+## [0.6.8] - 2026-08-12
+
+### Changed
+
+- Require a durable tracking reason before `todo create` can write remote state.
+
+## [0.6.7] - 2026-08-12
+
+### Fixed
+
+- Move finalization to the settled boundary so additional same-request Items cancel premature acceptance.
+
+## [0.6.6] - 2026-08-12
+
+### Changed
+
+- Allow Pi to append steps to one user Checklist while protecting the user's original Item text and structure.
+- Rank executable work high to low while preserving Dida order within the same priority.
+
+## [0.6.5] - 2026-08-12
+
+### Changed
+
+- Materialize acceptance results in two phases and backfill the exact final user-visible response after the agent settles.
+
+## [0.6.4] - 2026-08-12
+
+### Changed
+
+- Gate automatic rework on the Dida comment `userId` matching the system guidance comment author.
+
+## [0.6.3] - 2026-08-12
+
+### Changed
+
+- Use two human-acceptance reminders at completion +3 and +6 minutes.
+
+## [0.6.2] - 2026-08-11
+
+### Fixed
+
+- Inject and display complete top-level title, description, body, and Checklist data instead of reading Item titles alone.
+
+## [0.6.1] - 2026-08-11
+
+### Changed
+
+- Keep the active work's complete Checklist visible in the Overlay until another work or session replaces it.
+
+## [0.6.0] - 2026-08-11
+
+### Changed
+
+- Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
+
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.13...HEAD
+[0.6.13]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.13
+[0.6.12]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.12
+[0.6.11]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.11
+[0.6.10]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.10
+[0.6.9]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.9
+[0.6.8]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.8
+[0.6.7]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.7
+[0.6.6]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.6
+[0.6.5]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.5
+[0.6.4]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.4
+[0.6.3]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.3
+[0.6.2]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.2
+[0.6.1]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.1
+[0.6.0]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.0

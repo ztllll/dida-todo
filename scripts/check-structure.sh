@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-for path in README.md LICENSE package.json extensions/dida-todo/index.ts extensions/dida-todo/README.md; do
+for path in README.md CHANGELOG.md LICENSE package.json extensions/dida-todo/index.ts extensions/dida-todo/README.md docs/operations/recurring-scheduling-and-live-upgrades.md; do
   [[ -f "$path" ]] || { printf 'Missing required file: %s\n' "$path" >&2; exit 1; }
 done
 node -e 'const p=require("./package.json"); if(p.name!=="dida-todo") throw new Error("unexpected package name"); if(JSON.stringify(p.pi?.extensions)!==JSON.stringify(["./extensions/dida-todo"])) throw new Error("unexpected Pi manifest");'

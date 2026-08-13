@@ -82,7 +82,7 @@ list / switch / next / refresh / finish_current
 6. 读取待验收报告及评论；
 7. Overlay 与滴答状态同步。
 
-旧 `pollIntervalMinutes` 配置和 Poller API 仅为兼容保留，当前完全 no-op：不创建 timer、不读 Dida、不发送 follow-up。精确口令触发的显式执行门仍要求优先级大于 0、任务未完成，并满足按 `timeZone` 解释的日期/时间条件。
+旧 `pollIntervalMinutes` 配置和 Poller API 仅为兼容保留，当前完全 no-op：不创建 timer、不读 Dida、不发送 follow-up。精确口令触发的显式执行门仍要求优先级大于 0、任务未完成，并满足按 `timeZone` 解释的日期/时间条件。同步可以发现未来循环 occurrence，但 priority 不会绕过时间门：非全天任务必须是计划当天且当前时间不早于 `startDate`（缺失时回退 `dueDate`），全天任务只判断计划日期。提前检查不会预约到点执行；到点后仍需再次完整输入 `检查todo`。过期 occurrence 不自动补跑。
 
 ## 强制人类验收闭环
 
@@ -111,7 +111,7 @@ Direct Work 全部 Execution Steps 完成，或 Checklist Work 通过 finish_cur
 priority / startDate / dueDate / timeZone / isAllDay / reminders / repeatFlag
 ```
 
-Checklist 更新不会覆盖这些字段。Pi 新建工作必须主动选择 low/medium/high；历史 Pi priority=0 在同宿主锁内重读后迁移为 low=1，用户手工 priority=0 保持草稿。
+Checklist 更新不会覆盖这些字段。Pi 新建工作必须主动选择 low/medium/high；历史 Pi priority=0 在同宿主锁内重读后迁移为 low=1，用户手工 priority=0 保持草稿。循环任务每次以当前 `startDate ?? dueDate` 形成 occurrence key，上一轮 claim/finalization/验收不能复用于下一轮。完整调度和运行中升级边界见 [`docs/operations/recurring-scheduling-and-live-upgrades.md`](../../docs/operations/recurring-scheduling-and-live-upgrades.md)。
 
 ## 安全语义
 
@@ -139,6 +139,7 @@ GitHub 安装会自动安装包依赖 `@suibiji/dida-cli`。用户在 Pi 中直�
 - `autoProvisionProject: false` 可关闭自动创建，回到完全显式绑定模式。
 - 完成“登录滴答”的当前会话会立即激活，无需 `/reload` 或第二次配置；空清单的 `/todos` 与 `todo list` 会明确显示“滴答 Todo 已就绪”，首个 Todo 自动建立顶层工作。
 - 仅当包是在某个 Pi 进程已经运行后从外部安装或升级时，该存量进程受 Pi Loader 生命周期限制需要一次 `/reload`；新启动 Pi 自动加载。
+- 不得在使用 dida-todo 的 Pi 进程正执行工作时覆盖共享 Git Package checkout。安装会 reset/clean 安装目录并重装依赖，但存量进程仍保留旧 Runtime，可能形成旧内存代码与新磁盘 CLI/依赖混用。必须先等待相关 pane idle，再安装固定版本，随后 `/reload` 或启动新进程。
 
 内部 `dida_todo_setup` 工具支持 `login`、`auto` 和 `bind`，用户无需直接调用。
 
