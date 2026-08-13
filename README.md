@@ -126,7 +126,7 @@ Direct Work 的全部 Execution Steps 完成，或 Checklist Work 明确声明�
 ### 最简流程：全局安装 + 登录
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.10
+pi install git:github.com/ztllll/dida-todo@v0.6.11
 ```
 
 新开任意 Pi 会话，直接告诉 LLM：
@@ -139,11 +139,12 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 
 登录成功后，扩展自动完成：
 
-1. tmux 环境取 tmux session 名称，非 tmux 环境取 cwd basename；
-2. 唯一同名清单存在则复用，不存在则创建 TASK/list 清单；
-3. 自动持久化精确 tmux target 与 cwd 双绑定；
-4. 当前会话立即同步并启用，无需填写 projectId；
-5. 空清单明确显示“滴答 Todo 已就绪”，直接口述第一项任务即可；首个 Todo 自动建立顶层工作与 Checklist。
+1. 首次自动 provisioning 生成跨环境名称：tmuxbot route 可精确识别时使用 `[hostname][channel] route-name`；否则使用 `[hostname] tmux-session-or-cwd`，不猜 IM 通道；
+2. route/channel 只通过 tmuxbot canonical Admin inventory 按精确 tmux target 读取；不把 credential、chat_id、thread_id 或 token 写入滴答；
+3. 唯一同名清单存在则复用，不存在则创建 TASK/list 清单；
+4. 自动持久化精确 tmux target；cwd alias 仅在未被另一 route 占用或指向同一 project 时写入，避免共享 cwd 的 Telegram/飞书 route 相互覆盖；
+5. 当前会话立即同步并启用，无需填写 projectId；
+6. 空清单明确显示“滴答 Todo 已就绪”，直接口述第一项任务即可；首个 Todo 自动建立顶层工作与 Checklist。
 
 完成“登录滴答”的当前会话无需 `/reload` 或第二次配置。新启动的 Pi 会话会自动加载并复用登录状态。只有当某个 Pi 进程已经运行、用户再从外部安装或升级包时，该存量进程受 Pi Loader 生命周期限制需要执行一次 `/reload`；尚未加载的扩展无法自行让旧进程热更新。
 
@@ -154,7 +155,7 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 升级：
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.10
+pi install git:github.com/ztllll/dida-todo@v0.6.11
 # 或安装 main：pi install git:github.com/ztllll/dida-todo
 ```
 
@@ -270,7 +271,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前 `v0.6.10` 已通过 38 个测试文件、154 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、官方 Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
+当前 `v0.6.11` 已通过 39 个测试文件、158 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、官方 Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
 
 ## 开发成员
 
@@ -336,7 +337,7 @@ One fixed Dida365 project per local project / tmux target
 ## Install
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.10
+pi install git:github.com/ztllll/dida-todo@v0.6.11
 ```
 
 In any new Pi session, tell the LLM:
@@ -447,7 +448,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.6.10` passed 154 default automated tests across 34 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.6.11` passed 158 default automated tests across 34 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
 
 ## Team
 

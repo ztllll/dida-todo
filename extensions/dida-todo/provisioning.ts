@@ -4,6 +4,7 @@ import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { withHostLock } from "./host-lock.js";
 import { DEFAULT_CONFIG_PATH, normalizeCwd } from "./config.js";
 import type { DidaProject, DidaTodoConfig, ProjectBinding } from "./domain.js";
+import { namespacedProjectName, type ProvisioningNamespace } from "./provisioning-identity.js";
 
 export interface ProjectProvisioningGateway {
   listProjects(signal?: AbortSignal): Promise<DidaProject[]>;
@@ -30,6 +31,7 @@ interface ProvisioningInput {
   tmuxTarget?: string;
   configPath?: string;
   signal?: AbortSignal;
+  namespace?: ProvisioningNamespace;
 }
 
 interface ExplicitBindingInput extends ProvisioningInput {
@@ -43,10 +45,15 @@ function cleanName(value: string): string {
   return cleaned;
 }
 
-export function deriveBindingIdentity(cwd: string, tmuxTarget?: string): BindingIdentity {
+export function deriveBindingIdentity(
+  cwd: string,
+  tmuxTarget?: string,
+  namespace: ProvisioningNamespace = {},
+): BindingIdentity {
   const normalizedCwd = normalizeCwd(cwd);
   const tmuxSession = tmuxTarget?.split(":", 1)[0]?.trim();
-  const projectName = cleanName(tmuxSession || basename(normalizedCwd) || "Pi Todo");
+  const baseName = cleanName(tmuxSession || basename(normalizedCwd) || "Pi Todo");
+  const projectName = cleanName(namespacedProjectName(baseName, namespace));
   return {
     projectName,
     bindingKey: tmuxTarget ? `tmux:${tmuxTarget}` : `cwd:${normalizedCwd}`,
@@ -95,12 +102,15 @@ async function persistBinding(
     };
     let bindings = upsertBinding(latest.bindings, primary);
     if (tmuxTarget) {
-      bindings = upsertBinding(bindings, {
-        key: identity.cwdKey,
-        projectId: project.id,
-        cwd: normalizedCwd,
-        label: identity.label,
-      });
+      const existingCwd = bindings.find((candidate) => candidate.key === identity.cwdKey);
+      if (!existingCwd || existingCwd.projectId === project.id) {
+        bindings = upsertBinding(bindings, {
+          key: identity.cwdKey,
+          projectId: project.id,
+          cwd: normalizedCwd,
+          label: identity.label,
+        });
+      }
     }
     const next: DidaTodoConfig = { ...config, ...latest, bindings };
     const dir = dirname(path);
@@ -120,7 +130,7 @@ function openProjects(projects: DidaProject[]): DidaProject[] {
 
 export async function ensureProjectBinding(input: ProvisioningInput): Promise<ProvisioningResult> {
   const configPath = input.configPath ?? DEFAULT_CONFIG_PATH;
-  const identity = deriveBindingIdentity(input.cwd, input.tmuxTarget);
+  const identity = deriveBindingIdentity(input.cwd, input.tmuxTarget, input.namespace);
   return withHostLock(`provision:${configPath}:${identity.projectName}`, async () => {
     const config = await readConfig(configPath);
     const projects = openProjects(await input.gateway.listProjects(input.signal));
@@ -148,7 +158,7 @@ export async function bindExistingProject(input: ExplicitBindingInput): Promise<
     project = matches[0];
   }
   if (!project) throw new Error("未找到要绑定的滴答清单");
-  const identity = { ...deriveBindingIdentity(input.cwd, input.tmuxTarget), projectName: project.name, label: project.name };
+  const identity = { ...deriveBindingIdentity(input.cwd, input.tmuxTarget, input.namespace), projectName: project.name, label: project.name };
   const persisted = await persistBinding(configPath, config, identity, project, input.cwd, input.tmuxTarget);
   return { ...persisted, project, createdProject: false };
 }

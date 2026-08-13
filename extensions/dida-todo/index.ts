@@ -40,6 +40,7 @@ import { ensureProjectBinding, isDidaAuthenticationError } from "./provisioning.
 import { registerDidaSetupTool } from "./setup-tool.js";
 import { finalizeWorkAtSettlement } from "./settled-finalization.js";
 import { classifyTodoTrackingReasons } from "./tracking-policy.js";
+import { detectProvisioningNamespace } from "./tmuxbot-route.js";
 
 async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Promise<string | undefined> {
   if (!pane) return undefined;
@@ -134,7 +135,8 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     let binding = resolveBinding(config, ctx.cwd, tmuxTarget);
     if (!binding && config.autoProvisionProject !== false) {
       try {
-        const provisioned = await ensureProjectBinding({ gateway, cwd: ctx.cwd, tmuxTarget, signal: ctx.signal });
+        const namespace = await detectProvisioningNamespace(pi, tmuxTarget);
+        const provisioned = await ensureProjectBinding({ gateway, cwd: ctx.cwd, tmuxTarget, namespace, signal: ctx.signal });
         binding = provisioned.binding;
         config.bindings = provisioned.config.bindings;
         if (ctx.hasUI) {
