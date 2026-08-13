@@ -25,7 +25,7 @@
 → Checklist 和评论持续回写滴答
 ```
 
-- 支持两种滴答工作形态：没有 Checklist 的直接任务，以及带可勾选子任务的分级任务。同步与执行始终把顶层标题、描述、正文和 Checklist 作为一个整体读取；直接任务由 LLM 根据全部顶层内容拆分步骤，分级任务也不会只执行子任务标题。
+- 支持两种具有不同完成语义的滴答工作：Direct Work 由顶层标题、描述和正文承载完整要求，Pi Execution Steps 只保存在受管 metadata，不会把远端转换成 Checklist；Checklist Work 由稳定顶层目标和可跨轮/跨会话持续追加的 Items 承载进度。完成一个 Item 只更新进度，Pi 建立的大任务只有在整体目标明确完成后才关闭顶层。
 - 支持用户在滴答侧执行过程中新增、改名或完成 Checklist Item；Pi 刷新后导入这些变化，并保留稳定的内部 Todo ID。
 - 对用户手工创建的工作，Pi 可在同一顶层任务内反复追加任意数量的新 Checklist Item；用户原始 Item 的文本和结构受保护，Pi 只能推进执行状态并写入 `metadata.resolution`，不能改名或删除。
 
@@ -64,8 +64,9 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 ### 4. 多工作任务与调度
 
 - 一个项目或 tmux 工作目标固定绑定一个滴答清单。
-- 顶层 Task 表示一次完整工作，Checklist Items 表示执行步骤。
-- LLM 可遍历全部未完成顶层任务，而不是只处理第一项。
+- 顶层 Task 表示一次完整工作。Direct Work 的内部 Execution Steps 不写为远端 Items；Checklist Work 的 Items 表示阶段进度。
+- 新 Checklist Work 必须分别提供稳定 `workTitle/workDescription/workContent` 和首个 `subject/description`，不能把首个步骤复制成整个顶层标题。
+- LLM 可遍历全部未完成顶层任务，而不是只处理第一项；大型 Checklist Work 在同一顶层持续追加进度，不按阶段拆成多个顶层 Todo。
 - 顶层工作按优先级高→中→低执行；同优先级严格保持滴答清单返回顺序。
 - 读取并保留优先级、开始/截止时间、时区、全天、提醒和重复字段。
 
@@ -74,9 +75,9 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 验收不是靠 LLM“记得做”，而是 `WorkFinalizer` 自动触发的完成不变量：
 
 ```text
-最后一个 Checklist 完成
+Direct Work 的全部 Execution Steps 完成，或 Checklist Work 明确声明整个顶层目标完成
 → 等待本轮 Agent settled（无工具、重试、压缩或 follow-up 继续执行）
-→ 重新确认仍无未完成步骤
+→ 重新确认仍无未完成步骤且满足对应顶层完成语义
 → 根据每一步 resolution 生成完成报告
 → 幂等创建/复用 🧑‍🔬 待验收 Todo
 → 设置完成后 +3/+6 分钟两次提醒
@@ -125,7 +126,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 ### 最简流程：全局安装 + 登录
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.8
+pi install git:github.com/ztllll/dida-todo@v0.6.9
 ```
 
 新开任意 Pi 会话，直接告诉 LLM：
@@ -153,7 +154,7 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 升级：
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.8
+pi install git:github.com/ztllll/dida-todo@v0.6.9
 # 或安装 main：pi install git:github.com/ztllll/dida-todo
 ```
 
@@ -269,7 +270,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前 `v0.6.8` 已通过 36 个测试文件、145 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、官方 Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
+当前 `v0.6.9` 已通过 38 个测试文件、152 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、官方 Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
 
 ## 开发成员
 
@@ -335,7 +336,7 @@ One fixed Dida365 project per local project / tmux target
 ## Install
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.8
+pi install git:github.com/ztllll/dida-todo@v0.6.9
 ```
 
 In any new Pi session, tell the LLM:
@@ -446,7 +447,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.6.8` passed 145 default automated tests across 34 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, idle polling, zero-configuration project provisioning, and UX simplification. Release `v0.6.9` passed 152 default automated tests across 34 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
 
 ## Team
 

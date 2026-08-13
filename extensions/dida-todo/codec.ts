@@ -56,6 +56,7 @@ export function decodeMetadata(content: string | undefined): WorkMetadata | unde
 }
 
 export function metadataToItems(metadata: WorkMetadata, remoteItems: DidaChecklistItem[] = []): DidaChecklistItem[] {
+  if (metadata.schemaVersion === 2 && metadata.workType === "direct") return [];
   const byId = new Map(remoteItems.filter((item) => item.id).map((item) => [item.id as string, item]));
   return metadata.tasks
     .filter((task) => task.status !== "deleted")

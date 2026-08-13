@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { WorkTask } from "./domain.js";
 import { DidaTodoRepository } from "./repository.js";
-import { getSessionRuntime, pendingWorkFinalizations, updateSessionWork, updateSessionWorks } from "./runtime.js";
+import { getSessionRuntime, pendingWorkFinalizations, queueWorkFinalization, updateSessionWork, updateSessionWorks } from "./runtime.js";
 import { formatWorkContentForAgent, hasUnfinishedTasks, isExecutableWork, nextUnfinishedWork, rankExecutableWorks } from "./work-queue.js";
 import { migrateWorkMetadata } from "./work-lifecycle.js";
 import { formatWorkSchedule } from "./scheduling.js";
@@ -28,12 +28,12 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
     promptSnippet: "Inspect and switch the Dida top-level work queue",
     promptGuidelines: [
       "When checking todo, process all prioritized unfinished top-level Dida work tasks, not only the currently selected work.",
-      "Treat each Dida work as one complete payload: title, description, content, and Checklist. Direct tasks without Checklist require decomposition from all top-level fields; hierarchical tasks still require reading top-level description/content instead of executing only item titles.",
+      "Treat each Dida work as one complete payload. Direct work uses top-level title/description/content as the task and executionSteps only as internal progress. Checklist work uses a stable top-level objective plus visible Items that can accumulate across turns and sessions; never split one large objective into a new top-level work per phase.",
       "Never execute or mention priority-0 Dida work during automatic checks; it is a draft until the user assigns low, medium, or high priority.",
       "Respect Dida priority and time range when ordering work. High priority is 5, medium 3, low 1; none 0 is not executable.",
       "Pending acceptances are handled by repository identity rules: comments from the same userId as the system acceptance comment automatically become a new rework; comments from any other or missing userId are ignored and must not be surfaced or executed.",
-      "Completing the last Checklist item automatically creates or reuses the human acceptance Todo and completes the source work. Correctness does not depend on the LLM remembering finish_current.",
-      "finish_current remains an idempotent recovery action for older or externally completed work. Then call next and continue until no unfinished work remains or user input is required.",
+      "For direct work, completing all internal execution steps allows settled finalization. For checklist work, completed Items are progress only: call finish_current exactly once only after the entire top-level objective is genuinely complete and verified.",
+      "finish_current marks a checklist top-level work ready for acceptance, then atomically creates/reuses acceptance and completes the source. Do not call it at a phase boundary or merely because all currently known Items are complete.",
     ],
     parameters: Type.Object({
       action: StringEnum(TODO_WORK_ACTIONS),
@@ -47,7 +47,9 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
       const currentId = runtime.work?.remote.id;
 
       if (params.action === "finish_current" && runtime.work) {
-        await repository.finishWork(runtime.scope, runtime.work.remote.id, signal);
+        const ready = await repository.markWorkReadyForAcceptance(runtime.scope, runtime.work.remote.id, signal);
+        updateSessionWork(sessionId, ready);
+        queueWorkFinalization(sessionId, ready.remote.id);
       }
       const sync = await repository.syncOpenWorks(runtime.scope, {
         adoptUnmanaged: true,
@@ -64,7 +66,7 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
         selected = sync.works.find((work) => work.remote.id === currentId && isExecutableWork(work));
       }
       if (selected) updateSessionWork(sessionId, selected);
-      else if (params.action === "next" || params.action === "finish_current") updateSessionWork(sessionId, undefined);
+      else if (params.action === "next") updateSessionWork(sessionId, undefined);
       onWorkChanged();
 
       const works = rankExecutableWorks(sync.works).map((work) => ({

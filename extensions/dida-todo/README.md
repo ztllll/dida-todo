@@ -55,7 +55,7 @@ cross_turn_recovery / background_or_acceptance / current_work_step
 
 ### `todo`
 
-管理当前顶层工作中的 Checklist：
+管理当前顶层工作的 Execution Steps / Checklist Items。新工作必须明确 `workType`：`direct` 的步骤只保存在 metadata，`checklist` 的步骤写入滴答 Items；新 Checklist 还必须把稳定 `workTitle/workDescription/workContent` 与 Item 的 `subject/description` 分离：
 
 ```text
 create / update / list / get / delete / clear
@@ -90,8 +90,8 @@ list / switch / next / refresh / finish_current
 Repository 固化并自动触发以下不变量：
 
 ```text
-最后一个 Checklist 完成
-→ 等待 Agent settled 并重新确认仍无未完成步骤
+Direct Work 全部 Execution Steps 完成，或 Checklist Work 通过 finish_current 明确整体完成
+→ 等待 Agent settled 并重新确认仍无未完成步骤及对应顶层完成信号
 → 根据原任务描述/正文、Checklist 与 metadata.resolution 生成安全占位报告
 → 幂等创建或复用待验收 Todo
 → 设置完成后 +3/+6 分钟两次提醒

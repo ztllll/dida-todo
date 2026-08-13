@@ -136,7 +136,7 @@ describe("todo 空清单首次使用", () => {
     removeSessionRuntime(sessionId);
   });
 
-  it("当前项目已初始化但没有活动工作时，有持久追踪理由的 create 自动创建顶层 Dida 工作后再写 Checklist", async () => {
+  it("新 Checklist 工作要求 workTitle 与首个步骤 subject 分离", async () => {
     const sessionId = "bootstrap-session";
     const scope: TodoScope = {
       binding: { key: "tmux:demo:0.0", projectId: "project", cwd: "/workspace/demo" },
@@ -149,7 +149,10 @@ describe("todo 空清单首次使用", () => {
     let tool: any;
     const calls: string[] = [];
     const repository = {
-      async createWork(_scope: TodoScope, title: string) { calls.push(`work:${title}`); return emptyWork(title); },
+      async createWork(_scope: TodoScope, title: string, _signal?: AbortSignal, workType?: string) {
+        calls.push(`work:${title}:${workType}`);
+        return emptyWork(title);
+      },
       async createTask(_scope: TodoScope, _workId: string, input: { subject: string }) {
         calls.push(`task:${input.subject}`);
         const work = emptyWork("更新 CPA");
@@ -164,13 +167,15 @@ describe("todo 空清单首次使用", () => {
 
     const result = await tool.execute("call", {
       action: "create",
+      workTitle: "升级 CPA 发布链",
+      workType: "checklist",
       subject: "准备更新",
       trackingReason: "multi_step_implementation",
     }, undefined, undefined, {
       sessionManager: { getSessionId: () => sessionId },
     });
 
-    expect(calls).toEqual(["work:准备更新", "task:准备更新"]);
+    expect(calls).toEqual(["work:升级 CPA 发布链:checklist", "task:准备更新"]);
     expect(result.content[0].text).toContain("Created #1");
     expect(result.details.tasks[0]?.metadata?.trackingReason).toBe("multi_step_implementation");
     expect(getSessionRuntime(sessionId)?.work?.remote.id).toBe("remote-work");

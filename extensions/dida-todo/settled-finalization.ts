@@ -1,5 +1,6 @@
 import type { TodoScope, WorkTask } from "./domain.js";
 import type { DidaTodoRepository } from "./repository.js";
+import { isWorkReadyForFinalization } from "./work-type.js";
 
 export type SettledFinalizationResult =
   | { state: "finalized"; work: WorkTask }
@@ -13,7 +14,7 @@ export async function finalizeWorkAtSettlement(
 ): Promise<SettledFinalizationResult> {
   const work = await repository.getWork(scope, workId, signal);
   const visible = work.tasks.filter((task) => task.status !== "deleted");
-  if (!visible.length || !visible.every((task) => task.status === "completed")) {
+  if (!visible.length || !visible.every((task) => task.status === "completed") || !isWorkReadyForFinalization(work)) {
     return { state: "not-ready", work };
   }
   await repository.finishWork(scope, workId, signal);

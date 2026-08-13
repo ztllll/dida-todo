@@ -45,11 +45,10 @@ export class DidaCliGateway implements DidaGateway {
       String(input.projectId),
       "--content",
       String(input.content ?? ""),
-      "--items",
-      JSON.stringify(input.items ?? []),
       "--tags",
       Array.isArray(input.tags) ? input.tags.join(",") : "pi-todo",
     ];
+    if (input.items !== undefined) args.push("--items", JSON.stringify(input.items));
     if (input.desc !== undefined) args.push("--desc", String(input.desc));
     if (input.isAllDay === true) args.push("--all-day");
     if (input.startDate !== undefined) args.push("--start-date", String(input.startDate));
@@ -76,13 +75,12 @@ export class DidaCliGateway implements DidaGateway {
       String(input.title),
       "--content",
       String(input.content ?? ""),
-      "--items",
-      JSON.stringify(input.items ?? []),
       "--tags",
       Array.isArray(input.tags) ? input.tags.join(",") : "pi-todo",
       "--priority",
       String(input.priority ?? 0),
     ];
+    if (input.items !== undefined) args.push("--items", JSON.stringify(input.items));
     if (input.desc !== undefined) args.push("--desc", String(input.desc));
     if (input.isAllDay === true) args.push("--all-day");
     if (input.startDate !== undefined) args.push("--start-date", String(input.startDate));

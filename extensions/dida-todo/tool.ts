@@ -2,14 +2,19 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import type { Task, TaskStatus, TodoScope, WorkTask } from "./domain.js";
+import type { DidaWorkType, Task, TaskStatus, TodoScope, WorkTask } from "./domain.js";
 import { DidaTodoRepository, type CreateTaskInput, type UpdateTaskInput } from "./repository.js";
 import { allowedTrackingReasons, getActiveTasks, getSessionRuntime, queueWorkFinalization, resolveWorkFinalization, updateSessionWork } from "./runtime.js";
 import { TODO_TRACKING_REASONS, type TodoTrackingReason } from "./tracking-policy.js";
+import { requiresExplicitWorkCompletion } from "./work-type.js";
 
 const Params = Type.Object({
   action: StringEnum(["create", "update", "list", "get", "delete", "clear"] as const),
-  subject: Type.Optional(Type.String({ description: "Task subject line (required for create)" })),
+  subject: Type.Optional(Type.String({ description: "Checklist/internal execution step subject (required for create)" })),
+  workTitle: Type.Optional(Type.String({ description: "Stable top-level work title. Required when create starts a new checklist work; must describe the whole objective, not the first step." })),
+  workDescription: Type.Optional(Type.String({ description: "Top-level Dida task description, distinct from the Checklist step description." })),
+  workContent: Type.Optional(Type.String({ description: "Top-level Dida task body/details, distinct from Checklist Items." })),
+  workType: Type.Optional(StringEnum(["direct", "checklist"] as const, { description: "Required when create starts a new work. direct keeps execution steps in managed metadata; checklist writes visible Dida Checklist Items and requires explicit top-level completion." })),
   trackingReason: Type.Optional(StringEnum(TODO_TRACKING_REASONS, {
     description: "Required for every create. Use current_work_step only for a genuine additional step of the active Dida work; otherwise use one durable top-level tracking reason. Ordinary chat, Q&A, one-off research, read-only inspection, translation, summarization, or merely using multiple tools are not valid reasons.",
   })),
@@ -28,6 +33,10 @@ const Params = Type.Object({
 export interface TodoParams {
   action: "create" | "update" | "list" | "get" | "delete" | "clear";
   subject?: string;
+  workTitle?: string;
+  workDescription?: string;
+  workContent?: string;
+  workType?: DidaWorkType;
   trackingReason?: TodoTrackingReason;
   description?: string;
   activeForm?: string;
@@ -78,11 +87,12 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       "When the user asks to check todo, inspect the Dida-synchronized work tasks injected into the prompt, choose the relevant unfinished work, and execute it rather than merely listing it.",
       "Use todo only for durable user work that needs persistent progress: the user explicitly requested tracking, a multi-step implementation changes code/config/services, the work must survive across turns/sessions, or background work needs later acceptance. Keep exactly one task in_progress.",
       "Do not use todo for ordinary chat, simple Q&A, one-off web research, read-only inspection, a short command, diagnosis that does not become implementation, translation, rewriting, or summarization. The number of internal tool calls is never by itself a reason to create Todo.",
-      "Every todo create requires trackingReason. Starting a top-level work requires one durable reason; current_work_step is valid only for a genuine additional step of the active Dida work. Do not invent a reason to bypass this gate.",
+      "Every todo create requires trackingReason. Starting a top-level work also requires workType. For checklist work, workTitle is mandatory and must name the whole durable objective separately from the first subject step. current_work_step is valid only for a genuine additional step of the active Dida work.",
+      "Use direct work when the Dida top-level title/description/body is the whole task and Checklist is not useful; internal execution steps stay hidden in managed metadata. Use checklist work for a large durable objective whose visible Dida Items are progress stages across turns or sessions.",
       "Never append unrelated ordinary chat or a separate one-off request to an existing work. If it does not belong to the current durable work, do not call todo.",
       "Mark a task in_progress before beginning it and completed immediately after verified completion.",
       "Do not complete tasks with failing tests or unresolved blockers.",
-      "Top-level Dida work selection is handled internally through todo_work; users normally interact through natural language. todo actions operate on Checklist steps, and completing the last step automatically creates human acceptance and completes the source work.",
+      "Top-level Dida work selection is handled internally through todo_work. Completing all direct-work execution steps may settle and finalize automatically. Completing Checklist Items updates progress only; the top-level checklist work stays open until todo_work finish_current explicitly declares the whole objective complete.",
       "When completing a task, include metadata.resolution with a concise explanation of how it was solved; it is written back to Dida as a task comment.",
       "For user-created Dida works, todo create may append any number of new Checklist steps to the same work. Never rewrite or delete the user's original Checklist text; only advance its execution status and attach metadata.resolution.",
     ],
@@ -123,7 +133,18 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
         if (!params.trackingReason || params.trackingReason === "current_work_step") {
           throw new Error("trackingReason required：新顶层 Todo 只能使用用户明确追踪、多步骤实施、跨轮恢复或后台验收理由；普通聊天、问答和一次性查询不得创建");
         }
-        work = await repository.createWork(scope, params.subject, signal);
+        if (!params.workType) throw new Error("workType required：新工作必须明确 direct 或 checklist");
+        if (params.workType === "checklist" && !params.workTitle?.trim()) {
+          throw new Error("workTitle required：Checklist 大任务必须提供稳定顶层标题，不能把首个步骤 subject 当作整个工作");
+        }
+        work = await repository.createWork(
+          scope,
+          params.workTitle?.trim() || params.subject,
+          signal,
+          params.workType,
+          params.workContent,
+          params.workDescription,
+        );
         startedNewWork = true;
         updateSessionWork(sessionId, work);
       }
@@ -131,7 +152,16 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
         if (!params.trackingReason || params.trackingReason === "current_work_step") {
           throw new Error("trackingReason required：新顶层 Todo 只用于需要持久追踪的用户工作");
         }
-        work = await repository.createWork(scope, params.subject, signal);
+        if (!params.workType) throw new Error("workType required：新工作必须明确 direct 或 checklist");
+        if (params.workType === "checklist" && !params.workTitle?.trim()) throw new Error("workTitle required：Checklist 大任务必须提供稳定顶层标题");
+        work = await repository.createWork(
+          scope,
+          params.workTitle?.trim() || params.subject,
+          signal,
+          params.workType,
+          params.workContent,
+          params.workDescription,
+        );
         startedNewWork = true;
         updateSessionWork(sessionId, work);
       }
@@ -214,7 +244,11 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
         // conversation. A later todo create replaces it with the next work.
         updateSessionWork(sessionId, nextWork);
         const visible = nextWork.tasks.filter((task) => task.status !== "deleted");
-        if (visible.length > 0 && visible.every((task) => task.status === "completed")) {
+        if (
+          visible.length > 0
+          && visible.every((task) => task.status === "completed")
+          && !requiresExplicitWorkCompletion(nextWork)
+        ) {
           queueWorkFinalization(sessionId, nextWork.remote.id);
         } else {
           resolveWorkFinalization(sessionId, nextWork.remote.id);

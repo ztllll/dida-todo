@@ -1,7 +1,7 @@
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { withHostLock } from "./host-lock.js";
 import { decodeWorkTask, encodeManagedContent, metadataToItems, synchronizeItemIds } from "./codec.js";
-import { claimCurrentOccurrence, claimDidaWork, createPiWorkMetadata, migrateWorkMetadata } from "./work-lifecycle.js";
+import { claimCurrentOccurrence, claimDidaWork, createPiWorkMetadata, migrateWorkMetadata, readyForAcceptance } from "./work-lifecycle.js";
 import { WorkFinalizer } from "./work-finalizer.js";
 import type {
   DidaProjectData,
@@ -11,6 +11,7 @@ import type {
   TodoScope,
   WorkMetadata,
   WorkTask,
+  DidaWorkType,
 } from "./domain.js";
 import { buildCompletionReminderInput } from "./scheduling.js";
 import {
@@ -274,7 +275,14 @@ export class DidaTodoRepository {
     return work;
   }
 
-  async createWork(scope: TodoScope, title: string, signal?: AbortSignal): Promise<WorkTask> {
+  async createWork(
+    scope: TodoScope,
+    title: string,
+    signal?: AbortSignal,
+    workType: DidaWorkType = "checklist",
+    content?: string,
+    description?: string,
+  ): Promise<WorkTask> {
     if (!title.trim()) throw new Error("工作任务标题不能为空");
     const normalizedTitle = title.trim();
     return withHostLock(`bootstrap:${scope.binding.projectId}:${scope.sessionId}`, async () => {
@@ -286,13 +294,15 @@ export class DidaTodoRepository {
           && work.remote.title === normalizedTitle;
       });
       if (currentWork) return currentWork;
-      const metadata: WorkMetadata = createPiWorkMetadata(scope);
+      const metadata: WorkMetadata = createPiWorkMetadata(scope, workType);
+      const userContent = content?.trim() ?? "";
     let remote = await this.gateway.createTask(
       {
         title: normalizedTitle,
         projectId: scope.binding.projectId,
-        content: encodeManagedContent("", metadata),
-        items: [],
+        content: encodeManagedContent(userContent, metadata),
+        ...(workType === "checklist" ? { items: [] } : {}),
+        ...(description?.trim() ? { desc: description.trim() } : {}),
         tags: ["pi-todo"],
       },
       signal,
@@ -300,10 +310,10 @@ export class DidaTodoRepository {
     const synced = synchronizeItemIds(metadata, remote);
     remote = await this.gateway.updateTask(
       remote.id,
-      this.buildUpdateInput(remote, synced, ""),
+      this.buildUpdateInput(remote, synced, userContent),
       signal,
     );
-      return decodeWorkTask(remote) ?? { remote, metadata: synced, tasks: synced.tasks, userContent: "" };
+      return decodeWorkTask(remote) ?? { remote, metadata: synced, tasks: synced.tasks, userContent };
     });
   }
 
@@ -395,6 +405,16 @@ export class DidaTodoRepository {
       }
       return metadata;
     }, input.status === "completed" && !options.deferFinalization ? id : undefined);
+  }
+
+  async markWorkReadyForAcceptance(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<WorkTask> {
+    return this.mutate(scope, workId, signal, async (work) => {
+      const visible = work.tasks.filter((task) => task.status !== "deleted");
+      const unfinished = visible.filter((task) => task.status === "pending" || task.status === "in_progress");
+      if (!visible.length) throw new Error("工作任务没有可验收的执行步骤");
+      if (unfinished.length) throw new Error(`工作任务仍有 ${unfinished.length} 个未完成步骤，不能声明整体完成`);
+      return readyForAcceptance(work.metadata);
+    });
   }
 
   async finishWork(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<FinishWorkResult> {
@@ -501,7 +521,7 @@ export class DidaTodoRepository {
       projectId: remote.projectId,
       title: remote.title,
       content: encodeManagedContent(userContent, metadata),
-      items,
+      ...(metadata.schemaVersion === 2 && metadata.workType === "direct" ? {} : { items }),
       tags: [...new Set([...(remote.tags ?? []), "pi-todo"])],
       priority: remote.priority ?? 0,
       ...(remote.desc !== undefined ? { desc: remote.desc } : {}),

@@ -110,6 +110,7 @@ describe("滴答 Todo Repository seam", () => {
     expect(completed.tasks[0]?.status).toBe("completed");
     expect(completed.metadata.activeTaskId).toBeUndefined();
 
+    await repo.markWorkReadyForAcceptance(scope, work.remote.id);
     await repo.finishWork(scope, work.remote.id);
     expect((await gateway.getTask(scope.binding.projectId, work.remote.id)).status).toBe(2);
   });

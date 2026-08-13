@@ -39,7 +39,8 @@ describe("多工作任务执行队列", () => {
     expect(text).toContain('"title":"直接任务标题"');
     expect(text).toContain('"description":"直接任务描述"');
     expect(text).toContain('"content":"正文第一行\\n正文第二行：123321"');
-    expect(text).toContain('"checklist":[]');
+    expect(text).toContain('"executionSteps":[]');
+    expect(text).not.toContain('"checklist":[]');
     expect(text).toContain("必须结合标题、描述和正文理解整体任务");
     expect(text).toContain("workId: empty");
   });

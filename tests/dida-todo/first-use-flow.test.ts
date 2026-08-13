@@ -94,7 +94,9 @@ describe("安装登录后的完整首次使用", () => {
     setAllowedTrackingReasons(sessionId, ["multi_step_implementation", "current_work_step"]);
     const created = await todoTool.execute("todo", {
       action: "create",
-      subject: "修复登录流程",
+      workTitle: "修复登录流程",
+      workType: "checklist",
+      subject: "修复登录流程首个阶段",
       trackingReason: "multi_step_implementation",
     }, undefined, undefined, ctx);
 
@@ -103,7 +105,7 @@ describe("安装登录后的完整首次使用", () => {
     expect(gateway.projects).toEqual([{ id: "project", name: "demo" }]);
     expect(gateway.tasks).toHaveLength(1);
     expect(gateway.tasks[0]?.title).toBe("修复登录流程");
-    expect(gateway.tasks[0]?.items).toEqual([expect.objectContaining({ title: "修复登录流程", status: 0 })]);
+    expect(gateway.tasks[0]?.items).toEqual([expect.objectContaining({ title: "修复登录流程首个阶段", status: 0 })]);
     removeSessionRuntime(sessionId);
   });
 
@@ -136,6 +138,8 @@ describe("安装登录后的完整首次使用", () => {
     setAllowedTrackingReasons(sessionId, ["user_requested_tracking", "current_work_step"]);
     await todoTool.execute("create-1", {
       action: "create",
+      workTitle: "跨阶段大任务",
+      workType: "checklist",
       subject: "第一项工作",
       trackingReason: "user_requested_tracking",
     }, undefined, undefined, ctx);
@@ -154,7 +158,7 @@ describe("安装登录后的完整首次使用", () => {
     }, undefined, undefined, ctx);
 
     expect(second.content[0].text).toContain("Created #2");
-    expect(getSessionRuntime(sessionId)?.work?.remote.title).toBe("第一项工作");
+    expect(getSessionRuntime(sessionId)?.work?.remote.title).toBe("跨阶段大任务");
     expect(getSessionRuntime(sessionId)?.work?.tasks.map((task) => task.subject)).toEqual(["第一项工作", "第二项工作"]);
     expect(gateway.tasks.filter((task) => task.tags?.includes("pi-todo"))).toHaveLength(1);
     expect(gateway.tasks.some((task) => task.tags?.includes("pi-todo-acceptance"))).toBe(false);

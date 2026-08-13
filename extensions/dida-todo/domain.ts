@@ -78,6 +78,7 @@ export interface WorkMetadataV1 {
 }
 
 export type WorkOrigin = "pi" | "dida";
+export type DidaWorkType = "direct" | "checklist";
 export type WorkLifecycleState = "draft" | "claimed" | "running" | "ready_for_acceptance" | "finalized";
 
 export interface WorkMetadataV2 {
@@ -86,6 +87,8 @@ export interface WorkMetadataV2 {
   bindingKey: string;
   origin: WorkOrigin;
   lifecycle: WorkLifecycleState;
+  workType?: DidaWorkType;
+  workTypeMigratedFromLegacy?: boolean;
   migratedFromVersion?: 1;
   execution?: {
     occurrence?: string;

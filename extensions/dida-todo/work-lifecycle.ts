@@ -1,5 +1,6 @@
 import { occurrenceKeyForTask } from "./scheduling.js";
-import type { DidaTask, TodoScope, WorkLifecycleState, WorkMetadata, WorkMetadataV2, WorkOrigin, WorkTask } from "./domain.js";
+import type { DidaTask, DidaWorkType, TodoScope, WorkLifecycleState, WorkMetadata, WorkMetadataV2, WorkOrigin, WorkTask } from "./domain.js";
+import { inferWorkType } from "./work-type.js";
 
 function now(): string {
   return new Date().toISOString();
@@ -26,13 +27,14 @@ export function migrateWorkMetadata(metadata: WorkMetadata): WorkMetadataV2 {
   return { ...v2Base(metadata, "dida", "draft"), migratedFromVersion: 1 };
 }
 
-export function createPiWorkMetadata(scope: TodoScope): WorkMetadataV2 {
+export function createPiWorkMetadata(scope: TodoScope, workType: DidaWorkType = "checklist"): WorkMetadataV2 {
   return {
     schemaVersion: 2,
     kind: "pi-todo-work",
     bindingKey: scope.bindingKey,
     origin: "pi",
     lifecycle: "claimed",
+    workType,
     execution: {
       claimedAt: now(),
       owner: { hostId: hostId(), sessionId: scope.sessionId },
@@ -47,11 +49,13 @@ export function createPiWorkMetadata(scope: TodoScope): WorkMetadataV2 {
 
 export function claimDidaWork(metadata: WorkMetadata, remote: DidaTask, scope: TodoScope): WorkMetadataV2 {
   const current = migrateWorkMetadata(metadata);
-  if ((remote.priority ?? 0) <= 0) return { ...current, origin: "dida", lifecycle: "draft" };
+  const workType = current.workType ?? inferWorkType(remote);
+  if ((remote.priority ?? 0) <= 0) return { ...current, origin: "dida", lifecycle: "draft", workType };
   return {
     ...current,
     origin: "dida",
     lifecycle: "claimed",
+    workType,
     execution: {
       occurrence: occurrenceKeyForTask(remote),
       claimedAt: now(),
