@@ -17,7 +17,8 @@
 5. 必须保持核心不变量：没有未完成的人类验收 Todo，源工作不能进入 completed。
 6. 改动任务模型、完成语义或远端数据格式时，请同时补充测试和 README。
 7. 改动调度、循环任务、Poller 或 Package 加载/升级生命周期时，必须同步更新 `docs/operations/recurring-scheduling-and-live-upgrades.md`。
-8. PR 请说明：问题、方案、风险、测试方式，以及是否影响既有滴答数据或正在运行的 Pi 进程。
+8. OpenClaw、Claude Code、Codex 或其他宿主适配必须先阅读 `DEVELOPMENT.md` 与 `docs/development/multi-cli-adapter-development-guide.md`，保持 Pi Adapter 冻结兼容、独立 namespace、Turn Grant 和真实宿主验收要求。
+9. PR 请说明：问题、方案、风险、测试方式，以及是否影响既有滴答数据或正在运行的 Pi 进程。
 
 ## English
 
@@ -30,4 +31,5 @@ Thank you for contributing.
 5. Preserve the invariant: source work cannot complete before a pending human-acceptance Todo exists.
 6. Changes to the domain model, completion semantics, or remote format require tests and documentation updates.
 7. Scheduling, recurrence, Poller, or package loading/upgrade changes must also update `docs/operations/recurring-scheduling-and-live-upgrades.md`.
-8. PRs should describe the problem, solution, risks, verification, and impact on existing Dida365 data or running Pi processes.
+8. OpenClaw, Claude Code, Codex, or other host-adapter work must follow `DEVELOPMENT.md` and `docs/development/multi-cli-adapter-development-guide.md`, including Pi compatibility, isolated namespaces, Turn Grants, and real-host acceptance.
+9. PRs should describe the problem, solution, risks, verification, and impact on existing Dida365 data or running Pi processes.

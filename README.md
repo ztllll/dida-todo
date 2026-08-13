@@ -123,7 +123,15 @@ Direct Work 的全部 Execution Steps 完成，或 Checklist Work 明确声明�
 - 官方 Task/Comment schema 没有附件字段，也没有文件上传、下载或图片评论 endpoint；因此不承诺读取滴答原生附件，也不通过私有 API 上传结果文件。
 - 经 tmuxbot 使用时，Telegram/飞书图片和文件可以下载到受控本地路径交给 Agent；完成后的真实本地图片/文件可由最终回复引用，并上传回同一精确 IM endpoint。
 
-### 9. 会话独立与永久历史
+### 9. 多 CLI 适配边界
+
+当前正式实现和发布单元只支持 Pi。经 OpenClaw、Claude Code 与 Codex CLI 第一方接口核验，dida-todo 可以扩展到这些宿主，但不会把其他 CLI 的生命周期分支塞进已验收的 Pi 入口。
+
+推荐架构是一个宿主中立 Todo Engine 加四个独立 Host Adapter/Package。OpenClaw 原生插件最适合首个完整适配；Claude Code 和 Codex CLI 可使用 Plugin + MCP + `UserPromptSubmit`/`Stop` hooks 实现高完整度适配。只有 MCP、没有可信宿主 hooks 时属于降级模式，不能保证精确 `检查todo`、settled 收口或最终回复回填。
+
+其他 adapter 首版必须使用独立 binding/project namespace，不得因为 cwd 相同就自动接管 Pi 的 Dida project；Pi 工具名、Overlay、配置和发布单元保持不变。本研究尚未实现或部署其他 CLI adapter。后续 LLM/开发者请从根部 [`DEVELOPMENT.md`](DEVELOPMENT.md) 开始，并按[完整开发手册](docs/development/multi-cli-adapter-development-guide.md)、[多 CLI 可行性研究](docs/research/2026-08-13-multi-cli-adapter-feasibility.md)与 [ADR-0001](docs/adr/0001-host-neutral-core-with-isolated-cli-adapters.md)执行。
+
+### 10. 会话独立与永久历史
 
 - `/new`、会话切换、compact 或 detach 不删除滴答历史。
 - 滴答是唯一任务真源；Pi Runtime 只是当前展示与活动工作缓存。
@@ -347,6 +355,7 @@ Capture ideas, bugs, and feature requests in Dida365 from your phone or browser.
 - **Identity-gated feedback loop:** keep acceptance open and comment with the current Dida OAuth account. The Repository matches the comment `userId` against the acceptance system-comment author, atomically creates a separate rework, and closes the superseded acceptance. Other or missing identities are silently ignored; descriptions remain non-control data.
 - **Links and files:** HTTPS links in task text round-trip and are treated as untrusted external resources. Dida's public OpenAPI has no native attachment upload/download surface; tmuxbot can instead deliver incoming and outgoing files through the exact Telegram/Feishu endpoint.
 - **Same-host resilience:** metadata v2 tracks origin/lifecycle/occurrence; real cross-process locks serialize mutation, priority migration, finalization, provisioning, and config writes. Cross-host strong consistency is not claimed without a Dida CAS/ETag/idempotency API.
+- **Multi-CLI feasibility, not current support:** first-party interfaces show that OpenClaw, Claude Code, and Codex CLI can host dedicated adapters. The planned shape is one host-neutral Todo Engine plus isolated packages; MCP-only integration is degraded and cannot claim exact-input or settled-finalization parity. No non-Pi adapter is implemented or deployed yet. Future implementers should start with [`DEVELOPMENT.md`](DEVELOPMENT.md) and the [executable adapter guide](docs/development/multi-cli-adapter-development-guide.md).
 
 ## Model
 
@@ -458,6 +467,7 @@ Direct work finalizes only after all execution steps settle. Pi-created Checklis
 4. The current scope targets Dida365 and does not claim TickTick International compatibility.
 5. Adoption writes managed metadata into the target task; use a dedicated project and test first.
 6. It cannot coexist with `rpiv-todo` because both intentionally expose `todo` and `/todos`.
+7. The current release supports Pi only. OpenClaw, Claude Code, and Codex CLI adapter support is a researched architecture, not a shipped feature; see the [multi-CLI feasibility report](docs/research/2026-08-13-multi-cli-adapter-feasibility.md).
 
 ## References and acknowledgements
 
@@ -487,7 +497,7 @@ npm ci
 npm run check
 ```
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) before contributing.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) before contributing. Multi-CLI adapter work must also follow [DEVELOPMENT.md](DEVELOPMENT.md) and the [adapter development guide](docs/development/multi-cli-adapter-development-guide.md).
 
 ## Releases
 

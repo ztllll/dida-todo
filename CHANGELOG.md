@@ -6,6 +6,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ### Documentation
 
+- Add a first-party feasibility study for OpenClaw, Claude Code, and Codex CLI. Record the decision to keep the accepted Pi adapter isolated while introducing a future host-neutral Todo Engine, per-host packages, one-time host-scoped Turn Grants, and default per-adapter project namespaces. No non-Pi adapter is implemented or deployed.
+- Add `DEVELOPMENT.md` and an executable multi-CLI adapter development guide with repository entry order, module map, target interfaces, per-host hook mappings, TDD phases, security gates, test matrix, issue/PR/handoff templates, and Definition of Done so another LLM can start from verified constraints instead of repeating the research.
 - Clarify recurring task scheduling: synchronization can observe a future occurrence, but priority never bypasses the task-local date/time gate. Timed tasks execute only on the scheduled day at or after `startDate` (falling back to `dueDate`); all-day tasks use only the calendar-date gate.
 - Clarify that the legacy Poller is no-op. Reaching a scheduled time does not wake Pi; execution starts only on the next exact `检查todo` queue check.
 - Document the safe live-upgrade boundary: installing a Git package replaces the shared checkout and dependencies but does not reload existing Pi processes. Busy sessions must become idle before installation and then use `/reload` or a new process.

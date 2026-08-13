@@ -12,9 +12,14 @@ describe("dida-todo Pi Package manifest", () => {
     expect(pkg.pi.extensions).toEqual(["./extensions/dida-todo"]);
     expect(pkg.files).toEqual([
       "extensions/dida-todo",
+      "docs/adr",
+      "docs/development",
       "docs/operations",
+      "docs/research",
       "README.md",
       "CHANGELOG.md",
+      "CONTEXT.md",
+      "DEVELOPMENT.md",
       "LICENSE",
     ]);
   });
