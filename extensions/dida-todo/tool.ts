@@ -239,11 +239,11 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
           const current = currentTask?.status;
           text = `Updated #${params.id}${previous !== current ? ` (${previous} → ${current})` : ""}`;
           if (params.status === "in_progress" && currentTask) {
-            await repository.addProgressComment(scope, work.remote.id, `🤖 Pi 开始：${currentTask.subject}`, signal);
+            await repository.addProgressComment(scope, work.remote.id, `开始处理：${currentTask.subject}`, signal);
           }
           if (params.status === "completed" && currentTask) {
-            const resolution = typeof params.metadata?.resolution === "string" ? `\n解决：${params.metadata.resolution}` : "";
-            await repository.addProgressComment(scope, work.remote.id, `✅ Pi 完成：${currentTask.subject}${resolution}`, signal);
+            const resolution = typeof params.metadata?.resolution === "string" ? `\n结果：${params.metadata.resolution}` : "";
+            await repository.addProgressComment(scope, work.remote.id, `已完成：${currentTask.subject}${resolution}`, signal);
           }
           break;
         }

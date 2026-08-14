@@ -46,10 +46,12 @@ export function buildAcceptanceSummary(
     const resolution = typeof task.metadata?.resolution === "string" ? task.metadata.resolution : "已完成";
     return `- ${task.subject}：${resolution}`;
   });
+  const description = original?.description?.trim();
+  const content = original?.content?.trim();
   return [
-    `工作「${workTitle}」的全部执行步骤已完成。`,
-    ...(original?.description ? ["", `原任务描述：\n${original.description}`] : []),
-    ...(original?.content ? ["", `原任务正文：\n${original.content}`] : []),
+    `任务「${workTitle}」已完成。`,
+    ...(description ? ["", `任务说明：\n${description}`] : []),
+    ...(content && content !== description ? ["", `补充内容：\n${content}`] : []),
     "",
     ...lines,
   ].join("\n");
@@ -65,9 +67,9 @@ export function buildAcceptanceTaskInput(
   if (!summary.trim()) throw new Error("验收报告摘要不能为空");
   const date = utcTimestamp(new Date(now.getTime() + minutes * 60_000));
   const content = [
-    `Pi 已完成工作任务「${source.title}」，等待人类验收。`,
+    `任务「${source.title}」已完成，等待验收。`,
     "",
-    "## 完成报告",
+    "## 完成结果",
     summary.trim(),
     "",
     "## 人类操作",

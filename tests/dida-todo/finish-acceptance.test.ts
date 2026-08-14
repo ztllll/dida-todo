@@ -165,7 +165,7 @@ describe("完成工作强制人类验收", () => {
       tags: ["pi-todo-acceptance"],
       reminders: ["TRIGGER:PT0S", "TRIGGER:PT3M"],
     });
-    expect(gateway.created[0]?.content).toContain("原任务正文：\n需求说明");
+    expect(gateway.created[0]?.content).toContain("补充内容：\n需求说明");
     expect(gateway.created[0]?.content).toContain("实现搜索接口");
     expect(gateway.created[0]?.content).toContain("8 项测试通过");
     expect(gateway.completed).toEqual(["work"]);

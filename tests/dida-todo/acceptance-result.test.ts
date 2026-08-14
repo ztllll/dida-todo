@@ -86,7 +86,7 @@ describe("待验收最终回复回填", () => {
       tags: ["pi-todo-acceptance"],
       items: [],
     });
-    expect(String(update.content)).toContain("## LLM 最终回复\n" + finalResponse);
+    expect(String(update.content)).toContain("## 完成结果\n" + finalResponse);
     expect(String(update.content)).not.toContain("sourceWorkId:");
     expect(String(update.content)).toContain("如果验收通过");
     expect(String(update.content)).not.toContain("占位报告");

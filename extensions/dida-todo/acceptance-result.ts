@@ -118,9 +118,9 @@ export function buildAcceptanceResultUpdate(
 ): Record<string, unknown> {
   const result = finalResponse.trim();
   const content = [
-    `Pi 已完成工作任务「${source.title}」，等待人类验收。`,
+    `任务「${source.title}」已完成，等待验收。`,
     "",
-    "## LLM 最终回复",
+    "## 完成结果",
     result || `工作「${source.title}」已完成。`,
     "",
     "## 人类操作",
