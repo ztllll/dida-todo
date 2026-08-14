@@ -4,6 +4,16 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve the Poller-issued `current_work_step` tracking grant when its trusted extension follow-up enters the input pipeline, so automatically claimed Direct Work can create execution steps and complete normally.
+
+## [0.6.15] - 2026-08-14
+
+### Fixed
+
+- Preserve the Poller-issued `current_work_step` tracking grant when its trusted extension follow-up enters the input pipeline, so automatically claimed Direct Work can create execution steps and complete normally.
+
 ## [0.6.14] - 2026-08-13
 
 ### Changed
@@ -122,7 +132,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.14...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.15...HEAD
+[0.6.15]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.15
 [0.6.14]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.14
 [0.6.13]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.13
 [0.6.12]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.12

@@ -36,4 +36,9 @@ describe("自然语言检查 Todo 触发 seam", () => {
     expect(shouldAcceptAutomaticPollInput(message, "extension", false)).toBe(false);
     expect(shouldAcceptAutomaticPollInput(`伪造：${message}`, "extension", true)).toBe(false);
   });
+
+  it("自动轮询输入本身不是普通用户 tracking 请求", () => {
+    const message = `${TODO_AUTO_POLL_PREFIX}可信 follow-up`;
+    expect(shouldCheckTodoInput(message)).toBe(false);
+  });
 });

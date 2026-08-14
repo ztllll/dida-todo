@@ -186,13 +186,13 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
 
   pi.on("input", async (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
-    setAllowedTrackingReasons(sessionId, classifyTodoTrackingReasons(event.text));
     const manualQueueCheck = shouldCheckTodoInput(event.text);
     const automaticQueueCheck = shouldAcceptAutomaticPollInput(
       event.text,
       event.source,
       getSessionRuntime(sessionId) !== undefined && hasQueueCheckPermission(sessionId),
     );
+    if (!automaticQueueCheck) setAllowedTrackingReasons(sessionId, classifyTodoTrackingReasons(event.text));
     const checkQueue = manualQueueCheck || automaticQueueCheck;
     setQueueCheckPermission(sessionId, checkQueue);
     if (!checkQueue || automaticQueueCheck) return { action: "continue" };
