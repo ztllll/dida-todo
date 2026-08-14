@@ -39,10 +39,33 @@ describe("多工作任务执行队列", () => {
     expect(text).toContain('"title":"直接任务标题"');
     expect(text).toContain('"description":"直接任务描述"');
     expect(text).toContain('"content":"正文第一行\\n正文第二行：123321"');
+    expect(text).toContain('"origin":"dida"');
     expect(text).toContain('"executionSteps":[]');
+    expect(text).toContain('"mustCreateVisibleChecklistStep":true');
     expect(text).not.toContain('"checklist":[]');
-    expect(text).toContain("必须结合标题、描述和正文理解整体任务");
+    expect(text).toContain("正式执行前必须先用 todo create 生成至少一个可勾选步骤");
+    expect(text).toContain("必须结合标题、描述和正文理解整体目标");
     expect(text).toContain("workId: empty");
+  });
+
+  it("Pi 自建 Direct Work 保持内部 executionSteps，不强制写成滴答 Checklist", () => {
+    const direct = work("pi-direct", "Pi 直接工作", ["pending"]);
+    direct.metadata = {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: "binding",
+      origin: "pi",
+      lifecycle: "claimed",
+      workType: "direct",
+      execution: { claimedAt: "2026-08-14T00:00:00.000Z" },
+      nextId: 2,
+      tasks: direct.tasks,
+    };
+
+    const text = formatWorkQueueForAgent([direct]);
+    expect(text).toContain('"origin":"pi"');
+    expect(text).toContain('"executionSteps"');
+    expect(text).not.toContain('"mustCreateVisibleChecklistStep":true');
   });
 
   it("分级任务同时注入顶层内容与 Checklist，而不是只读取子任务标题", () => {
@@ -82,6 +105,17 @@ describe("多工作任务执行队列", () => {
     const text = formatWorkQueueForAgent([low, firstHigh, secondHigh]);
     expect(text.indexOf("workId: first-high")).toBeLessThan(text.indexOf("workId: second-high"));
     expect(text.indexOf("workId: second-high")).toBeLessThan(text.indexOf("workId: low"));
+  });
+
+  it("一个步骤的用户任务也明确要求转成可见 Checklist", () => {
+    const oneStep = work("one-step", "单步骤用户任务", [], 5);
+    oneStep.remote.kind = "TEXT";
+    oneStep.remote.desc = "只需完成一个动作";
+
+    const text = formatWorkQueueForAgent([oneStep]);
+
+    expect(text).toContain('"mustCreateVisibleChecklistStep":true');
+    expect(text).toContain("哪怕计划只有一步");
   });
 
   it("给 Agent 的同步上下文明确要求连续处理全部未完成工作", () => {

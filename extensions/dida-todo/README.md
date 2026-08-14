@@ -54,7 +54,7 @@ cross_turn_recovery / background_or_acceptance / current_work_step
 
 ### `todo`
 
-管理当前顶层工作的 Execution Steps / Checklist Items。新工作必须明确 `workType` 和 `workPriority`。Direct 使用 LLM 整理后的 `subject` 作为 Dida 必填任务名，详细要求放入 description/content，不设置额外汇总标题；Checklist 使用与首个具体 `subject` 不同的智能汇总 `workTitle`。优先级必须为 low/medium/high（1/3/5），priority=0 只保留给用户草稿：
+管理当前顶层工作的 Execution Steps / Checklist Items。用户在滴答创建的任务一旦由 LLM 正式执行，必须至少有一个可见 Checklist Item；没有 Item 的 Direct 任务在创建首个步骤时原地提升。Pi 新建工作仍必须明确 `workType` 和 `workPriority`：Pi Direct 使用整理后的 `subject` 作为任务名并保留内部步骤，Pi Checklist 使用与首个具体 `subject` 不同的智能汇总 `workTitle`。优先级必须为 low/medium/high（1/3/5），priority=0 只保留给用户草稿：
 
 ```text
 create / update / list / get / delete / clear
@@ -76,7 +76,7 @@ list / switch / next / refresh / finish_current
 
 1. 读取固定清单全部未完成任务；
 2. 自动接管用户手工创建的直接任务或 Checklist 工作；
-3. 将顶层标题、描述、正文与 Checklist 作为一个完整任务载荷注入；直接任务根据全部顶层内容拆解，分级任务也不会只读取子任务标题；
+3. 将顶层标题、描述、正文与 Checklist 作为一个完整任务载荷注入；没有 Item 的用户任务正式执行前必须先生成至少一个精确步骤，并原地提升为 Checklist；
 4. 导入用户在滴答侧新增或修改的 Checklist Item；Pi 可在同一用户工作内反复追加新 Item，但不能改名或删除用户原始 Item，只能推进状态并写 resolution；
 5. 按优先级高→中→低和时间范围向 LLM 提供全部工作；同优先级保持滴答清单返回顺序；
 6. 读取待验收报告及评论；
@@ -89,7 +89,7 @@ list / switch / next / refresh / finish_current
 Repository 固化并自动触发以下不变量：
 
 ```text
-Direct Work 全部 Execution Steps 完成，或 Checklist Work 通过 finish_current 明确整体完成
+Pi 自建 Direct Work 全部 Execution Steps 完成，或 Checklist Work 通过 finish_current 明确整体完成
 → 等待 Agent settled 并重新确认仍无未完成步骤及对应顶层完成信号
 → 根据原任务描述/正文、Checklist 与 metadata.resolution 生成安全占位报告
 → 幂等创建或复用待验收 Todo

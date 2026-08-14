@@ -4,6 +4,13 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.17] - 2026-08-14
+
+### Changed
+
+- Make the claimed-task contract explicit: every user-created Dida task must expose at least one visible Checklist Item before formal LLM execution, even for a one-step plan. Queue payloads now mark Dida-origin Direct Work with `mustCreateVisibleChecklistStep`, while Pi-origin Direct Work keeps its internal execution-step semantics.
+- Document the normalization model: the LLM derives precise actionable Items from the user's top-level title, description, body, and existing Checklist; user-authored Item text is immutable, and LLM-authored Items are appended to the same top-level task.
+
 ## [0.6.16] - 2026-08-14
 
 ### Fixed
@@ -134,7 +141,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.16...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.17...HEAD
+[0.6.17]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.17
 [0.6.16]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.16
 [0.6.15]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.15
 [0.6.14]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.14
