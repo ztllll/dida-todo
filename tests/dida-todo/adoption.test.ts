@@ -17,6 +17,28 @@ class AdoptionGateway implements DidaGateway {
   async completeTask(): Promise<void> { throw new Error("unused"); }
 }
 
+class DidaNormalizingGateway extends AdoptionGateway {
+  override async updateTask(_id: string, input: Record<string, unknown>): Promise<DidaTask> {
+    const submittedItems = structuredClone((input.items ?? this.task.items ?? []) as NonNullable<DidaTask["items"]>);
+    const becomesChecklist = submittedItems.length > 0 || this.task.kind === "CHECKLIST";
+    const responseItems = submittedItems.map((item, index) => ({ ...item, id: item.id ?? `response-${index + 1}` }));
+    const persistedItems = submittedItems.map((item, index) => ({ ...item, id: `persisted-${index + 1}` }));
+    const response = {
+      ...this.task,
+      ...structuredClone(input),
+      kind: becomesChecklist ? "CHECKLIST" : this.task.kind,
+      items: responseItems,
+    } as DidaTask;
+    this.task = {
+      ...response,
+      content: becomesChecklist ? "" : String(input.content ?? this.task.content ?? ""),
+      desc: becomesChecklist ? String(input.desc ?? "") : input.desc as string | undefined,
+      items: persistedItems,
+    };
+    return structuredClone(response);
+  }
+}
+
 const scope: TodoScope = {
   binding: { key: "tmux:example:0.0", projectId: "project-1" },
   bindingKey: "tmux:example:0.0",
@@ -102,6 +124,31 @@ describe("手工滴答任务接管 seam", () => {
       expect.objectContaining({ subject: "LLM 拆解步骤", description: "步骤说明只保存在受管元数据中" }),
     ]);
     expect(decomposed.userContent).toBe("完整需求正文");
+  });
+
+  it("滴答把 Checklist 的 content 延迟清空且重写 Item ID 后，受管元数据仍可读取并完成步骤", async () => {
+    const gateway = new DidaNormalizingGateway({
+      id: "normalized-direct",
+      projectId: "project-1",
+      title: "会被服务端归一化的一级任务",
+      content: "用户原始正文",
+      status: 0,
+      priority: 5,
+      kind: "TEXT",
+    });
+    const repo = new DidaTodoRepository(gateway);
+    const adopted = await repo.adoptWork(scope, "normalized-direct");
+
+    await repo.createTask(scope, adopted.remote.id, { subject: "等待用户确认" });
+    const persisted = await repo.getWork(scope, adopted.remote.id);
+    const completed = await repo.updateTask(scope, adopted.remote.id, 1, { status: "completed" }, undefined, { deferFinalization: true });
+
+    expect(gateway.task).toMatchObject({ kind: "CHECKLIST", content: "" });
+    expect(gateway.task.desc).toContain("用户原始正文");
+    expect(gateway.task.desc).toContain("pi-dida-todo:start");
+    expect(persisted.userContent).toBe("用户原始正文");
+    expect(persisted.tasks[0]).toMatchObject({ itemId: "persisted-1", status: "pending" });
+    expect(completed.tasks[0]).toMatchObject({ itemId: "persisted-1", status: "completed" });
   });
 
   it("历史上已拆解为内部步骤的手工 Direct Work 在下一次更新时自动提升", async () => {

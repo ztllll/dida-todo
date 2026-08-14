@@ -122,7 +122,7 @@ describe("项目 Todo 同步 seam", () => {
     expect(result.adoptedWorkIds).toEqual(["manual"]);
     expect(result.works.map((work) => work.remote.id)).toEqual(["managed", "manual"]);
     expect(result.works[1]?.tasks[0]).toMatchObject({ subject: "交给 LLM 实现", metadata: { source: "dida" } });
-    expect(gateway.tasks.find((task) => task.id === "manual")?.content).toContain("pi-dida-todo:start");
+    expect(gateway.tasks.find((task) => task.id === "manual")?.desc).toContain("pi-dida-todo:start");
   });
 
   it("同 OAuth 用户评论在同步时自动创建返工工作并关闭旧验收", async () => {

@@ -4,6 +4,13 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.18] - 2026-08-14
+
+### Fixed
+
+- Persist managed metadata for Checklist work in Dida `desc` instead of `content`, because Dida asynchronously clears `content` when a TEXT task is promoted to CHECKLIST. This keeps promoted work readable and completable after server normalization.
+- Reconcile Checklist Item IDs from the persisted task after Dida rewrites IDs, while preserving the user's original title, description, body, and Checklist text. Existing content-based managed Checklist work remains readable and migrates on its next mutation.
+
 ## [0.6.17] - 2026-08-14
 
 ### Changed
@@ -141,7 +148,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.17...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.18...HEAD
+[0.6.18]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.18
 [0.6.17]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.17
 [0.6.16]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.16
 [0.6.15]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.15

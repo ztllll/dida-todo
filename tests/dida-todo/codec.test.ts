@@ -64,6 +64,62 @@ describe("工作任务编解码 seam", () => {
     expect(decoded?.metadata.nextId).toBe(4);
   });
 
+  it("Checklist 可从 desc 恢复 managed metadata，并还原用户原始描述", () => {
+    const checklistMetadata: WorkMetadata = {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: "tmux:pi-agent:0.0",
+      origin: "dida",
+      lifecycle: "claimed",
+      workType: "checklist",
+      userDescription: "用户原始描述",
+      nextId: 2,
+      tasks: [{ id: 1, subject: "等待确认", status: "pending", itemId: "item-1" }],
+    };
+    const decoded = decodeWorkTask({
+      id: "work-desc",
+      projectId: "project-1",
+      title: "Checklist",
+      content: "",
+      desc: encodeManagedContent("用户原始正文", checklistMetadata),
+      status: 0,
+      priority: 5,
+      kind: "CHECKLIST",
+      items: [{ id: "item-1", title: "等待确认", status: 0 }],
+    });
+
+    expect(decoded?.userContent).toBe("用户原始正文");
+    expect(decoded?.remote.desc).toBe("用户原始描述");
+    expect(decoded?.metadata).toMatchObject({ userDescription: "用户原始描述" });
+  });
+
+  it("旧 Checklist 从 content 读取时自动记住原始用户描述", () => {
+    const checklistMetadata: WorkMetadata = {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: "tmux:pi-agent:0.0",
+      origin: "dida",
+      lifecycle: "claimed",
+      workType: "checklist",
+      nextId: 1,
+      tasks: [],
+    };
+    const decoded = decodeWorkTask({
+      id: "legacy-content",
+      projectId: "project-1",
+      title: "旧 Checklist",
+      content: encodeManagedContent("正文", checklistMetadata),
+      desc: "用户原始描述",
+      status: 0,
+      priority: 5,
+      kind: "CHECKLIST",
+      items: [],
+    });
+
+    expect(decoded?.metadata).toMatchObject({ userDescription: "用户原始描述" });
+    expect(decoded?.remote.desc).toBe("用户原始描述");
+  });
+
   it("Pi 已完成步骤不会被远端陈旧 pending Item 降级", () => {
     const remote: DidaTask = {
       id: "work-1",

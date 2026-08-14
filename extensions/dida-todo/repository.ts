@@ -264,6 +264,7 @@ export class DidaTodoRepository {
       ...(scope.tmuxTarget ? { tmuxTarget: scope.tmuxTarget } : {}),
       cwd: scope.cwd,
     }, remote, scope);
+    if (remote.desc?.trim()) metadata = { ...metadata, userDescription: remote.desc };
     metadata = synchronizeItemIds(metadata, remote);
     const updated = await this.gateway.updateTask(
       remote.id,
@@ -552,15 +553,18 @@ export class DidaTodoRepository {
     userContent: string,
     items = metadataToItems(metadata, remote.items ?? []),
   ): Record<string, unknown> {
+    const migrated = migrateWorkMetadata(metadata);
+    const checklist = migrated.workType === "checklist";
+    const managedContent = encodeManagedContent(userContent, metadata);
     return {
       id: remote.id,
       projectId: remote.projectId,
       title: remote.title,
-      content: encodeManagedContent(userContent, metadata),
-      ...(metadata.schemaVersion === 2 && metadata.workType === "direct" ? {} : { items }),
+      content: checklist ? "" : managedContent,
+      ...(checklist ? { items, desc: managedContent } : {}),
       tags: [...new Set([...(remote.tags ?? []), "pi-todo"])],
       priority: remote.priority ?? 0,
-      ...(remote.desc !== undefined ? { desc: remote.desc } : {}),
+      ...(!checklist && remote.desc !== undefined ? { desc: remote.desc } : {}),
       ...(remote.isAllDay !== undefined ? { isAllDay: remote.isAllDay } : {}),
       ...(remote.startDate !== undefined ? { startDate: remote.startDate } : {}),
       ...(remote.dueDate !== undefined ? { dueDate: remote.dueDate } : {}),

@@ -69,7 +69,9 @@ export function metadataToItems(metadata: WorkMetadata, remoteItems: DidaCheckli
 }
 
 export function decodeWorkTask(remote: DidaTask): WorkTask | undefined {
-  const metadata = decodeMetadata(remote.content);
+  const contentMetadata = decodeMetadata(remote.content);
+  const descriptionMetadata = decodeMetadata(remote.desc);
+  const metadata = contentMetadata ?? descriptionMetadata;
   if (!metadata) return undefined;
   const items = remote.items ?? [];
   const itemsById = new Map(items.filter((item) => item.id).map((item) => [item.id as string, item]));
@@ -111,12 +113,24 @@ export function decodeWorkTask(remote: DidaTask): WorkTask | undefined {
     });
   }
 
-  const normalizedMetadata = migrateWorkMetadata({ ...metadata, nextId, tasks });
+  let normalizedMetadata = migrateWorkMetadata({ ...metadata, nextId, tasks });
+  if (contentMetadata && !descriptionMetadata && remote.desc?.trim() && !normalizedMetadata.userDescription) {
+    normalizedMetadata = { ...normalizedMetadata, userDescription: remote.desc };
+  }
+  const normalizedRemote = structuredClone(remote);
+  if (descriptionMetadata) {
+    // Dida persists Checklist notes in desc and may asynchronously clear content.
+    // Restore the user's original description from metadata for agent-facing
+    // callers while userContent exposes the original TEXT body moved into desc.
+    if (normalizedMetadata.userDescription) normalizedRemote.desc = normalizedMetadata.userDescription;
+    else delete normalizedRemote.desc;
+    normalizedRemote.content = "";
+  }
   return {
-    remote,
+    remote: normalizedRemote,
     metadata: normalizedMetadata,
     tasks,
-    userContent: stripManagedContent(remote.content),
+    userContent: stripManagedContent(contentMetadata ? remote.content : remote.desc),
   };
 }
 

@@ -89,6 +89,7 @@ export interface WorkMetadataV2 {
   origin: WorkOrigin;
   lifecycle: WorkLifecycleState;
   workType?: DidaWorkType;
+  userDescription?: string;
   workTypeMigratedFromLegacy?: boolean;
   migratedFromVersion?: 1;
   execution?: {
