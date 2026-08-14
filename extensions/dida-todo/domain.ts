@@ -65,9 +65,7 @@ export interface DidaProjectData {
   columns: Array<Record<string, unknown>>;
 }
 
-export interface WorkMetadataV1 {
-  schemaVersion: 1;
-  kind: "pi-todo-work";
+interface WorkMetadataFields {
   bindingKey: string;
   nextId: number;
   activeTaskId?: number;
@@ -77,22 +75,23 @@ export interface WorkMetadataV1 {
   cwd?: string;
 }
 
-export type WorkOrigin = "pi" | "dida";
+export interface WorkMetadataV1 extends WorkMetadataFields {
+  schemaVersion: 1;
+  kind: "pi-todo-work";
+}
+
+export type LegacyWorkOrigin = "pi" | "dida";
+export type WorkOrigin = "agent" | "dida";
 export type DidaWorkType = "direct" | "checklist";
 export type DidaWorkPriority = "low" | "medium" | "high";
 export type WorkLifecycleState = "draft" | "claimed" | "running" | "ready_for_acceptance" | "finalized";
 
-export interface WorkMetadataV2 {
-  schemaVersion: 2;
-  kind: "pi-todo-work";
-  bindingKey: string;
-  origin: WorkOrigin;
+interface LifecycleWorkMetadataFields extends WorkMetadataFields {
   lifecycle: WorkLifecycleState;
   workType?: DidaWorkType;
   userDescription?: string;
   userContent?: string;
   workTypeMigratedFromLegacy?: boolean;
-  migratedFromVersion?: 1;
   execution?: {
     occurrence?: string;
     claimedAt: string;
@@ -104,15 +103,26 @@ export interface WorkMetadataV2 {
     commentWritten?: boolean;
     sourceCompleted?: boolean;
   };
-  nextId: number;
-  activeTaskId?: number;
-  tasks: Task[];
-  sessionIds?: string[];
-  tmuxTarget?: string;
-  cwd?: string;
 }
 
-export type WorkMetadata = WorkMetadataV1 | WorkMetadataV2;
+export interface WorkMetadataV2 extends LifecycleWorkMetadataFields {
+  schemaVersion: 2;
+  kind: "pi-todo-work";
+  origin: LegacyWorkOrigin;
+  migratedFromVersion?: 1;
+}
+
+export interface WorkMetadataV3 extends LifecycleWorkMetadataFields {
+  schemaVersion: 3;
+  kind: "dida-todo-work";
+  origin: WorkOrigin;
+  migratedFromVersion?: 1 | 2;
+}
+
+/** Accepted only when decoding persisted Pi metadata. Runtime work is always V3. */
+export type LegacyWorkMetadata = WorkMetadataV1 | WorkMetadataV2;
+export type PersistedWorkMetadata = LegacyWorkMetadata | WorkMetadataV3;
+export type WorkMetadata = WorkMetadataV3;
 
 export interface WorkTask {
   remote: DidaTask;

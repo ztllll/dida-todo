@@ -1,8 +1,7 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { withHostLock } from "./host-lock.js";
-import { DEFAULT_CONFIG_PATH, normalizeCwd } from "./config.js";
+import { migrateDefaultConfigFile, normalizeCwd, resolveConfigPath } from "./config.js";
 import type { DidaProject, DidaTodoConfig, ProjectBinding } from "./domain.js";
 import { namespacedProjectName, type ProvisioningNamespace } from "./provisioning-identity.js";
 
@@ -52,7 +51,7 @@ export function deriveBindingIdentity(
 ): BindingIdentity {
   const normalizedCwd = normalizeCwd(cwd);
   const tmuxSession = tmuxTarget?.split(":", 1)[0]?.trim();
-  const baseName = cleanName(tmuxSession || basename(normalizedCwd) || "Pi Todo");
+  const baseName = cleanName(tmuxSession || basename(normalizedCwd) || "Dida Todo");
   const projectName = cleanName(namespacedProjectName(baseName, namespace));
   return {
     projectName,
@@ -91,7 +90,7 @@ async function persistBinding(
   cwd: string,
   tmuxTarget?: string,
 ): Promise<{ config: DidaTodoConfig; binding: ProjectBinding }> {
-  return withHostLock(`config:${path}`, () => withFileMutationQueue(path, async () => {
+  return withHostLock(`config:${path}`, async () => {
     const latest = await readConfig(path);
     const normalizedCwd = normalizeCwd(cwd);
     const primary: ProjectBinding = {
@@ -121,7 +120,7 @@ async function persistBinding(
     await rename(temporary, path);
     await chmod(path, 0o600);
     return { config: next, binding: primary };
-  }));
+  });
 }
 
 function openProjects(projects: DidaProject[]): DidaProject[] {
@@ -129,7 +128,8 @@ function openProjects(projects: DidaProject[]): DidaProject[] {
 }
 
 export async function ensureProjectBinding(input: ProvisioningInput): Promise<ProvisioningResult> {
-  const configPath = input.configPath ?? DEFAULT_CONFIG_PATH;
+  const configPath = input.configPath ?? resolveConfigPath();
+  if (input.configPath === undefined && !process.env.OMP_DIDA_TODO_CONFIG_PATH?.trim()) await migrateDefaultConfigFile();
   const identity = deriveBindingIdentity(input.cwd, input.tmuxTarget, input.namespace);
   return withHostLock(`provision:${configPath}:${identity.projectName}`, async () => {
     const config = await readConfig(configPath);
@@ -147,7 +147,8 @@ export async function ensureProjectBinding(input: ProvisioningInput): Promise<Pr
 
 export async function bindExistingProject(input: ExplicitBindingInput): Promise<ProvisioningResult> {
   if (!input.projectId && !input.projectName?.trim()) throw new Error("projectId 或 projectName 至少提供一个");
-  const configPath = input.configPath ?? DEFAULT_CONFIG_PATH;
+  const configPath = input.configPath ?? resolveConfigPath();
+  if (input.configPath === undefined && !process.env.OMP_DIDA_TODO_CONFIG_PATH?.trim()) await migrateDefaultConfigFile();
   const config = await readConfig(configPath);
   const projects = openProjects(await input.gateway.listProjects(input.signal));
   let project: DidaProject | undefined;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { detectProvisioningNamespace } from "../../extensions/dida-todo/tmuxbot-route.js";
 
 describe("tmuxbot IM route provisioning identity", () => {

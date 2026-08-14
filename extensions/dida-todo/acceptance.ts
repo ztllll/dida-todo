@@ -1,5 +1,6 @@
 import type { DidaTask } from "./domain.js";
 import { occurrenceKeyForTask } from "./scheduling.js";
+import { DIDA_ACCEPTANCE_TAG, hasDidaAcceptanceTag } from "./tags.js";
 
 export interface DidaComment {
   id: string;
@@ -8,17 +9,19 @@ export interface DidaComment {
   createdTime?: string | number;
 }
 
-export const ACCEPTANCE_COMMENT = "💬 验收通过请完成此任务；需要继续处理时，请使用当前滴答 OAuth 账号直接评论。本人评论会自动建立返工工作，其他账号评论静默忽略。";
+export const ACCEPTANCE_COMMENT = "💬 dida-todo/OMP Agent：验收通过请完成此任务；需要继续处理时，请使用当前滴答 OAuth 账号直接评论。本人评论会自动建立返工工作，其他账号评论静默忽略。";
 const LEGACY_ACCEPTANCE_COMMENTS = new Set([
+  "💬 验收通过请完成此任务；需要继续处理时，请使用当前滴答 OAuth 账号直接评论。本人评论会自动建立返工工作，其他账号评论静默忽略。",
   "💬 请在此处输入验收意见；如果通过，请直接完成此验收任务。",
 ]);
-export const ACCEPTANCE_FEEDBACK_ACK_PREFIX = "🤖 Pi 已读取验收反馈：";
-export const ACCEPTANCE_REWORK_COMMENT_PREFIX = "🤖 本人评论自动返工，新工作：";
-const LEGACY_ACCEPTANCE_REWORK_COMMENT_PREFIX = "🤖 用户已确认返工，新工作：";
+export const ACCEPTANCE_FEEDBACK_ACK_PREFIX = "🤖 dida-todo/OMP Agent 已读取验收反馈：";
+const LEGACY_ACCEPTANCE_FEEDBACK_ACK_PREFIXES = ["🤖 Pi 已读取验收反馈："] as const;
+export const ACCEPTANCE_REWORK_COMMENT_PREFIX = "🤖 dida-todo/OMP Agent 已创建返工工作：";
+const LEGACY_ACCEPTANCE_REWORK_COMMENT_PREFIXES = ["🤖 本人评论自动返工，新工作：", "🤖 用户已确认返工，新工作："] as const;
 
 export function acceptanceReworkId(comments: DidaComment[]): string | undefined {
   for (const comment of comments) {
-    for (const prefix of [ACCEPTANCE_REWORK_COMMENT_PREFIX, LEGACY_ACCEPTANCE_REWORK_COMMENT_PREFIX]) {
+    for (const prefix of [ACCEPTANCE_REWORK_COMMENT_PREFIX, ...LEGACY_ACCEPTANCE_REWORK_COMMENT_PREFIXES]) {
       if (comment.title.startsWith(prefix)) return comment.title.slice(prefix.length);
     }
   }
@@ -34,7 +37,7 @@ function utcTimestamp(date: Date): string {
 export const ACCEPTANCE_REMINDERS = ["TRIGGER:PT0S", "TRIGGER:PT3M"] as const;
 
 export function classifyAcceptanceTask(task: DidaTask): boolean {
-  return task.tags?.includes("pi-todo-acceptance") === true;
+  return hasDidaAcceptanceTag(task.tags);
 }
 
 export function buildAcceptanceSummary(
@@ -89,7 +92,7 @@ export function buildAcceptanceTaskInput(
     reminders: [...ACCEPTANCE_REMINDERS],
     priority: source.priority ?? 0,
     items: [],
-    tags: ["pi-todo-acceptance"],
+    tags: [DIDA_ACCEPTANCE_TAG],
   };
 }
 
@@ -112,18 +115,18 @@ function isAcceptancePromptComment(comment: DidaComment): boolean {
 
 export function isSystemAcceptanceComment(comment: DidaComment): boolean {
   return isAcceptancePromptComment(comment)
-    || comment.title.startsWith(ACCEPTANCE_FEEDBACK_ACK_PREFIX)
-    || comment.title.startsWith(ACCEPTANCE_REWORK_COMMENT_PREFIX)
-    || comment.title.startsWith(LEGACY_ACCEPTANCE_REWORK_COMMENT_PREFIX);
+    || [ACCEPTANCE_FEEDBACK_ACK_PREFIX, ...LEGACY_ACCEPTANCE_FEEDBACK_ACK_PREFIXES].some((prefix) => comment.title.startsWith(prefix))
+    || [ACCEPTANCE_REWORK_COMMENT_PREFIX, ...LEGACY_ACCEPTANCE_REWORK_COMMENT_PREFIXES].some((prefix) => comment.title.startsWith(prefix));
 }
 
 export function authorizedAcceptanceFeedback(comments: DidaComment[]): DidaComment[] {
   const ownerUserId = comments.find(isAcceptancePromptComment)?.userId;
   if (ownerUserId === undefined || ownerUserId === null) return [];
   const acknowledged = new Set(
-    comments
-      .filter((comment) => comment.title.startsWith(ACCEPTANCE_FEEDBACK_ACK_PREFIX))
-      .map((comment) => comment.title.slice(ACCEPTANCE_FEEDBACK_ACK_PREFIX.length)),
+    comments.flatMap((comment) => {
+      const prefix = [ACCEPTANCE_FEEDBACK_ACK_PREFIX, ...LEGACY_ACCEPTANCE_FEEDBACK_ACK_PREFIXES].find((candidate) => comment.title.startsWith(candidate));
+      return prefix ? [comment.title.slice(prefix.length)] : [];
+    }),
   );
   return comments.filter((comment) =>
     !isSystemAcceptanceComment(comment)

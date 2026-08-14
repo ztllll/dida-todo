@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { classifyTodoTrackingReasons } from "../../extensions/dida-todo/tracking-policy.js";
 
 describe("Todo 持久追踪意图门", () => {

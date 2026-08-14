@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import type { DidaProject, DidaProjectData, DidaTask } from "./domain.js";
 import type { DidaGateway } from "./repository.js";
 import type { DidaComment } from "./acceptance.js";
@@ -46,7 +46,7 @@ export class DidaCliGateway implements DidaGateway {
       "--content",
       String(input.content ?? ""),
       "--tags",
-      Array.isArray(input.tags) ? input.tags.join(",") : "pi-todo",
+      Array.isArray(input.tags) ? input.tags.join(",") : "dida-todo-work",
     ];
     if (input.items !== undefined) args.push("--items", JSON.stringify(input.items));
     if (input.desc !== undefined) args.push("--desc", String(input.desc));
@@ -76,7 +76,7 @@ export class DidaCliGateway implements DidaGateway {
       "--content",
       String(input.content ?? ""),
       "--tags",
-      Array.isArray(input.tags) ? input.tags.join(",") : "pi-todo",
+      Array.isArray(input.tags) ? input.tags.join(",") : "dida-todo-work",
       "--priority",
       String(input.priority ?? 0),
     ];

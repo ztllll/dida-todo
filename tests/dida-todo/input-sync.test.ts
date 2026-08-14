@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "bun:test";
 import {
-  TODO_AUTO_POLL_PREFIX,
+  DIDA_AUTO_POLL_PREFIX,
   shouldAcceptAutomaticPollInput,
   shouldCheckTodoInput,
 } from "../../extensions/dida-todo/input-sync.js";
@@ -29,7 +29,7 @@ describe("自然语言检查 Todo 触发 seam", () => {
   ])("其余表达都不触发主动队列检查：%s", (text) => expect(shouldCheckTodoInput(text)).toBe(false));
 
   it("只接受扩展来源且已有 Runtime grant 的自动轮询消息", () => {
-    const message = `${TODO_AUTO_POLL_PREFIX}可信 follow-up`;
+    const message = `${DIDA_AUTO_POLL_PREFIX}可信 follow-up`;
     expect(shouldAcceptAutomaticPollInput(message, "extension", true)).toBe(true);
     expect(shouldAcceptAutomaticPollInput(message, "interactive", true)).toBe(false);
     expect(shouldAcceptAutomaticPollInput(message, "rpc", true)).toBe(false);
@@ -38,7 +38,7 @@ describe("自然语言检查 Todo 触发 seam", () => {
   });
 
   it("自动轮询输入本身不是普通用户 tracking 请求", () => {
-    const message = `${TODO_AUTO_POLL_PREFIX}可信 follow-up`;
+    const message = `${DIDA_AUTO_POLL_PREFIX}可信 follow-up`;
     expect(shouldCheckTodoInput(message)).toBe(false);
   });
 });

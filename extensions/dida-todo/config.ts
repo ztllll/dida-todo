@@ -3,32 +3,45 @@ import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { isAbsolute, normalize, resolve } from "node:path";
 import type { DidaTodoConfig, ProjectBinding } from "./domain.js";
+import { migrateLegacyLocalFile } from "./local-file-migration.js";
 
-export const DEFAULT_CONFIG_PATH = resolve(homedir(), ".config", "pi-dida-todo", "config.json");
+export const DEFAULT_CONFIG_PATH = resolve(homedir(), ".config", "omp-dida-todo", "config.json");
+export const LEGACY_CONFIG_PATH = resolve(homedir(), ".config", "pi-dida-todo", "config.json");
 const require = createRequire(import.meta.url);
 export const BUNDLED_DIDA_COMMAND = require.resolve("@suibiji/dida-cli/dist/index.js");
 export const DEFAULT_MAX_WIDGET_LINES = 12;
 export const DEFAULT_COLLAPSE_KEY = "ctrl+shift+t";
 export const DEFAULT_POLL_INTERVAL_MINUTES = 10;
 
+export function resolveConfigPath(environment: NodeJS.ProcessEnv = process.env): string {
+  return environment.OMP_DIDA_TODO_CONFIG_PATH?.trim() || DEFAULT_CONFIG_PATH;
+}
+
+export async function migrateDefaultConfigFile(): Promise<boolean> {
+  return migrateLegacyLocalFile(LEGACY_CONFIG_PATH, DEFAULT_CONFIG_PATH);
+}
+
 export function normalizeCwd(cwd: string): string {
   const resolved = resolve(cwd);
   return normalize(resolved).replace(/\/$/, "");
 }
 
-export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<DidaTodoConfig> {
+export async function loadConfig(path?: string): Promise<DidaTodoConfig> {
+  const configuredPath = process.env.OMP_DIDA_TODO_CONFIG_PATH?.trim();
+  const configPath = path ?? resolveConfigPath();
+  if (path === undefined && !configuredPath) await migrateDefaultConfigFile();
   let raw: unknown;
   try {
-    raw = JSON.parse(await readFile(path, "utf8"));
+    raw = JSON.parse(await readFile(configPath, "utf8"));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return { bindings: [] };
     }
-    throw new Error(`无法读取滴答 Todo 配置 ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`无法读取滴答 Todo 配置 ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
   }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`滴答 Todo 配置必须是 JSON 对象: ${path}`);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`滴答 Todo 配置必须是 JSON 对象: ${configPath}`);
   const value = raw as Partial<DidaTodoConfig>;
-  if (!Array.isArray(value.bindings)) throw new Error(`滴答 Todo 配置缺少 bindings 数组: ${path}`);
+  if (!Array.isArray(value.bindings)) throw new Error(`滴答 Todo 配置缺少 bindings 数组: ${configPath}`);
   if (
     value.autoProvisionProject !== undefined && typeof value.autoProvisionProject !== "boolean"
   ) {

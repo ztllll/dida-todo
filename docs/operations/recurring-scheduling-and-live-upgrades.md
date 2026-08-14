@@ -1,206 +1,64 @@
-# 循环任务调度与运行中升级 / Recurring Scheduling and Live Upgrades
+# Recurring Scheduling and Live Upgrades
 
-本文固定两个容易混淆的运维边界：
+## Supported host
 
-1. **同步发现循环任务，不等于任务已经具备执行资格**；
-2. **安装新版 Pi Package，不等于已运行的 Pi 进程自动加载新版 Runtime**。
+`dida-todo` v0.7.0 supports OMP `17.3.3` Interactive/TUI sessions only. The plugin uses OMP `ExtensionContext` timers and lifecycle events; print, RPC, ACP, Pi, OpenClaw, Claude Code, and Codex CLI are not supported operational surfaces.
 
----
+No extension logic infers interactive status, host identity, or child-agent identity from prompt text, session files, or paths. The host provides `ctx.hasUI` and the lifecycle context.
 
-## 中文
+## Scheduling semantics
 
-### 循环任务执行门
+1. Synchronization can discover a recurring task before that occurrence is executable.
+2. Priority sorts eligible work; it does not bypass the task-local date/time gate.
+3. The poller runs immediately after an interactive binding activates, then every `pollIntervalMinutes` (10 by default), only while OMP is idle and has no pending messages.
+4. Exact `检查todo` performs the same queue check immediately. Near matches and ordinary mutations never scan the queue.
 
-一个顶层任务只有同时满足以下条件，才进入可执行队列：
+### Time gate
 
-1. `priority > 0`；
-2. 顶层任务尚未完成；
-3. 当前 occurrence 仍有未完成工作，或仍需显式完成顶层目标；
-4. 任务自己的日期/时间门已经打开。
+For a task using `timeZone`:
 
-优先级只负责排列**已经通过时间门**的任务，不能绕过日期或时间限制。
+- A timed task is eligible only on its scheduled local date and at or after `startDate`; when absent, `dueDate` is the fallback.
+- An all-day task is eligible only on its scheduled local date.
+- A future occurrence is visible during synchronization but remains ineligible.
+- An occurrence discovered after its scheduled date is not automatically backfilled.
+- Tasks without a start/due date use their priority normally.
 
-#### 日期与时间规则
+The poller does not create an individual wall-clock timer for each task. A due task is claimed at the next eligible poll or exact queue check.
 
-有效计划时间为：
+## Timer ownership and errors
 
-```text
-startDate ?? dueDate
-```
+The poller timer is created with `ctx.setInterval()` and cleared with `ctx.clearTimer()`. OMP clears owned timers again during session shutdown. A synchronization error is logged through the OMP extension logger; it does not terminate the timer or grant a queue permission.
 
-日历日期按任务的 `timeZone` 判断；任务没有时区时才回退 UTC。
+Queue execution grants are short-lived and host-issued. The trusted Poller follow-up and exact user input `检查todo` are the only grant sources. Tool arguments, model text, and near-match input cannot mint one.
 
-- 没有计划时间：满足其他执行门后立即具备资格。
-- 全天任务（`isAllDay=true`）：计划日期必须是任务时区下的今天。
-- 非全天任务（`isAllDay=false`）：计划日期必须是今天，并且当前时间不得早于计划时间。
-- 计划日期已经过去：跳过；dida-todo 不自动补跑错过的 occurrence。
-- 计划日期在未来：可以在同步数据中被发现，但不会进入执行队列。
-- 时间字符串无效：时间门拒绝放行。
+## OMP plugin upgrade
 
-以每天 10:00 的非全天循环任务为例：
-
-| 显式检查时间 | 能否同步发现 | 能否执行 |
-| --- | --- | --- |
-| 前一天，滴答已推进到明天 10:00 | 是 | 否 |
-| occurrence 当天 09:59 | 是 | 否 |
-| occurrence 当天 10:00 或之后 | 是 | 是 |
-| 第二天才检查遗漏的 occurrence | 是 | 否，不自动补跑 |
-
-本意为 10:00 执行的任务必须设置为非全天。若错误设置成全天任务，系统只检查日期，当天第一次显式检查就可能在 10:00 前执行。
-
-### 优先级自动领取与显式检查
-
-Poller 默认每 10 分钟检查一次，但只在 Pi 空闲且没有 pending message 时访问滴答。它只会为以下工作唤醒 LLM：
-
-- `priority > 0`；
-- 普通工作尚未完成；
-- 已通过任务本地日期/时间门。
-
-priority=0 草稿、仅待验收队列、未来或过期 occurrence 都保持静默。Poller 发现符合条件的工作后，由扩展可信 Runtime 为该 follow-up turn 签发短期队列授权；LLM 本身、普通 Todo mutation 和近似口令不能自行获得授权。
-
-用户也可输入 trim 后完整等于：
-
-```text
-检查todo
-```
-
-立即执行同样的队列检查，无需等待下一轮 Poller。
-
-Poller 不会为每个未来任务注册精确 timer。当前语义是：
-
-```text
-到达计划时间 + 下一次空闲轮询 → 自动进入执行队列
-```
-
-或：
-
-```text
-到达计划时间 + 精确检查todo → 立即进入执行队列
-```
-
-因此默认 10 分钟间隔下，自动领取最多会晚一个轮询周期；需要更低延迟可调整 `pollIntervalMinutes`，但不应绕过空闲、优先级和时间门。
-
-### 循环 occurrence 隔离
-
-任务存在 `repeatFlag` 时，dida-todo 使用当前 `startDate ?? dueDate` 作为 occurrence key。Execution claim、finalization 和验收关联都绑定该 occurrence。
-
-因此：
-
-- 完成今天的实例不能误完成明天的实例；
-- 滴答推进日期后，下一 occurrence 必须重新 claim；
-- 陈旧的 completed Checklist 不会导致连续自动收口；
-- 每个 occurrence 都有独立验收关联；
-- 顶层 priority 会保留，但不会让未来 occurrence 提前执行。
-
-### Pi 运行期间安装新版
-
-Git Pi Package 通常安装到共享目录：
-
-```text
-~/.pi/agent/git/github.com/ztllll/dida-todo
-```
-
-按 Pi Package 生命周期，执行：
+Install a pinned release:
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@NEW_VERSION
+omp plugin install github:ztllll/dida-todo#v0.7.0
 ```
 
-会更新 settings、将共享 checkout reset/clean 到新 ref，并在存在 `package.json` 时运行 `npm install`。
+Installation changes the plugin checkout and dependencies but cannot safely replace code currently executing in another host process. Do not upgrade while OMP is mutating a Dida task, finalizing acceptance, provisioning, invoking the bundled CLI, or running work likely to call dida-todo again.
 
-已经运行的 Pi 进程不会自动替换内存中的扩展 Runtime；它必须执行 `/reload` 或启动新进程/新会话才会加载新代码。
+### Safe upgrade procedure
 
-如果在旧进程执行任务时安装，就可能形成不受支持的混合状态：
+1. Wait for every relevant OMP session to finish its atomic task and become idle.
+2. If migrating from Pi, wait for its session to become idle and stop the Pi Runtime. Pi and OMP must not poll or mutate the same Dida project concurrently.
+3. Install the pinned OMP plugin ref.
+4. Start a new OMP Interactive/TUI session.
+5. Run `/todos` and confirm the Dida Overlay/session state is correct.
+6. Use one low-risk task to verify exact `检查todo` grants the queue while a normal mutation does not scan it.
 
-```text
-旧扩展模块与旧内存 Runtime
-+ 新磁盘文件、新 CLI Adapter、新 node_modules
-```
+Existing Pi metadata, `pi-todo-*` tags, and local configuration/state files are migration inputs. New OMP writes use `WorkMetadata v3`, `dida-todo-*` tags, and `~/.config/omp-dida-todo`. After the first OMP remote mutation, returning to Pi requires an explicit reverse data migration.
 
-安装程序通常不会主动杀死旧 Pi，所以不一定立刻中断模型输出；但后续工具调用、子进程启动、懒加载或依赖解析可能读取已经被替换的安装目录，无法保证任务安全持续执行。
+## Recovery boundaries
 
-#### 安全升级步骤
+`session_idle` and `agent_end` finalize work only after the source remains eligible. `session_shutdown` is recovery-only: it clears timers, releases local runtime state, and makes a bounded best-effort to recover outstanding acceptance work. A timeout can leave a created acceptance and an unfinished source; the next synchronization reuses the existing acceptance and repairs the sequence.
 
-1. 等待所有使用 dida-todo 的 Pi 完成当前原子任务、测试、远端写入和最终回复。
-2. 确认相关 pane 已 idle，且没有待处理 steering 消息。
-3. 安装固定版本：
+Cross-host strong consistency and exactly-once mutation are not claimed because the public Dida API provides no confirmed CAS, ETag, or idempotency key. Same-host mutation is serialized with the host lock and atomic local state store.
 
-   ```bash
-   pi install git:github.com/ztllll/dida-todo@VERSION
-   ```
+## English summary
 
-4. 对每个已运行 Pi 执行 `/reload`，或替换为新进程/新会话。
-5. 使用 `/todos` 或隔离 smoke test 验证后，再依赖新版本执行真实任务。
+The supported operational surface is OMP `17.3.3` Interactive/TUI. Polling is context-owned, idle-only, and gated by exact `检查todo` or a trusted Poller follow-up. Upgrade only while both OMP and any old Pi host are idle; stop Pi before OMP touches the same Dida project. Verify `/todos`, exact queue execution, and ordinary-mutation non-scanning after installing the pinned plugin.
 
-#### 禁止的升级时机
-
-当绑定的 Pi 正在进行以下动作时，不要覆盖共享安装目录：
-
-- 修改 Todo/Checklist；
-- 收口工作或创建验收；
-- provisioning 项目；
-- 调用包内 Dida CLI；
-- 执行长任务且后续步骤可能调用 dida-todo。
-
-“只安装、不 reload”只能作为**所有相关进程已经 idle 后**的分阶段部署，不能升级存量进程的内存 Runtime。
-
----
-
-## English
-
-### Recurring task execution gate
-
-A top-level task enters the executable queue only when all of these conditions are true:
-
-1. `priority > 0`;
-2. the top-level task is unfinished;
-3. the current occurrence still has unfinished work or needs explicit top-level completion;
-4. the task-local date/time gate is open.
-
-Priority only ranks tasks that have already passed the schedule gate. It never bypasses the date or time.
-
-The effective timestamp is `startDate ?? dueDate`, interpreted with the task's `timeZone` for calendar-day comparison.
-
-- No timestamp: eligible immediately after the other gates pass.
-- All-day task: eligible only on its scheduled local calendar day.
-- Timed task: eligible only on that local day at or after its scheduled timestamp.
-- Past day: skipped without automatic backfill.
-- Future day/time: visible to synchronization but excluded from execution.
-- Invalid timestamp: rejected.
-
-The poller checks every 10 minutes by default, but only while Pi is idle and has no pending messages. It wakes the LLM only for due, unfinished ordinary work with priority greater than zero. Priority-zero drafts, acceptance-only queues, future occurrences, and expired occurrences stay silent. A trusted poller follow-up receives a short-lived queue grant from the extension Runtime; the LLM, ordinary Todo mutations, and near-match phrases cannot mint that grant.
-
-Exact `检查todo` triggers the same queue check immediately. The poller does not register an exact timer for each future task. Current behavior is:
-
-```text
-scheduled time reached + next idle poll -> automatically executable
-```
-
-or:
-
-```text
-scheduled time reached + exact 检查todo -> immediately executable
-```
-
-For recurring tasks, the current `startDate ?? dueDate` forms the occurrence key. Claims, finalization, and acceptance matching are occurrence-scoped, so one completed occurrence cannot finalize the next one.
-
-### Installing while Pi is running
-
-A Git Pi Package uses a shared checkout such as:
-
-```text
-~/.pi/agent/git/github.com/ztllll/dida-todo
-```
-
-Installing a new ref updates settings, resets/cleans that checkout, and reinstalls dependencies. An already-running Pi process keeps its old in-memory extension Runtime until `/reload` or process replacement.
-
-Installing while old code is actively executing can therefore create an unsupported mixed state: old in-memory code plus new files, CLI adapter, and dependencies on disk. The installer normally does not kill the Pi process, but subsequent tool calls or subprocesses may observe the replaced checkout, so uninterrupted behavior is not guaranteed.
-
-Safe procedure:
-
-1. let every relevant Pi finish its current atomic task and become idle;
-2. install the pinned release;
-3. `/reload` every existing process or start new processes;
-4. run `/todos` or an isolated smoke test before using the new version.
-
-Do not replace the shared checkout while a process is mutating Todo state, finalizing acceptance, provisioning, invoking the bundled Dida CLI, or executing a long task that may call dida-todo later.

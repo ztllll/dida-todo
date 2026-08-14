@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { TodoScope, WorkTask } from "../../extensions/dida-todo/domain.js";
 import { getActiveRuntime, getSessionRuntime, queueWorkFinalization, removeSessionRuntime, runtimeForInput, setActiveSession, setSessionRuntime, updateSessionWorks } from "../../extensions/dida-todo/runtime.js";
 
@@ -8,17 +8,11 @@ function work(id: string, priority: number, piOwned = false): WorkTask {
     userContent: "",
     tasks: [],
     metadata: piOwned
-      ? {
-          schemaVersion: 2,
-          kind: "pi-todo-work",
-          bindingKey: "binding",
-          origin: "pi",
-          lifecycle: "claimed",
-          execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
-          nextId: 1,
-          tasks: [],
-        }
-      : { schemaVersion: 1, kind: "pi-todo-work", bindingKey: "binding", nextId: 1, tasks: [] },
+      ? { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "binding", origin: "agent", lifecycle: "claimed",
+      execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
+      nextId: 1,
+      tasks: [], }
+      : { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "binding", origin: "dida", lifecycle: "draft", nextId: 1, tasks: [] },
   };
 }
 

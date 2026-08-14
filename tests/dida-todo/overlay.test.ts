@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { Task } from "../../extensions/dida-todo/domain.js";
-import { TodoOverlay, overlayHeadingTitle } from "../../extensions/dida-todo/overlay.js";
+import { DidaTodoOverlay } from "../../extensions/dida-todo/overlay.js";
 
 class FakeUI {
   widgets = new Map<string, unknown>();
@@ -17,20 +17,11 @@ function task(id: number, status: Task["status"]): Task {
 }
 
 describe("Todo Overlay 对话生命周期", () => {
-  it("Direct 工作不重复显示与唯一任务相同的顶层 title，Checklist 保留汇总标题", () => {
-    expect(overlayHeadingTitle("收窄 Todo 检查触发词", [
-      { id: 1, subject: "收窄 Todo 检查触发词", status: "pending" },
-    ])).toBeUndefined();
-    expect(overlayHeadingTitle("优化 Todo 任务模型", [
-      { id: 1, subject: "收窄检查触发词", status: "pending" },
-      { id: 2, subject: "重构标题语义", status: "pending" },
-    ])).toBe("优化 Todo 任务模型");
-  });
 
   it("初始同步时展示当前工作的历史完成项", () => {
     let tasks = [task(1, "completed")];
     const ui = new FakeUI();
-    const overlay = new TodoOverlay(() => tasks, () => "work", () => "工作", () => 12, "ctrl+shift+t");
+    const overlay = new DidaTodoOverlay(() => tasks, () => 12, "ctrl+shift+t");
     overlay.setUI(ui as never);
 
     overlay.update(true);
@@ -43,7 +34,7 @@ describe("Todo Overlay 对话生命周期", () => {
     let workId = "work-a";
     let tasks = [task(1, "pending")];
     const ui = new FakeUI();
-    const overlay = new TodoOverlay(() => tasks, () => workId, () => "工作", () => 12, "ctrl+shift+t");
+    const overlay = new DidaTodoOverlay(() => tasks, () => 12, "ctrl+shift+t");
     overlay.setUI(ui as never);
     overlay.update(true);
     expect(overlay.isRegistered()).toBe(true);
@@ -64,7 +55,7 @@ describe("Todo Overlay 对话生命周期", () => {
     let workId = "work-a";
     let tasks = [task(1, "pending")];
     const ui = new FakeUI();
-    const overlay = new TodoOverlay(() => tasks, () => workId, () => "工作", () => 12, "ctrl+shift+t");
+    const overlay = new DidaTodoOverlay(() => tasks, () => 12, "ctrl+shift+t");
     overlay.setUI(ui as never);
     overlay.update(true);
 

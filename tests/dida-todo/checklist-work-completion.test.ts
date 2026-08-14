@@ -1,8 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { DidaTodoRepository } from "../../extensions/dida-todo/repository.js";
-import { registerTodoWorkTool } from "../../extensions/dida-todo/work-tool.js";
+import { registerDidaTodoWorkTool } from "../../extensions/dida-todo/work-tool.js";
 import { getSessionRuntime, pendingWorkFinalizations, removeSessionRuntime, setSessionRuntime } from "../../extensions/dida-todo/runtime.js";
 import type { TodoScope, WorkTask } from "../../extensions/dida-todo/domain.js";
+
+const TestType = {
+  Literal: (_value: string) => undefined,
+  Object: () => undefined,
+  Optional: <Schema>(schema: Schema) => schema,
+  String: () => undefined,
+  Union: () => undefined,
+};
 
 const scope: TodoScope = {
   binding: { key: "binding", projectId: "project" },
@@ -20,17 +28,11 @@ function completedChecklist(): WorkTask {
     remote: { id: "work", projectId: "project", title: "大型发布任务", status: 0, priority: 1, kind: "CHECKLIST" },
     userContent: "整体目标",
     tasks,
-    metadata: {
-      schemaVersion: 2,
-      kind: "pi-todo-work",
-      bindingKey: "binding",
-      origin: "pi",
-      lifecycle: "claimed",
-      workType: "checklist",
-      execution: { claimedAt: "2026-08-13T00:00:00.000Z" },
-      nextId: 3,
-      tasks,
-    },
+    metadata: { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "binding", origin: "agent", lifecycle: "claimed",
+    workType: "checklist",
+    execution: { claimedAt: "2026-08-13T00:00:00.000Z" },
+    nextId: 3,
+    tasks, },
   };
 }
 
@@ -49,7 +51,7 @@ describe("Checklist 大任务整体完成", () => {
       async finishWork() { finishCalls += 1; return { acceptanceTask: {} }; },
       async syncOpenWorks() { return { works: [ready], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] }; },
     } as unknown as DidaTodoRepository;
-    registerTodoWorkTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
+    registerDidaTodoWorkTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, repository, () => {});
 
     await tool.execute("call", { action: "finish_current" }, undefined, undefined, {
       sessionManager: { getSessionId: () => scope.sessionId },

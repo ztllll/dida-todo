@@ -1,16 +1,9 @@
-import type { ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
-import { type TUI, truncateToWidth } from "@earendil-works/pi-tui";
+import type { ExtensionUIContext, Theme } from "@oh-my-pi/pi-coding-agent";
+import { type TUI, truncateToWidth } from "@oh-my-pi/pi-tui";
 import type { Task } from "./domain.js";
 
 const WIDGET_KEY = "dida-todos";
 
-export function overlayHeadingTitle(workTitle: string | undefined, tasks: Task[]): string | undefined {
-  const title = workTitle?.trim();
-  if (!title) return undefined;
-  const visible = tasks.filter((task) => task.status !== "deleted");
-  if (visible.some((task) => task.subject.trim() === title)) return undefined;
-  return title;
-}
 
 function taskLine(task: Task, theme: Theme): string {
   const glyph =
@@ -31,7 +24,7 @@ function taskLine(task: Task, theme: Theme): string {
   return line;
 }
 
-export class TodoOverlay {
+export class DidaTodoOverlay {
   private ui?: ExtensionUIContext;
   private tui?: TUI;
   private registered = false;
@@ -39,8 +32,6 @@ export class TodoOverlay {
 
   constructor(
     private readonly getTasks: () => Task[],
-    private readonly getWorkId: () => string | undefined,
-    private readonly getWorkTitle: () => string | undefined,
     private readonly getMaxLines: () => number,
     private readonly collapseKey: string,
   ) {}
@@ -105,11 +96,9 @@ export class TodoOverlay {
     const allTasks = this.getTasks().filter((task) => task.status !== "deleted");
     const completed = allTasks.filter((task) => task.status === "completed" || task.status === "skipped").length;
     const active = allTasks.some((task) => task.status === "pending" || task.status === "in_progress");
-    const workTitle = overlayHeadingTitle(this.getWorkTitle(), allTasks);
-    const headingText = `${workTitle ? `${workTitle} · ` : ""}Todos (${completed}/${allTasks.length})`;
+    const headingText = `滴答 (${completed}/${allTasks.length})`;
     const heading = `${theme.fg(active ? "accent" : "dim", active ? "●" : "○")} ${theme.fg(active ? "accent" : "dim", headingText)}`;
-    const truncate = (line: string) => truncateToWidth(line, width, "…");
-    if (this.collapsed) return [truncate(heading), truncate(`${theme.fg("dim", "└─")} ${theme.fg("dim", `${this.collapseKey} 展开`)}`), ""];
+    const truncate = (line: string) => truncateToWidth(line, width);
 
     const budget = Math.max(2, this.getMaxLines()) - 1;
     const unfinished = tasks.filter((task) => task.status !== "completed" && task.status !== "skipped");

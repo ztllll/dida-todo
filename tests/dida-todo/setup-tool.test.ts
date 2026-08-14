@@ -1,9 +1,18 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { DidaProject, DidaTodoConfig } from "../../extensions/dida-todo/domain.js";
 import { registerDidaSetupTool } from "../../extensions/dida-todo/setup-tool.js";
+
+const TestType = {
+  Boolean: () => undefined,
+  Literal: (_value: string) => undefined,
+  Object: () => undefined,
+  Optional: <Schema>(schema: Schema) => schema,
+  String: () => undefined,
+  Union: () => undefined,
+};
 
 class Gateway {
   projects: DidaProject[] = [];
@@ -21,7 +30,7 @@ describe("LLM setup tool", () => {
   it("登录动作完成 OAuth 后自动 provisioning 并立即激活", async () => {
     const configPath = join(await mkdtemp(join(tmpdir(), "dida-setup-tool-")), "config.json");
     let tool: any;
-    const pi = { registerTool(value: any) { tool = value; } } as never;
+    const pi = { typebox: { Type: TestType }, registerTool(value: unknown) { tool = value; } } as never;
     const gateway = new Gateway();
     const config: DidaTodoConfig = { bindings: [] };
     let activated = "";
@@ -32,10 +41,12 @@ describe("LLM setup tool", () => {
       () => ({ cwd: "/workspace/demo", tmuxTarget: "demo:0.0" }),
       async (_ctx, binding) => { activated = binding.projectId; },
       configPath,
+      () => true,
     );
 
     const result = await tool.execute("id", { action: "login" }, undefined, undefined, {
       cwd: "/workspace/demo",
+      hasUI: true,
       sessionManager: { getSessionId: () => "session" },
     });
 

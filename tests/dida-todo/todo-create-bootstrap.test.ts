@@ -1,13 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { DidaTodoRepository } from "../../extensions/dida-todo/repository.js";
-import { registerTodoTool } from "../../extensions/dida-todo/tool.js";
+import { registerDidaTodoTool } from "../../extensions/dida-todo/tool.js";
 import { getSessionRuntime, removeSessionRuntime, setAllowedTrackingReasons, setSessionRuntime } from "../../extensions/dida-todo/runtime.js";
 import type { TodoScope, WorkTask } from "../../extensions/dida-todo/domain.js";
+
+const TestType = {
+  Array: () => undefined,
+  Boolean: () => undefined,
+  Literal: (_value: string) => undefined,
+  Number: () => undefined,
+  Object: () => undefined,
+  Optional: <Schema>(schema: Schema) => schema,
+  Record: () => undefined,
+  String: () => undefined,
+  Union: () => undefined,
+  Unknown: () => undefined,
+};
 
 function emptyWork(title: string): WorkTask {
   return {
     remote: { id: "remote-work", projectId: "project", title, status: 0, priority: 0 },
-    metadata: { schemaVersion: 1, kind: "pi-todo-work", bindingKey: "tmux:demo:0.0", nextId: 1, tasks: [] },
+    metadata: { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "tmux:demo:0.0", origin: "dida", lifecycle: "draft", nextId: 1, tasks: [] },
     tasks: [],
     userContent: "",
   };
@@ -25,7 +38,7 @@ describe("todo 空清单首次使用", () => {
     };
     setSessionRuntime(sessionId, { scope, works: [] });
     let tool: any;
-    registerTodoTool({ registerTool(value: any) { tool = value; } } as never, {} as DidaTodoRepository, () => {});
+    registerDidaTodoTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, {} as DidaTodoRepository, () => {});
 
     const result = await tool.execute("call", { action: "list" }, undefined, undefined, {
       sessionManager: { getSessionId: () => sessionId },
@@ -50,7 +63,7 @@ describe("todo 空清单首次使用", () => {
     const draft = emptyWork("仍在编辑的草稿");
     setSessionRuntime(sessionId, { scope, works: [draft] });
     let tool: any;
-    registerTodoTool({ registerTool(value: any) { tool = value; } } as never, {} as DidaTodoRepository, () => {});
+    registerDidaTodoTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, {} as DidaTodoRepository, () => {});
 
     const result = await tool.execute("call", { action: "list" }, undefined, undefined, {
       sessionManager: { getSessionId: () => sessionId },
@@ -72,7 +85,7 @@ describe("todo 空清单首次使用", () => {
     };
     setSessionRuntime(sessionId, { scope, works: [] });
     let tool: any;
-    registerTodoTool({ registerTool(value: any) { tool = value; } } as never, {} as DidaTodoRepository, () => {});
+    registerDidaTodoTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, {} as DidaTodoRepository, () => {});
 
     const result = await tool.execute("call", { action: "clear" }, undefined, undefined, {
       sessionManager: { getSessionId: () => sessionId },
@@ -96,7 +109,7 @@ describe("todo 空清单首次使用", () => {
     let tool: any;
     let createCalls = 0;
     const repository = { async createWork() { createCalls += 1; return emptyWork("不应创建"); } } as unknown as DidaTodoRepository;
-    registerTodoTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
+    registerDidaTodoTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, repository, () => {});
 
     await expect(tool.execute("call", {
       action: "create",
@@ -124,7 +137,7 @@ describe("todo 空清单首次使用", () => {
     const repository = {
       async createWork() { createCalls += 1; return emptyWork("不应创建"); },
     } as unknown as DidaTodoRepository;
-    registerTodoTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
+    registerDidaTodoTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, repository, () => {});
 
     await expect(tool.execute("call", { action: "create", subject: "查询一个问题" }, undefined, undefined, {
       sessionManager: { getSessionId: () => sessionId },
@@ -152,7 +165,7 @@ describe("todo 空清单首次使用", () => {
     const repository = {
       async createTask() { createCalls += 1; return active; },
     } as unknown as DidaTodoRepository;
-    registerTodoTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
+    registerDidaTodoTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, repository, () => {});
     setAllowedTrackingReasons(sessionId, ["current_work_step"]);
 
     await expect(tool.execute("call", { action: "create", subject: "顺便问个问题" }, undefined, undefined, {
@@ -187,7 +200,7 @@ describe("todo 空清单首次使用", () => {
         return work;
       },
     } as unknown as DidaTodoRepository;
-    registerTodoTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
+    registerDidaTodoTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, repository, () => {});
     setAllowedTrackingReasons(sessionId, ["user_requested_tracking", "current_work_step"]);
 
     await tool.execute("call", {
@@ -234,7 +247,7 @@ describe("todo 空清单首次使用", () => {
         return work;
       },
     } as unknown as DidaTodoRepository;
-    registerTodoTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
+    registerDidaTodoTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, repository, () => {});
     setAllowedTrackingReasons(sessionId, ["multi_step_implementation", "current_work_step"]);
 
     await expect(tool.execute("call", {

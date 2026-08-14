@@ -9,7 +9,7 @@ Dida Todo 把 Dida365 项目、顶层工作、执行步骤和人类验收连接�
 _Avoid_: Shared plugin, universal extension
 
 **Host Adapter**:
-把某个 Agent 宿主的 input、session、turn、tool、finalization、UI 和交付事件翻译成 Todo Engine 事实的适配器。Pi、OpenClaw、Claude Code 和 Codex 各自拥有独立 Host Adapter。
+把某个 Agent 宿主的 input、session、turn、tool、finalization、UI 和交付事件翻译成 Todo Engine 事实的适配器。当前实现是 OMP Agent；任何未来宿主都必须拥有独立 Host Adapter，不能共享 OMP 生命周期分支。
 _Avoid_: Compatibility branch, host mode
 
 **Turn Grant**:

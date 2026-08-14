@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { pollDecision, selectPolledWork } from "../../extensions/dida-todo/poller.js";
 import type { WorkTask } from "../../extensions/dida-todo/domain.js";
 
@@ -7,7 +7,7 @@ function work(id: string, priority: number, createdTime: string): WorkTask {
     remote: { id, projectId: "project", title: id, status: 0, priority, createdTime },
     userContent: "",
     tasks: [{ id: 1, subject: "step", status: "pending" }],
-    metadata: { schemaVersion: 1, kind: "pi-todo-work", bindingKey: "binding", nextId: 2, tasks: [{ id: 1, subject: "step", status: "pending" }] },
+    metadata: { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "binding", origin: "dida", lifecycle: "draft", nextId: 2, tasks: [{ id: 1, subject: "step", status: "pending" }] },
   };
 }
 

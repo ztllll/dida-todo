@@ -1,10 +1,10 @@
-# dida-todo 多 CLI Adapter 开发手册
+# Historical Pi Multi-CLI Adapter Research
 
-> 面向后续 LLM、维护者和贡献者的可执行开发入口。本文不是功能承诺；当前正式发布仍只支持 Pi。
+> Archived v0.6 research. It describes the former Pi adapter and does not define the OMP v0.7.0 release contract. Do not use it for OMP implementation, installation, lifecycle, tool naming, or release verification; use [`DEVELOPMENT.md`](../../DEVELOPMENT.md) instead.
 
 最后核验：2026-08-13
 
-当前正式 Runtime：`v0.6.13`
+历史 Pi Runtime：`v0.6.13`
 
 本文基线提交之前的 `main`：`3132bad`
 

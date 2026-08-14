@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { DidaProject } from "../../extensions/dida-todo/domain.js";
 import {
   bindExistingProject,

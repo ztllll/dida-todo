@@ -43,8 +43,8 @@ async function release(path: string, token: string): Promise<void> {
   }
 }
 
-/** A same-host process lock. The lock directory is atomically created and is
- * intentionally independent of Pi's in-memory file mutation queue. */
+/** A same-host process lock. The `pi-dida-todo-` prefix is a frozen cross-version
+ * protocol, so Pi and OMP runtimes serialize against the same lock during upgrade. */
 export async function withHostLock<T>(key: string, action: () => Promise<T>, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
   const path = hostLockPath(key);
   const token = randomUUID();

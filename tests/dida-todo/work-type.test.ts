@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { metadataToItems } from "../../extensions/dida-todo/codec.js";
 import type { DidaTask, TodoScope, WorkMetadata } from "../../extensions/dida-todo/domain.js";
-import { createPiWorkMetadata } from "../../extensions/dida-todo/work-lifecycle.js";
+import { createAgentWorkMetadata } from "../../extensions/dida-todo/work-lifecycle.js";
 import { inferWorkType, workTypeOfMetadata } from "../../extensions/dida-todo/work-type.js";
 
 const scope: TodoScope = {
@@ -13,7 +13,7 @@ const scope: TodoScope = {
 
 function metadata(workType: "direct" | "checklist"): WorkMetadata {
   return {
-    ...createPiWorkMetadata(scope, workType),
+    ...createAgentWorkMetadata(scope, workType),
     nextId: 2,
     tasks: [{ id: 1, subject: "内部执行步骤", status: "pending" }],
   };

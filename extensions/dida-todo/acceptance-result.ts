@@ -2,6 +2,7 @@ import type { DidaTask, TodoScope, WorkMetadata } from "./domain.js";
 import { acceptanceMatchesSource, buildAcceptanceSummary } from "./acceptance.js";
 import { MemoryWorkStateStore, type WorkStateStore } from "./state-store.js";
 import { occurrenceKeyForTask } from "./scheduling.js";
+import { DIDA_ACCEPTANCE_TAG, managedTags } from "./tags.js";
 
 const ACCEPTANCE_TITLE_PREFIX = "🧑‍🔬 待验收：";
 const MAX_ACCEPTANCE_TITLE_LENGTH = 100;
@@ -55,13 +56,13 @@ export function buildHumanAcceptanceResult(source: DidaTask, metadata: WorkMetad
     const tasks = metadata.tasks.filter((task) => task.status !== "deleted");
     if (tasks.length) {
       return buildAcceptanceSummary(source.title, tasks, {
-        ...(metadata.schemaVersion === 2 && metadata.userDescription ? { description: metadata.userDescription } : {}),
-        ...(metadata.schemaVersion === 2 && metadata.userContent ? { content: metadata.userContent } : {}),
+        ...(metadata.userDescription ? { description: metadata.userDescription } : {}),
+        ...(metadata.userContent ? { content: metadata.userContent } : {}),
       });
     }
   }
   const clean = fallback
-    .replace(/<!-- pi-dida-todo:start -->[\s\S]*?<!-- pi-dida-todo:end -->/g, "")
+    .replace(/<!-- (?:pi-dida-todo|dida-todo):start -->[\s\S]*?<!-- (?:pi-dida-todo|dida-todo):end -->/g, "")
     .split("\n")
     .filter((line) => !/\b(?:sourceWorkId|sourceOccurrence|bindingKey|sessionId|workId|itemId|lifecycle)\s*:/i.test(line))
     .join("\n")
@@ -137,7 +138,7 @@ export function buildAcceptanceResultUpdate(
     content,
     desc: result,
     items: acceptance.items ?? [],
-    tags: acceptance.tags ?? ["pi-todo-acceptance"],
+    tags: managedTags(acceptance.tags, DIDA_ACCEPTANCE_TAG),
     priority: acceptance.priority ?? source.priority ?? 0,
     ...(acceptance.isAllDay === true ? { isAllDay: true } : {}),
     ...(acceptance.startDate !== undefined ? { startDate: acceptance.startDate } : {}),

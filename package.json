@@ -1,9 +1,9 @@
 {
   "name": "dida-todo",
-  "version": "0.6.20",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
-  "description": "Pi 扩展：以滴答清单为 Todo 真源，支持自然语言执行、双向同步、提醒和强制人类验收闭环。",
+  "description": "OMP Agent 扩展：以滴答清单为跨会话任务真源，支持自然语言执行、双向同步、提醒和强制人类验收闭环。",
   "license": "MIT",
   "author": "Ztllll",
   "homepage": "https://github.com/ztllll/dida-todo#readme",
@@ -15,8 +15,8 @@
     "url": "https://github.com/ztllll/dida-todo/issues"
   },
   "keywords": [
-    "pi-package",
-    "pi-extension",
+    "omp-plugin",
+    "omp-extension",
     "dida",
     "dida365",
     "todo",
@@ -38,11 +38,10 @@
   "scripts": {
     "check": "bash scripts/check-structure.sh && npm run typecheck && npm test && npm run pack:check",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "pack:check": "npm pack --dry-run --json >/tmp/dida-todo-pack.json",
-    "inventory": "bash scripts/pi-inventory.sh"
+    "test": "bun test",
+    "pack:check": "npm pack --dry-run --json >/tmp/dida-todo-pack.json"
   },
-  "pi": {
+  "omp": {
     "extensions": [
       "./extensions/dida-todo"
     ]
@@ -51,21 +50,19 @@
     "@suibiji/dida-cli": "^0.1.12"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
-    "typebox": "*"
+    "@oh-my-pi/pi-coding-agent": ">=17.3.3 <18",
+    "@oh-my-pi/pi-tui": ">=17.3.3 <18"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.84.1",
-    "@earendil-works/pi-coding-agent": "^0.84.1",
-    "@earendil-works/pi-tui": "^0.84.1",
+    "@oh-my-pi/pi-coding-agent": "17.3.3",
+    "@oh-my-pi/pi-tui": "17.3.3",
+    "@types/bun": "1.3.14",
     "@types/node": "^22.20.1",
-    "typebox": "^1.3.11",
-    "typescript": "^5.9.3",
-    "vitest": "^3.2.7"
+    "bun": "1.3.14",
+    "typescript": "^5.9.3"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "bun": ">=1.3.14"
   }
 }

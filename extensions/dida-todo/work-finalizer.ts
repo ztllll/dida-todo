@@ -2,6 +2,7 @@ import type { DidaTask, TodoScope, WorkTask } from "./domain.js";
 import { ACCEPTANCE_COMMENT, acceptanceMatchesSource, buildAcceptanceSummary, buildAcceptanceTaskInput } from "./acceptance.js";
 import { canFinalizeWork, migrateWorkMetadata } from "./work-lifecycle.js";
 import { isWorkReadyForFinalization } from "./work-type.js";
+import { managedWorkTags } from "./tags.js";
 
 export interface FinalizerGateway {
   getProjectData(projectId: string, signal?: AbortSignal): Promise<{ tasks: DidaTask[] }>;
@@ -13,7 +14,7 @@ export interface FinalizerGateway {
   getTaskComments?(projectId: string, taskId: string, signal?: AbortSignal): Promise<Array<{ id: string; title: string }>>;
 }
 
-function isLegacyPiWork(work: WorkTask): boolean {
+function isLegacyMigratedWork(work: WorkTask): boolean {
   return migrateWorkMetadata(work.metadata).migratedFromVersion === 1 && !work.remote.repeatFlag;
 }
 
@@ -30,7 +31,7 @@ export class WorkFinalizer {
       && visible.length > 0
       && visible.every((task) => task.status === "completed" || task.status === "skipped")
       && isWorkReadyForFinalization(work)
-      && (canFinalizeWork(work) || isLegacyPiWork(work));
+      && (canFinalizeWork(work) || isLegacyMigratedWork(work));
   }
 
   async finalize(scope: TodoScope, work: WorkTask, signal?: AbortSignal, existingAcceptanceId?: string): Promise<DidaTask> {
@@ -47,8 +48,8 @@ export class WorkFinalizer {
       if (existing) return existing;
       return this.createAcceptance(work, signal);
     }
-    if (!canFinalizeWork(work) && !isLegacyPiWork(work)) {
-      throw new Error("当前工作实例未被 Pi 接管，不能自动收口");
+    if (!canFinalizeWork(work) && !isLegacyMigratedWork(work)) {
+      throw new Error("当前工作实例未被 Agent 接管，不能自动收口");
     }
     const visible = visibleTasks(work);
     if (!visible.length) throw new Error("工作任务没有可验收的 Checklist");
@@ -85,7 +86,7 @@ export class WorkFinalizer {
       title: current.title,
       content: current.content ?? "",
       items,
-      tags: current.tags ?? [],
+      tags: managedWorkTags(current.tags),
       priority: current.priority ?? 0,
       ...(current.desc !== undefined ? { desc: current.desc } : {}),
       ...(current.isAllDay !== undefined ? { isAllDay: current.isAllDay } : {}),

@@ -3,6 +3,20 @@
 All notable user-visible changes are recorded here. The project is released through pinned GitHub tags and does not publish to npm.
 
 ## [Unreleased]
+## [0.7.0] - 2026-08-14
+
+### Changed
+
+- Replace the Pi package/runtime with the OMP `17.3.3` extension contract. The published plugin declares `omp.extensions`, uses OMP TypeBox/TUI/UI/lifecycle APIs, and supports only Interactive/TUI sessions.
+- Preserve OMP-native `todo` and `/todo`. Durable Dida operations are now `dida_todo`, `dida_todo_work`, and `dida_todo_setup`; `/todos` remains the public Dida status command.
+- Replace terminal/settled finalization with OMP `session_idle`, `agent_end`, and shutdown recovery; move polling to an `ExtensionContext`-owned timer and use the host lock/local state store for all repository mutation.
+- Write `WorkMetadata v3`, `dida-todo-*` tags, OMP-native comments/reminders, and `~/.config/omp-dida-todo` state/configuration. Legacy Pi metadata, tags, local files, and remote records remain migration inputs only.
+- Require Chinese semantics for every filled `dida_todo create` field by default. `allowNonChinese: true` is allowed only for an explicitly requested non-Chinese task.
+
+### Verification
+
+- Convert the suite to Bun: 188 passing tests, one opt-in real-Dida test skipped, plus TypeScript verification.
+
 
 ## [0.6.20] - 2026-08-14
 
@@ -163,7 +177,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.20...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ztllll/dida-todo/releases/tag/v0.7.0
 [0.6.20]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.20
 [0.6.19]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.19
 [0.6.18]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.18

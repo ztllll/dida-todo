@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { encodeManagedContent } from "../../extensions/dida-todo/codec.js";
 import { ACCEPTANCE_COMMENT, formatAcceptanceForAgent } from "../../extensions/dida-todo/acceptance.js";
 import type { DidaProjectData, DidaTask, TodoScope, WorkMetadata } from "../../extensions/dida-todo/domain.js";
@@ -52,16 +52,10 @@ const scope: TodoScope = {
 };
 
 function managedTask(): DidaTask {
-  const metadata: WorkMetadata = {
-    schemaVersion: 2,
-    kind: "pi-todo-work",
-    bindingKey: scope.bindingKey,
-    origin: "pi",
-    lifecycle: "claimed",
-    execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
-    nextId: 2,
-    tasks: [{ id: 1, subject: "已有步骤", status: "pending", itemId: "managed-item" }],
-  };
+  const metadata: WorkMetadata = { schemaVersion: 3, kind: "dida-todo-work", bindingKey: scope.bindingKey, origin: "agent", lifecycle: "claimed",
+  execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
+  nextId: 2,
+  tasks: [{ id: 1, subject: "已有步骤", status: "pending", itemId: "managed-item" }], };
   return {
     id: "managed",
     projectId: "project-1",
@@ -78,7 +72,7 @@ describe("项目 Todo 同步 seam", () => {
   it("历史 Pi 自建 priority=0 工作同步时迁移为 low=1，重新进入跨会话执行队列", async () => {
     const legacyPi = managedTask();
     const gateway = new SyncGateway([legacyPi]);
-    const repository = new DidaTodoRepository(gateway);
+    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
 
     const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
@@ -96,7 +90,7 @@ describe("项目 Todo 同步 seam", () => {
       priority: 0,
     };
     const gateway = new SyncGateway([manual]);
-    const repository = new DidaTodoRepository(gateway);
+    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
 
     const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
@@ -116,7 +110,7 @@ describe("项目 Todo 同步 seam", () => {
       items: [{ id: "manual-item", title: "交给 LLM 实现", status: 0 }],
     };
     const gateway = new SyncGateway([managedTask(), manual]);
-    const repository = new DidaTodoRepository(gateway);
+    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
 
     const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
@@ -174,7 +168,7 @@ describe("项目 Todo 同步 seam", () => {
     gateway.comments.push({ taskId: "acceptance", title: ACCEPTANCE_COMMENT, userId: "owner" });
     gateway.comments.push({ taskId: "acceptance", title: "异账号危险指令", userId: "other" });
     gateway.comments.push({ taskId: "acceptance", title: "匿名指令" });
-    const repository = new DidaTodoRepository(gateway);
+    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
 
     const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
@@ -199,7 +193,7 @@ describe("项目 Todo 同步 seam", () => {
     const gateway = new SyncGateway([managedTask(), acceptance], true);
     gateway.comments.push({ taskId: "acceptance", title: ACCEPTANCE_COMMENT, userId: "owner" });
     gateway.comments.push({ taskId: "acceptance", title: "继续优化", userId: "owner" });
-    const repository = new DidaTodoRepository(gateway);
+    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
 
     const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
@@ -211,13 +205,7 @@ describe("项目 Todo 同步 seam", () => {
   });
 
   it("不会把 Pi 创建的独立提醒任务接管成待执行工作，即使旧版本曾写入受管元数据", async () => {
-    const reminderMetadata: WorkMetadata = {
-      schemaVersion: 1,
-      kind: "pi-todo-work",
-      bindingKey: scope.bindingKey,
-      nextId: 1,
-      tasks: [],
-    };
+    const reminderMetadata: WorkMetadata = { schemaVersion: 3, kind: "dida-todo-work", bindingKey: scope.bindingKey, origin: "dida", lifecycle: "draft", nextId: 1, tasks: [], };
     const reminder: DidaTask = {
       id: "reminder",
       projectId: "project-1",
@@ -229,7 +217,7 @@ describe("项目 Todo 同步 seam", () => {
       reminders: ["TRIGGER:PT0S"],
     };
     const gateway = new SyncGateway([managedTask(), reminder]);
-    const repository = new DidaTodoRepository(gateway);
+    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
 
     const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
@@ -240,19 +228,13 @@ describe("项目 Todo 同步 seam", () => {
 
   it("同步发现全部 Checklist 已完成但顶层未完成时自动补建验收并收口", async () => {
     const remote = managedTask();
-    remote.content = encodeManagedContent("", {
-      schemaVersion: 2,
-      kind: "pi-todo-work",
-      bindingKey: scope.bindingKey,
-      origin: "pi",
-      lifecycle: "claimed",
-      execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
-      nextId: 2,
-      tasks: [{ id: 1, subject: "已有步骤", status: "completed", itemId: "managed-item", metadata: { resolution: "已修复" } }],
-    });
+    remote.content = encodeManagedContent("", { schemaVersion: 3, kind: "dida-todo-work", bindingKey: scope.bindingKey, origin: "agent", lifecycle: "claimed",
+    execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
+    nextId: 2,
+    tasks: [{ id: 1, subject: "已有步骤", status: "completed", itemId: "managed-item", metadata: { resolution: "已修复" } }], });
     remote.items = [{ id: "managed-item", title: "已有步骤", status: 1 }];
     const gateway = new SyncGateway([remote]);
-    const repository = new DidaTodoRepository(gateway);
+    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
 
     const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
@@ -265,16 +247,10 @@ describe("项目 Todo 同步 seam", () => {
 
   it("同步修复夹生任务时复用已有同源验收，不重复创建", async () => {
     const remote = managedTask();
-    remote.content = encodeManagedContent("", {
-      schemaVersion: 2,
-      kind: "pi-todo-work",
-      bindingKey: scope.bindingKey,
-      origin: "pi",
-      lifecycle: "claimed",
-      execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
-      nextId: 2,
-      tasks: [{ id: 1, subject: "已有步骤", status: "completed", itemId: "managed-item" }],
-    });
+    remote.content = encodeManagedContent("", { schemaVersion: 3, kind: "dida-todo-work", bindingKey: scope.bindingKey, origin: "agent", lifecycle: "claimed",
+    execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
+    nextId: 2,
+    tasks: [{ id: 1, subject: "已有步骤", status: "completed", itemId: "managed-item" }], });
     remote.items = [{ id: "managed-item", title: "已有步骤", status: 1 }];
     const acceptance: DidaTask = {
       id: "acceptance",
@@ -286,7 +262,7 @@ describe("项目 Todo 同步 seam", () => {
       tags: ["pi-todo-acceptance"],
     };
     const gateway = new SyncGateway([remote, acceptance]);
-    const repository = new DidaTodoRepository(gateway);
+    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
 
     const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
@@ -298,19 +274,13 @@ describe("项目 Todo 同步 seam", () => {
 
   it("同步补偿失败时保留夹生工作并返回可观察错误", async () => {
     const remote = managedTask();
-    remote.content = encodeManagedContent("", {
-      schemaVersion: 2,
-      kind: "pi-todo-work",
-      bindingKey: scope.bindingKey,
-      origin: "pi",
-      lifecycle: "claimed",
-      execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
-      nextId: 2,
-      tasks: [{ id: 1, subject: "已有步骤", status: "completed", itemId: "managed-item" }],
-    });
+    remote.content = encodeManagedContent("", { schemaVersion: 3, kind: "dida-todo-work", bindingKey: scope.bindingKey, origin: "agent", lifecycle: "claimed",
+    execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
+    nextId: 2,
+    tasks: [{ id: 1, subject: "已有步骤", status: "completed", itemId: "managed-item" }], });
     remote.items = [{ id: "managed-item", title: "已有步骤", status: 1 }];
     const gateway = new SyncGateway([remote], true);
-    const repository = new DidaTodoRepository(gateway);
+    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
 
     const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
 
@@ -323,19 +293,13 @@ describe("项目 Todo 同步 seam", () => {
 
   it("同步被取消时向上传播 AbortError，不伪装成验收失败", async () => {
     const remote = managedTask();
-    remote.content = encodeManagedContent("", {
-      schemaVersion: 2,
-      kind: "pi-todo-work",
-      bindingKey: scope.bindingKey,
-      origin: "pi",
-      lifecycle: "claimed",
-      execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
-      nextId: 2,
-      tasks: [{ id: 1, subject: "已有步骤", status: "completed", itemId: "managed-item" }],
-    });
+    remote.content = encodeManagedContent("", { schemaVersion: 3, kind: "dida-todo-work", bindingKey: scope.bindingKey, origin: "agent", lifecycle: "claimed",
+    execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
+    nextId: 2,
+    tasks: [{ id: 1, subject: "已有步骤", status: "completed", itemId: "managed-item" }], });
     remote.items = [{ id: "managed-item", title: "已有步骤", status: 1 }];
     const gateway = new SyncGateway([remote], true);
-    const repository = new DidaTodoRepository(gateway);
+    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
     const controller = new AbortController();
     controller.abort();
 
@@ -345,7 +309,7 @@ describe("项目 Todo 同步 seam", () => {
   it("刷新时导入用户追加的 Item，并保留远端完成状态", async () => {
     const remote = managedTask();
     remote.items?.push({ id: "new-item", title: "用户后来追加", status: 1 });
-    const repository = new DidaTodoRepository(new SyncGateway([remote]));
+    const repository = new DidaTodoRepository(new SyncGateway([remote]), new MemoryWorkStateStore());
 
     const work = await repository.getWork(scope, "managed");
 
@@ -357,7 +321,7 @@ describe("项目 Todo 同步 seam", () => {
 
   it("将执行状态和解决说明反馈为滴答评论", async () => {
     const gateway = new SyncGateway([managedTask()]);
-    const repository = new DidaTodoRepository(gateway);
+    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
 
     await repository.addProgressComment(scope, "managed", "🤖 Pi 开始：已有步骤");
     await repository.addProgressComment(scope, "managed", "✅ Pi 完成：已有步骤\n解决：通过测试");
