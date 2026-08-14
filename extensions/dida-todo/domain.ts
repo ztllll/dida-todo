@@ -90,6 +90,7 @@ export interface WorkMetadataV2 {
   lifecycle: WorkLifecycleState;
   workType?: DidaWorkType;
   userDescription?: string;
+  userContent?: string;
   workTypeMigratedFromLegacy?: boolean;
   migratedFromVersion?: 1;
   execution?: {

@@ -3,6 +3,7 @@ import { encodeManagedContent } from "../../extensions/dida-todo/codec.js";
 import { ACCEPTANCE_COMMENT, formatAcceptanceForAgent } from "../../extensions/dida-todo/acceptance.js";
 import type { DidaProjectData, DidaTask, TodoScope, WorkMetadata } from "../../extensions/dida-todo/domain.js";
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
+import { MemoryWorkStateStore } from "../../extensions/dida-todo/state-store.js";
 
 class SyncGateway implements DidaGateway {
   comments: Array<{ taskId: string; title: string; userId?: string | number }> = [];
@@ -122,7 +123,10 @@ describe("项目 Todo 同步 seam", () => {
     expect(result.adoptedWorkIds).toEqual(["manual"]);
     expect(result.works.map((work) => work.remote.id)).toEqual(["managed", "manual"]);
     expect(result.works[1]?.tasks[0]).toMatchObject({ subject: "交给 LLM 实现", metadata: { source: "dida" } });
-    expect(gateway.tasks.find((task) => task.id === "manual")?.desc).toContain("pi-dida-todo:start");
+    const adopted = gateway.tasks.find((task) => task.id === "manual");
+    expect(adopted?.content).toBe("");
+    expect(adopted?.desc).toBe("用户自己记录的说明");
+    expect(adopted?.desc ?? "").not.toContain("pi-dida-todo:start");
   });
 
   it("同 OAuth 用户评论在同步时自动创建返工工作并关闭旧验收", async () => {
@@ -139,7 +143,9 @@ describe("项目 Todo 同步 seam", () => {
     const gateway = new SyncGateway([managedTask(), acceptance]);
     gateway.comments.push({ taskId: "acceptance", title: ACCEPTANCE_COMMENT, userId: "owner" });
     gateway.comments.push({ taskId: "acceptance", title: "这里还需要优化", userId: "owner" });
-    const repository = new DidaTodoRepository(gateway);
+    const stateStore = new MemoryWorkStateStore();
+    await stateStore.setAcceptance(scope.binding.projectId, "acceptance", { sourceWorkId: "managed" });
+    const repository = new DidaTodoRepository(gateway, stateStore);
 
     const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
     const repeated = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });

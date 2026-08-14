@@ -33,13 +33,17 @@ export class WorkFinalizer {
       && (canFinalizeWork(work) || isLegacyPiWork(work));
   }
 
-  async finalize(scope: TodoScope, work: WorkTask, signal?: AbortSignal): Promise<DidaTask> {
+  async finalize(scope: TodoScope, work: WorkTask, signal?: AbortSignal, existingAcceptanceId?: string): Promise<DidaTask> {
     if (!this.gateway.addTaskComment || !this.gateway.getTaskComments) {
       throw new Error("Dida gateway 缺少验收评论能力，不能完成工作");
     }
     const data = await this.gateway.getProjectData(scope.binding.projectId, signal);
+    const storedAcceptance = existingAcceptanceId
+      ? data.tasks.find((task) => task.id === existingAcceptanceId && task.status === 0)
+        ?? await this.gateway.getTask(scope.binding.projectId, existingAcceptanceId, signal).catch(() => undefined)
+      : undefined;
     if (work.remote.status !== 0) {
-      const existing = data.tasks.find((task) => acceptanceMatchesSource(task, work.remote));
+      const existing = storedAcceptance ?? data.tasks.find((task) => acceptanceMatchesSource(task, work.remote));
       if (existing) return existing;
       return this.createAcceptance(work, signal);
     }
@@ -52,7 +56,8 @@ export class WorkFinalizer {
     if (unfinished.length) throw new Error(`工作任务仍有 ${unfinished.length} 个未完成步骤`);
     if (!isWorkReadyForFinalization(work)) throw new Error("Checklist 大任务尚未显式声明整体完成；完成 Item 只表示进度，不代表顶层工作结束");
 
-    const acceptance = data.tasks.find((task) => acceptanceMatchesSource(task, work.remote))
+    const acceptance = storedAcceptance
+      ?? data.tasks.find((task) => acceptanceMatchesSource(task, work.remote))
       ?? await this.createAcceptance(work, signal);
     const comments = await this.gateway.getTaskComments(scope.binding.projectId, acceptance.id, signal);
     if (!comments.some((comment) => comment.title === ACCEPTANCE_COMMENT)) {

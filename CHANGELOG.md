@@ -4,6 +4,14 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.19] - 2026-08-14
+
+### Changed
+
+- Keep Dida-visible titles, descriptions, bodies, Checklist Items, resolutions, progress comments, and acceptance reports strictly human-readable. Agent guidance now forbids chain-of-thought, investigation narration, test scaffolding, prompts, managed JSON, runtime IDs, and lifecycle fields in user-facing task text.
+- Move work metadata and acceptance/source/rework links into an atomic same-host JSON state store. Legacy managed blocks in Dida `content`/`desc` remain readable as migration input and are removed from the remote task on synchronization while preserving the user's original description and body.
+- Persist promoted Checklist body text as clean human-readable Dida description content, because Dida clears Checklist `content`; the structured original fields remain recoverable from local state without exposing machine data.
+
 ## [0.6.18] - 2026-08-14
 
 ### Fixed
@@ -148,7 +156,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.18...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.19...HEAD
+[0.6.19]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.19
 [0.6.18]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.18
 [0.6.17]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.17
 [0.6.16]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.16

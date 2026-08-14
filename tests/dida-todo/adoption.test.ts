@@ -144,8 +144,8 @@ describe("手工滴答任务接管 seam", () => {
     const completed = await repo.updateTask(scope, adopted.remote.id, 1, { status: "completed" }, undefined, { deferFinalization: true });
 
     expect(gateway.task).toMatchObject({ kind: "CHECKLIST", content: "" });
-    expect(gateway.task.desc).toContain("用户原始正文");
-    expect(gateway.task.desc).toContain("pi-dida-todo:start");
+    expect(gateway.task.desc).toBe("用户原始正文");
+    expect(gateway.task.desc ?? "").not.toContain("pi-dida-todo:start");
     expect(persisted.userContent).toBe("用户原始正文");
     expect(persisted.tasks[0]).toMatchObject({ itemId: "persisted-1", status: "pending" });
     expect(completed.tasks[0]).toMatchObject({ itemId: "persisted-1", status: "completed" });

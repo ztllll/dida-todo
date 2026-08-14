@@ -1,5 +1,6 @@
 import type { DidaTask, TodoScope } from "./domain.js";
 import { acceptanceMatchesSource } from "./acceptance.js";
+import { MemoryWorkStateStore, type WorkStateStore } from "./state-store.js";
 import { occurrenceKeyForTask } from "./scheduling.js";
 
 const ACCEPTANCE_TITLE_PREFIX = "🧑‍🔬 待验收：";
@@ -55,7 +56,10 @@ export interface AcceptanceResultGateway {
 }
 
 export class AcceptanceResultUpdater {
-  constructor(private readonly gateway: AcceptanceResultGateway) {}
+  constructor(
+    private readonly gateway: AcceptanceResultGateway,
+    private readonly stateStore: WorkStateStore = new MemoryWorkStateStore(),
+  ) {}
 
   async update(
     scope: TodoScope,
@@ -65,7 +69,13 @@ export class AcceptanceResultUpdater {
     options: { deriveTitle?: boolean } = {},
   ): Promise<DidaTask | undefined> {
     const data = await this.gateway.getProjectData(scope.binding.projectId, signal);
-    const acceptance = data.tasks.find((task) => acceptanceMatchesSource(task, source));
+    const acceptanceId = await this.stateStore.findAcceptance(
+      scope.binding.projectId,
+      source.id,
+      occurrenceKeyForTask(source),
+    );
+    const acceptance = (acceptanceId ? data.tasks.find((task) => task.id === acceptanceId && task.status === 0) : undefined)
+      ?? data.tasks.find((task) => acceptanceMatchesSource(task, source));
     if (!acceptance) return undefined;
     return this.gateway.updateTask(
       acceptance.id,
@@ -91,10 +101,7 @@ export function buildAcceptanceResultUpdate(
     "## 人类操作",
     "- 如果验收通过，请在滴答中完成此任务，闭环结束。",
     "- 如果需要调整，请保持任务未完成，并使用当前滴答 OAuth 账号直接评论；本人评论会自动建立独立返工工作。",
-    "- 其他账号或无法确认身份的评论会静默忽略；任务描述区只保留任务结果和说明，不作为控制通道。",
-    "",
-    `sourceWorkId: ${source.id}`,
-    ...(occurrenceKeyForTask(source) ? [`sourceOccurrence: ${occurrenceKeyForTask(source)}`] : []),
+    "- 其他账号或无法确认身份的评论会静默忽略。"
   ].join("\n");
   return {
     id: acceptance.id,

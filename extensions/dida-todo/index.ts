@@ -45,6 +45,7 @@ import { registerDidaSetupTool } from "./setup-tool.js";
 import { finalizeWorkAtSettlement } from "./settled-finalization.js";
 import { classifyTodoTrackingReasons } from "./tracking-policy.js";
 import { detectProvisioningNamespace } from "./tmuxbot-route.js";
+import { JsonWorkStateStore } from "./state-store.js";
 
 async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Promise<string | undefined> {
   if (!pane) return undefined;
@@ -57,8 +58,9 @@ async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Pro
 export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
   const config = await loadConfig();
   const gateway = new DidaCliGateway(pi, resolveDidaCommand(config));
-  const repository = new DidaTodoRepository(gateway);
-  const acceptanceResultUpdater = new AcceptanceResultUpdater(gateway);
+  const stateStore = new JsonWorkStateStore();
+  const repository = new DidaTodoRepository(gateway, stateStore);
+  const acceptanceResultUpdater = new AcceptanceResultUpdater(gateway, stateStore);
   let activeUI = false;
   const stopPollers = new Map<string, () => void>();
   const setupContexts = new Map<string, { cwd: string; tmuxTarget?: string }>();

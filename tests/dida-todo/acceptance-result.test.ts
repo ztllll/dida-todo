@@ -5,6 +5,7 @@ import {
   extractFinalAssistantResponse,
 } from "../../extensions/dida-todo/acceptance-result.js";
 import type { DidaTask } from "../../extensions/dida-todo/domain.js";
+import { MemoryWorkStateStore } from "../../extensions/dida-todo/state-store.js";
 
 const source: DidaTask = {
   id: "source",
@@ -86,17 +87,20 @@ describe("待验收最终回复回填", () => {
       items: [],
     });
     expect(String(update.content)).toContain("## LLM 最终回复\n" + finalResponse);
-    expect(String(update.content)).toContain("sourceWorkId: source");
+    expect(String(update.content)).not.toContain("sourceWorkId:");
     expect(String(update.content)).toContain("如果验收通过");
     expect(String(update.content)).not.toContain("占位报告");
   });
 
-  it("通过网关定位同源未完成验收并保真更新", async () => {
+  it("通过本机状态关联定位干净的同源验收并保真更新", async () => {
+    const cleanAcceptance = { ...acceptance, content: "等待验收的干净报告" };
+    const stateStore = new MemoryWorkStateStore();
+    await stateStore.setAcceptance("project", "acceptance", { sourceWorkId: "source" });
     const updates: Array<{ id: string; input: Record<string, unknown> }> = [];
     const updater = new AcceptanceResultUpdater({
-      async getProjectData() { return { tasks: [acceptance] }; },
-      async updateTask(id, input) { updates.push({ id, input }); return { ...acceptance, ...input } as DidaTask; },
-    });
+      async getProjectData() { return { tasks: [cleanAcceptance] }; },
+      async updateTask(id, input) { updates.push({ id, input }); return { ...cleanAcceptance, ...input } as DidaTask; },
+    }, stateStore);
     const result = await updater.update({
       binding: { key: "binding", projectId: "project" },
       bindingKey: "binding",

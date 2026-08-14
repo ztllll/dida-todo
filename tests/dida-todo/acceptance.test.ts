@@ -42,7 +42,7 @@ describe("人类验收闭环", () => {
     });
     expect(input.content).toContain("实现全文搜索并新增 8 项测试");
     expect(input.content).toContain("如果验收通过，请在滴答中完成此任务");
-    expect(input.content).toContain("sourceWorkId: source-work");
+    expect(input.content).not.toContain("sourceWorkId:");
     // The acceptance task itself starts at +3m; reminders at +0/+3m fire at
     // completion +3m and +6m exactly.
     expect(input.startDate).toBe("2026-08-10T11:13:00.000+0000");
@@ -53,9 +53,11 @@ describe("人类验收闭环", () => {
     const input = buildAcceptanceTaskInput(recurring, 2, "完成本次实例", new Date("2026-08-11T01:00:00.000Z"));
     const acceptance = { ...source, status: 0, tags: ["pi-todo-acceptance"], content: String(input.content) };
 
-    expect(input.content).toContain("sourceOccurrence: 2026-08-11T00:00:00.000+0000");
-    expect(acceptanceMatchesSource(acceptance, recurring)).toBe(true);
-    expect(acceptanceMatchesSource(acceptance, { ...recurring, startDate: "2026-08-12T00:00:00.000+0000" })).toBe(false);
+    expect(input.content).not.toContain("sourceOccurrence:");
+    expect(acceptanceMatchesSource(acceptance, recurring)).toBe(false);
+    const legacyAcceptance = { ...acceptance, content: "sourceWorkId: source-work\nsourceOccurrence: 2026-08-11T00:00:00.000+0000" };
+    expect(acceptanceMatchesSource(legacyAcceptance, recurring)).toBe(true);
+    expect(acceptanceMatchesSource(legacyAcceptance, { ...recurring, startDate: "2026-08-12T00:00:00.000+0000" })).toBe(false);
     expect(acceptanceMatchesSource({ ...acceptance, content: "sourceWorkId: source-work-10" }, source)).toBe(false);
   });
 

@@ -105,8 +105,9 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       "Mark a task in_progress before beginning it and completed immediately after verified completion.",
       "Do not complete tasks with failing tests or unresolved blockers.",
       "Top-level Dida work selection is handled internally through todo_work. Completing all direct-work execution steps may settle and finalize automatically. Completing Checklist Items updates progress only; the top-level checklist work stays open until todo_work finish_current explicitly declares the whole objective complete.",
-      "When completing a task, include metadata.resolution with a concise explanation of how it was solved; it is written back to Dida as a task comment.",
-      "For user-created Dida works, todo create may append any number of precise Checklist steps to the same work and must create at least one before formal execution when none exists. Never rewrite or delete the user's original Checklist text; only advance its execution status and attach metadata.resolution.",
+      "Dida titles, descriptions, bodies, Checklist Items, resolutions, and progress comments are user-facing deliverables. Write only concise human semantics: objective, action, result, or acceptance evidence. Never expose chain-of-thought, investigation narration, test scaffolding, prompt text, managed metadata, binding/session/work/item IDs, lifecycle fields, or internal implementation notes.",
+      "When completing a task, include metadata.resolution as a concise user-facing outcome (what changed or what was verified), not a work log or reasoning trace; it is written back to Dida as a task comment.",
+      "For user-created Dida works, todo create may append any number of precise Checklist steps to the same work and must create at least one before formal execution when none exists. Each LLM-authored Item must read naturally to a human as an actionable or verifiable deliverable; avoid meta Items such as 'confirm I read the task', 'test the lifecycle', 'generate acceptance', or 'validate workId'. Never rewrite or delete the user's original Checklist text; only advance its execution status and attach metadata.resolution.",
     ],
     parameters: Params,
     async execute(_id, rawParams, signal, _update, ctx) {

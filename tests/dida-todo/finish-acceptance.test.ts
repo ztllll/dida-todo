@@ -3,6 +3,7 @@ import { encodeManagedContent } from "../../extensions/dida-todo/codec.js";
 import { ACCEPTANCE_COMMENT } from "../../extensions/dida-todo/acceptance.js";
 import type { DidaProjectData, DidaTask, TodoScope, WorkMetadata } from "../../extensions/dida-todo/domain.js";
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
+import { MemoryWorkStateStore } from "../../extensions/dida-todo/state-store.js";
 
 class FinishGateway implements DidaGateway {
   created: DidaTask[] = [];
@@ -211,14 +212,15 @@ describe("完成工作强制人类验收", () => {
 
   it("验收已创建但引导评论失败时源任务保持未完成，下次重试复用验收并补评论", async () => {
     const gateway = new FinishGateway([completedWork()], false, true);
-    const repository = new DidaTodoRepository(gateway);
+    const stateStore = new MemoryWorkStateStore();
+    const repository = new DidaTodoRepository(gateway, stateStore);
 
     await expect(repository.finishWork(scope, "work")).rejects.toThrow("create acceptance comment failed");
     expect(gateway.created).toHaveLength(1);
     expect(gateway.completed).toEqual([]);
 
     const retryGateway = new FinishGateway(gateway.tasks);
-    const retried = await new DidaTodoRepository(retryGateway).finishWork(scope, "work");
+    const retried = await new DidaTodoRepository(retryGateway, stateStore).finishWork(scope, "work");
     expect(retried.acceptanceTask.id).toBe("created-1");
     expect(retryGateway.created).toHaveLength(0);
     expect(retryGateway.comments).toEqual([{ taskId: "created-1", title: ACCEPTANCE_COMMENT }]);

@@ -26,8 +26,8 @@
 ```
 
 - 用户在滴答创建的任务未领取前保持原始形态；一旦 LLM 正式领取执行，就统一使用至少一个可见 Checklist Item 表达执行计划，哪怕只有一步。原始一级任务会原地提升，不会新建重复顶层任务。
-- LLM 根据顶层标题、描述、正文和已有 Checklist 把自然语言整理成更精确的可执行步骤并同步回滴答；Pi TUI 与滴答始终展示同一组进度项。
-- 用户原始 Checklist Item 的文本和结构受保护，Pi 只能推进状态和写入 `metadata.resolution`，不能改名或删除；LLM 可以追加自己的精确步骤。Pi 自建 Direct Work 仍可使用内部 Execution Steps。
+- LLM 根据顶层标题、描述、正文和已有 Checklist 把自然语言整理成更精确的可执行步骤并同步回滴答；Pi TUI 与滴答始终展示同一组进度项。滴答可见字段只保存人类语义，运行时 metadata、绑定、会话、生命周期和内部 ID 保存到本机原子状态库。
+- 用户原始 Checklist Item 的文本和结构受保护，Pi 只能推进状态并记录简洁的人类可读结果，不能改名或删除；LLM 可以追加自己的精确步骤。标题、描述、正文、Checklist 和完成评论禁止包含思考过程、排查流水账、prompt、managed JSON、运行时 ID 或生命周期字段。Pi 自建 Direct Work 仍可使用本机内部 Execution Steps。
 
 ### 2. 自然语言优先
 
@@ -153,7 +153,7 @@ Pi 自建 Direct Work 的全部 Execution Steps 完成，或 Checklist Work 明�
 ### 最简流程：全局安装 + 登录
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.18
+pi install git:github.com/ztllll/dida-todo@v0.6.19
 ```
 
 新开任意 Pi 会话，直接告诉 LLM：
@@ -182,7 +182,7 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 升级：
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.18
+pi install git:github.com/ztllll/dida-todo@v0.6.19
 # 或安装 main：pi install git:github.com/ztllll/dida-todo
 ```
 
@@ -299,7 +299,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前 `v0.6.18` 已通过 39 个测试文件、178 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、官方 Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
+当前 `v0.6.19` 已通过 39 个测试文件、178 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、官方 Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
 
 ## 开发成员
 
@@ -369,7 +369,7 @@ One fixed Dida365 project per local project / tmux target
 ## Install
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.18
+pi install git:github.com/ztllll/dida-todo@v0.6.19
 ```
 
 In any new Pi session, tell the LLM:
@@ -480,7 +480,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, explicit multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, zero-configuration project provisioning, and UX simplification. Release `v0.6.18` passed 178 default automated tests across 39 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, explicit multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, zero-configuration project provisioning, and UX simplification. Release `v0.6.19` passed 178 default automated tests across 39 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
 
 ## Team
 

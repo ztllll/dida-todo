@@ -73,10 +73,7 @@ export function buildAcceptanceTaskInput(
     "## 人类操作",
     "- 如果验收通过，请在滴答中完成此任务，闭环结束。",
     "- 如果需要调整，请保持任务未完成，并使用当前滴答 OAuth 账号在评论中写明任务；系统会自动创建独立返工工作继续处理。",
-    "- 其他账号或无法确认身份的评论会静默忽略；任务描述区只保留报告和说明，不作为控制通道。",
-    "",
-    `sourceWorkId: ${source.id}`,
-    ...(occurrenceKeyForTask(source) ? [`sourceOccurrence: ${occurrenceKeyForTask(source)}`] : []),
+    "- 其他账号或无法确认身份的评论会静默忽略。"
   ].join("\n");
   return {
     projectId: source.projectId,
@@ -98,6 +95,8 @@ function contentField(content: string | undefined, name: string): string | undef
   return content?.split("\n").find((line) => line.startsWith(`${name}: `))?.slice(name.length + 2);
 }
 
+// Compatibility matcher for legacy acceptances that stored source IDs in
+// user-visible content. New acceptances are linked by WorkStateStore.
 export function acceptanceMatchesSource(task: DidaTask, source: DidaTask): boolean {
   if (!classifyAcceptanceTask(task) || task.status !== 0) return false;
   if (contentField(task.content, "sourceWorkId") !== source.id) return false;
@@ -139,7 +138,6 @@ export function formatAcceptanceForAgent(task: DidaTask, comments: DidaComment[]
     : "  - 暂无用户评论";
   return [
     `- ${task.title}（等待人类验收，acceptanceId: ${task.id}）`,
-    `  ${task.content?.split("\n").find((line) => line.startsWith("sourceWorkId:")) ?? ""}`,
     "  用户反馈：",
     feedback,
     "  同 OAuth 用户评论会由 Repository 自动转换为独立返工工作；其他账号或缺失 userId 的评论静默忽略，不展示、不执行。已完成源 Checklist 不会回滚。"

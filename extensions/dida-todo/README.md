@@ -54,7 +54,7 @@ cross_turn_recovery / background_or_acceptance / current_work_step
 
 ### `todo`
 
-管理当前顶层工作的 Execution Steps / Checklist Items。用户在滴答创建的任务一旦由 LLM 正式执行，必须至少有一个可见 Checklist Item；没有 Item 的 Direct 任务在创建首个步骤时原地提升。Pi 新建工作仍必须明确 `workType` 和 `workPriority`：Pi Direct 使用整理后的 `subject` 作为任务名并保留内部步骤，Pi Checklist 使用与首个具体 `subject` 不同的智能汇总 `workTitle`。优先级必须为 low/medium/high（1/3/5），priority=0 只保留给用户草稿：
+管理当前顶层工作的 Execution Steps / Checklist Items。用户在滴答创建的任务一旦由 LLM 正式执行，必须至少有一个可见 Checklist Item；没有 Item 的 Direct 任务在创建首个步骤时原地提升。所有滴答可见文字都是面向人的交付内容：只写目标、动作、结果和验收证据，不写思考过程、排查日志、测试脚手架、prompt、managed JSON、binding/session/work/item ID 或 lifecycle。Pi 新建工作仍必须明确 `workType` 和 `workPriority`：Pi Direct 使用整理后的 `subject` 作为任务名并保留内部步骤，Pi Checklist 使用与首个具体 `subject` 不同的智能汇总 `workTitle`。优先级必须为 low/medium/high（1/3/5），priority=0 只保留给用户草稿：
 
 ```text
 create / update / list / get / delete / clear
@@ -77,7 +77,7 @@ list / switch / next / refresh / finish_current
 1. 读取固定清单全部未完成任务；
 2. 自动接管用户手工创建的直接任务或 Checklist 工作；
 3. 将顶层标题、描述、正文与 Checklist 作为一个完整任务载荷注入；没有 Item 的用户任务正式执行前必须先生成至少一个精确步骤，并原地提升为 Checklist；
-4. 导入用户在滴答侧新增或修改的 Checklist Item；Pi 可在同一用户工作内反复追加新 Item，但不能改名或删除用户原始 Item，只能推进状态并写 resolution；
+4. 导入用户在滴答侧新增或修改的 Checklist Item；Pi 可在同一用户工作内反复追加人类可读的新 Item，但不能改名或删除用户原始 Item，只能推进状态并写简洁结果；运行时 metadata 存在本机原子状态库，旧任务中的 managed block 会在同步时迁移并从描述/正文清除；
 5. 按优先级高→中→低和时间范围向 LLM 提供全部工作；同优先级保持滴答清单返回顺序；
 6. 读取待验收报告及评论；
 7. Overlay 与滴答状态同步。

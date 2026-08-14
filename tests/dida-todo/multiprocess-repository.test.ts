@@ -8,9 +8,9 @@ import type { DidaTask, WorkMetadata } from "../../extensions/dida-todo/domain.j
 
 const repositoryModule = resolve(import.meta.dirname, "../../extensions/dida-todo/repository.ts");
 
-function run(worker: string, store: string, action: "complete-item" | "finish", id?: number): Promise<void> {
+function run(worker: string, store: string, state: string, action: "complete-item" | "finish", id?: number): Promise<void> {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(process.execPath, ["./node_modules/vite-node/vite-node.mjs", worker, store, action, ...(id ? [String(id)] : [])], {
+    const child = spawn(process.execPath, ["./node_modules/vite-node/vite-node.mjs", worker, store, state, action, ...(id ? [String(id)] : [])], {
       cwd: resolve(import.meta.dirname, "../.."),
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -36,7 +36,8 @@ function source(metadata: WorkMetadata, items: DidaTask["items"]): DidaTask {
 const workerSource = (repositoryPath: string) => [
   'import { readFile, writeFile } from "node:fs/promises";',
   `import { DidaTodoRepository } from ${JSON.stringify(repositoryPath)};`,
-  "const [store, action, id] = process.argv.slice(2);",
+  `import { JsonWorkStateStore } from ${JSON.stringify(resolve(import.meta.dirname, "../../extensions/dida-todo/state-store.ts"))};`,
+  "const [store, state, action, id] = process.argv.slice(2);",
   "const load = async () => JSON.parse(await readFile(store, 'utf8'));",
   "const save = async (value) => writeFile(store, JSON.stringify(value));",
   "class Gateway {",
@@ -48,7 +49,7 @@ const workerSource = (repositoryPath: string) => [
   "  async addTaskComment() {} async getTaskComments() { return []; }",
   "}",
   "const scope = { binding: { key: 'tmux:demo:0.0', projectId: 'project' }, bindingKey: 'tmux:demo:0.0', cwd: '/workspace/demo', sessionId: `child-${process.pid}` };",
-  "const repository = new DidaTodoRepository(new Gateway());",
+  "const repository = new DidaTodoRepository(new Gateway(), new JsonWorkStateStore(state));",
   "if (action === 'complete-item') await repository.updateTask(scope, 'work', Number(id), { status: 'completed' }); else await repository.finishWork(scope, 'work');",
 ].join("\n");
 
@@ -56,6 +57,7 @@ describe("同宿主多进程 Repository seam", () => {
   it("两个进程完成不同 Checklist 时锁内重读并保留两次更新", async () => {
     const directory = await mkdtemp(join(tmpdir(), "dida-multiprocess-work-"));
     const store = join(directory, "store.json");
+    const state = join(directory, "state.json");
     const worker = join(directory, "worker.ts");
     const metadata: WorkMetadata = {
       schemaVersion: 2, kind: "pi-todo-work", bindingKey: "tmux:demo:0.0", origin: "pi", lifecycle: "claimed",
@@ -65,7 +67,7 @@ describe("同宿主多进程 Repository seam", () => {
     await writeFile(store, JSON.stringify({ created: 1, tasks: [source(metadata, [{ id: "one", title: "步骤一", status: 0 }, { id: "two", title: "步骤二", status: 0 }])] }));
     await writeFile(worker, workerSource(repositoryModule));
     try {
-      await Promise.all([run(worker, store, "complete-item", 1), run(worker, store, "complete-item", 2)]);
+      await Promise.all([run(worker, store, state, "complete-item", 1), run(worker, store, state, "complete-item", 2)]);
       const persisted = JSON.parse(await readFile(store, "utf8"));
       expect(persisted.tasks[0].items.map((item: { status: number }) => item.status)).toEqual([1, 1]);
     } finally {
@@ -76,6 +78,7 @@ describe("同宿主多进程 Repository seam", () => {
   it("两个进程并发收口同一工作时只创建一个验收且只完成一次源任务", async () => {
     const directory = await mkdtemp(join(tmpdir(), "dida-multiprocess-finalize-"));
     const store = join(directory, "store.json");
+    const state = join(directory, "state.json");
     const worker = join(directory, "worker.ts");
     const metadata: WorkMetadata = {
       schemaVersion: 2, kind: "pi-todo-work", bindingKey: "tmux:demo:0.0", origin: "pi", lifecycle: "claimed",
@@ -85,7 +88,7 @@ describe("同宿主多进程 Repository seam", () => {
     await writeFile(store, JSON.stringify({ created: 1, completes: 0, tasks: [source(metadata, [{ id: "one", title: "步骤", status: 1 }])] }));
     await writeFile(worker, workerSource(repositoryModule));
     try {
-      await Promise.all([run(worker, store, "finish"), run(worker, store, "finish")]);
+      await Promise.all([run(worker, store, state, "finish"), run(worker, store, state, "finish")]);
       const persisted = JSON.parse(await readFile(store, "utf8"));
       expect(persisted.tasks.filter((task: DidaTask) => task.tags?.includes("pi-todo-acceptance"))).toHaveLength(1);
       expect(persisted.completes).toBe(1);

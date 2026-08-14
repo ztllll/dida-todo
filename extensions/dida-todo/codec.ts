@@ -68,10 +68,10 @@ export function metadataToItems(metadata: WorkMetadata, remoteItems: DidaCheckli
     }));
 }
 
-export function decodeWorkTask(remote: DidaTask): WorkTask | undefined {
+export function decodeWorkTask(remote: DidaTask, storedMetadata?: WorkMetadata): WorkTask | undefined {
   const contentMetadata = decodeMetadata(remote.content);
   const descriptionMetadata = decodeMetadata(remote.desc);
-  const metadata = contentMetadata ?? descriptionMetadata;
+  const metadata = storedMetadata ?? contentMetadata ?? descriptionMetadata;
   if (!metadata) return undefined;
   const items = remote.items ?? [];
   const itemsById = new Map(items.filter((item) => item.id).map((item) => [item.id as string, item]));
@@ -118,19 +118,21 @@ export function decodeWorkTask(remote: DidaTask): WorkTask | undefined {
     normalizedMetadata = { ...normalizedMetadata, userDescription: remote.desc };
   }
   const normalizedRemote = structuredClone(remote);
-  if (descriptionMetadata) {
-    // Dida persists Checklist notes in desc and may asynchronously clear content.
-    // Restore the user's original description from metadata for agent-facing
-    // callers while userContent exposes the original TEXT body moved into desc.
+  const legacyManagedInDescription = Boolean(descriptionMetadata);
+  if (legacyManagedInDescription) {
     if (normalizedMetadata.userDescription) normalizedRemote.desc = normalizedMetadata.userDescription;
     else delete normalizedRemote.desc;
-    normalizedRemote.content = "";
+  } else if (storedMetadata && normalizedMetadata.userDescription) {
+    normalizedRemote.desc = normalizedMetadata.userDescription;
   }
+  if (contentMetadata) normalizedRemote.content = stripManagedContent(remote.content);
   return {
     remote: normalizedRemote,
     metadata: normalizedMetadata,
     tasks,
-    userContent: stripManagedContent(contentMetadata ? remote.content : remote.desc),
+    userContent: normalizedMetadata.userContent ?? (legacyManagedInDescription
+      ? stripManagedContent(remote.desc)
+      : stripManagedContent(remote.content)),
   };
 }
 

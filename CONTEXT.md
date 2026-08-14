@@ -27,3 +27,11 @@ _Avoid_: Same-cwd project
 **Degraded MCP Mode**:
 仅暴露 Dida 工具、但缺少可信原始输入和 finalization hooks 的接入模式。它可用于受限 mutation，不具备与完整 Host Adapter 相同的队列授权和验收保证。
 _Avoid_: Full compatibility
+
+**Human Task Surface**:
+滴答中用户能看到的标题、描述、正文、Checklist、评论和验收报告，只承载目标、动作、结果与验收证据。思考过程、运行时 metadata、binding/session/work/item ID、lifecycle 和幂等关联不得进入该界面。
+_Avoid_: Managed content block, debug transcript
+
+**Work State Store**:
+Host Adapter 使用的同宿主原子持久化状态库，保存 WorkMetadata 与验收/返工关联。旧滴答 managed block 只作为迁移输入；迁移完成后远端恢复为纯 Human Task Surface。
+_Avoid_: Hidden description, remote JSON footer
