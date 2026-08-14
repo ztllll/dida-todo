@@ -167,6 +167,7 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     const activeSessionId = getActiveRuntime()?.scope.sessionId;
     if (activeSessionId && activeSessionId !== sessionId) disposeDidaSession(activeSessionId);
     disposeDidaSession(sessionId);
+    interactiveSessions.add(sessionId);
     await pi.setActiveTools([...new Set([...pi.getActiveTools(), ...DIDA_TOOL_NAMES])]);
     const tmuxTarget = await detectTmuxTarget(pi, process.env.TMUX_PANE);
     setupContexts.set(sessionId, { cwd: ctx.cwd, ...(tmuxTarget ? { tmuxTarget } : {}) });

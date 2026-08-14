@@ -3,6 +3,11 @@
 All notable user-visible changes are recorded here. The project is released through pinned GitHub tags and does not publish to npm.
 
 ## [Unreleased]
+
+### Fixed
+
+- Register Interactive/TUI sessions before activating their Dida binding, so a freshly installed plugin can load `/todos`, the Overlay, and Dida tools instead of rejecting its own `session_start` as inactive.
+
 ## [0.7.0] - 2026-08-14
 
 ### Changed
