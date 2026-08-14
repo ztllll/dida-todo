@@ -156,6 +156,8 @@ OMP 原生 `todo` 与 `/todo` 不会被覆盖。Dida 状态和 mutation 只通�
 ```bash
 omp plugin install github:ztllll/dida-todo#v0.7.0
 ```
+`omp plugin install` invokes the `bun` executable. Standard Bun-based OMP installations already provide it; a standalone/prebuilt OMP binary requires Bun `1.3.14+` on `PATH` before installing a plugin.
+
 
 启动一个新的 OMP Interactive/TUI 主会话，直接告诉 LLM：
 
@@ -359,6 +361,8 @@ One fixed Dida365 project per local project / tmux target
 ```bash
 omp plugin install github:ztllll/dida-todo#v0.7.0
 ```
+`omp plugin install` invokes `bun`. Standard Bun-based OMP installations already provide it; a standalone/prebuilt OMP binary needs Bun `1.3.14+` on `PATH` before plugin installation.
+
 
 Start a new OMP Interactive/TUI session, then tell the LLM:
 

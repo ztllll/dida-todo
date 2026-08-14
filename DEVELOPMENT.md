@@ -20,6 +20,8 @@ npm audit --omit=dev
 ```
 
 `npm test` resolves the repository-local Bun binary installed by `npm ci`; do not assume a global Bun installation.
+This local Bun fallback does not satisfy OMP's plugin manager: `omp plugin install` invokes a `bun` executable from `PATH`. Standard Bun-based OMP installations already have it; standalone/prebuilt OMP binaries need Bun `1.3.14+` installed on `PATH`.
+
 
 ## Non-negotiable behavior
 

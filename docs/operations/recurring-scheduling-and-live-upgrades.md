@@ -38,6 +38,8 @@ Install a pinned release:
 ```bash
 omp plugin install github:ztllll/dida-todo#v0.7.0
 ```
+OMP's plugin manager invokes `bun` to resolve plugin dependencies. A standard Bun-based OMP installation already has it; a standalone/prebuilt OMP binary needs Bun `1.3.14+` on `PATH` before this command.
+
 
 Installation changes the plugin checkout and dependencies but cannot safely replace code currently executing in another host process. Do not upgrade while OMP is mutating a Dida task, finalizing acceptance, provisioning, invoking the bundled CLI, or running work likely to call dida-todo again.
 

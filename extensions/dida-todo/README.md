@@ -67,6 +67,8 @@ omp plugin install github:ztllll/dida-todo#v0.7.0
 npm ci
 npm run check
 ```
+`omp plugin install` invokes `bun`; standalone/prebuilt OMP binaries need Bun `1.3.14+` on `PATH`. The repository's `npm ci` workflow supplies a local Bun binary only for development and test commands.
+
 
 For a plugin upgrade, wait until OMP and any old Pi process are idle, stop Pi, install the pinned ref, start a new OMP Interactive/TUI session, run `/todos`, then confirm exact `检查todo` on one low-risk task. Also confirm that a normal mutation does not scan the queue.
 
