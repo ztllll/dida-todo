@@ -407,8 +407,8 @@ export class DidaTodoRepository {
       const updated = cloneTask(current);
       if (input.status !== undefined) {
         if (current.status === "deleted") throw new Error(`illegal transition deleted → ${input.status}`);
-        if (current.status === "completed" && input.status !== "completed" && input.status !== "deleted") {
-          throw new Error(`illegal transition completed → ${input.status}`);
+        if ((current.status === "completed" || current.status === "skipped") && input.status !== current.status && input.status !== "deleted") {
+          throw new Error(`illegal transition ${current.status} → ${input.status}`);
         }
         updated.status = input.status;
       }
@@ -439,11 +439,11 @@ export class DidaTodoRepository {
       const tasks = work.tasks.map((task, candidate) => (candidate === index ? updated : cloneTask(task)));
       const metadata: WorkMetadata = { ...claimed, tasks };
       if (input.status === "in_progress") metadata.activeTaskId = id;
-      else if (metadata.activeTaskId === id && (input.status === "completed" || input.status === "pending" || input.status === "deleted")) {
+      else if (metadata.activeTaskId === id && (input.status === "completed" || input.status === "skipped" || input.status === "pending" || input.status === "deleted")) {
         delete metadata.activeTaskId;
       }
       return metadata;
-    }, input.status === "completed" && !options.deferFinalization ? id : undefined);
+    }, (input.status === "completed" || input.status === "skipped") && !options.deferFinalization ? id : undefined);
   }
 
   async markWorkReadyForAcceptance(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<WorkTask> {

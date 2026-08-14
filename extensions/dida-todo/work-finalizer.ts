@@ -28,7 +28,7 @@ export class WorkFinalizer {
     const visible = visibleTasks(work);
     return work.remote.status === 0
       && visible.length > 0
-      && visible.every((task) => task.status === "completed")
+      && visible.every((task) => task.status === "completed" || task.status === "skipped")
       && isWorkReadyForFinalization(work)
       && (canFinalizeWork(work) || isLegacyPiWork(work));
   }
@@ -63,16 +63,23 @@ export class WorkFinalizer {
     if (!comments.some((comment) => comment.title === ACCEPTANCE_COMMENT)) {
       await this.gateway.addTaskComment(scope.binding.projectId, acceptance.id, ACCEPTANCE_COMMENT, signal);
     }
-    await this.completeRemoteItems(scope, work.remote.id, signal);
+    await this.completeRemoteItems(scope, work, signal);
     await this.gateway.completeTask(scope.binding.projectId, work.remote.id, signal);
     return acceptance;
   }
 
-  private async completeRemoteItems(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<void> {
-    const current = await this.gateway.getTask(scope.binding.projectId, workId, signal);
-    if (!current.items?.length || current.items.every((item) => item.status === 1 || item.status === 2)) return;
-    const items = current.items.map((item) => ({ ...structuredClone(item), status: 1 }));
-    const updated = await this.gateway.updateTask(workId, {
+  private async completeRemoteItems(scope: TodoScope, source: WorkTask, signal?: AbortSignal): Promise<void> {
+    const current = await this.gateway.getTask(scope.binding.projectId, source.remote.id, signal);
+    if (!current.items?.length) return;
+    const taskByItemId = new Map(source.tasks.filter((task) => task.itemId).map((task) => [task.itemId as string, task]));
+    const items = current.items.map((item) => {
+      const task = item.id ? taskByItemId.get(item.id) : source.tasks.find((candidate) => candidate.subject === item.title);
+      return {
+        ...structuredClone(item),
+        status: task?.status === "completed" ? 1 : item.status ?? 0,
+      };
+    });
+    const updated = await this.gateway.updateTask(source.remote.id, {
       id: current.id,
       projectId: current.projectId,
       title: current.title,
@@ -89,8 +96,8 @@ export class WorkFinalizer {
       ...(current.repeatFlag !== undefined ? { repeatFlag: current.repeatFlag } : {}),
       ...(current.sortOrder !== undefined ? { sortOrder: current.sortOrder } : {}),
     }, signal);
-    if ((updated.items ?? []).some((item) => item.status !== 1 && item.status !== 2)) {
-      throw new Error("Checklist 子项未能全部标记完成，拒绝完成顶层任务");
+    if ((updated.items ?? []).length !== items.length) {
+      throw new Error("Checklist 子项数量发生变化，拒绝完成顶层任务");
     }
   }
 

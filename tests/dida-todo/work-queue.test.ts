@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { WorkTask } from "../../extensions/dida-todo/domain.js";
-import { formatWorkQueueForAgent, hasUnfinishedTasks, isExecutableWork, nextUnfinishedWork } from "../../extensions/dida-todo/work-queue.js";
+import { formatWorkQueueForAgent, hasUnfinishedTasks, isExecutableWork, nextUnfinishedWork, rankExecutableWorks } from "../../extensions/dida-todo/work-queue.js";
 
-function work(id: string, title: string, statuses: Array<"pending" | "in_progress" | "completed">, priority = 1): WorkTask {
+function work(id: string, title: string, statuses: Array<"pending" | "in_progress" | "completed" | "skipped">, priority = 1): WorkTask {
   return {
     remote: { id, projectId: "project", title, status: 0, priority },
     userContent: "",
@@ -116,6 +116,13 @@ describe("多工作任务执行队列", () => {
 
     expect(text).toContain('"mustCreateVisibleChecklistStep":true');
     expect(text).toContain("哪怕计划只有一步");
+  });
+
+  it("全部 Item 已完成或按要求保留未勾时不再进入执行队列", () => {
+    const settled = work("settled", "视觉状态已交付", ["completed", "skipped"]);
+
+    expect(hasUnfinishedTasks(settled)).toBe(false);
+    expect(rankExecutableWorks([settled])).toEqual([]);
   });
 
   it("给 Agent 的同步上下文明确要求连续处理全部未完成工作", () => {

@@ -21,7 +21,7 @@ function todosText(work: WorkTask): string {
   const duplicateDescription = directTitleIsTask && mirroredTask?.description?.trim() === work.remote.desc?.trim();
   const pending = visible.filter((task) => task.status === "pending");
   const active = visible.filter((task) => task.status === "in_progress");
-  const completed = visible.filter((task) => task.status === "completed");
+  const completed = visible.filter((task) => task.status === "completed" || task.status === "skipped");
   const lines = [
     ...(!directTitleIsTask ? [`${work.remote.title}`] : []),
     ...(work.remote.desc && !duplicateDescription ? [`描述：${work.remote.desc}`] : []),

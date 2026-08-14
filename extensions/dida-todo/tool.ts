@@ -21,7 +21,7 @@ const Params = Type.Object({
   })),
   description: Type.Optional(Type.String({ description: "Long-form task description" })),
   activeForm: Type.Optional(Type.String({ description: "Present-continuous label shown while in_progress" })),
-  status: Type.Optional(StringEnum(["pending", "in_progress", "completed", "deleted"] as const)),
+  status: Type.Optional(StringEnum(["pending", "in_progress", "completed", "skipped", "deleted"] as const, { description: "Use skipped only when the requested deliverable is intentionally left unchecked or not applicable; it is treated as settled while the Dida Item remains unchecked." })),
   blockedBy: Type.Optional(Type.Array(Type.Number())),
   addBlockedBy: Type.Optional(Type.Array(Type.Number())),
   removeBlockedBy: Type.Optional(Type.Array(Type.Number())),
@@ -103,7 +103,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       "Pi-created direct work may keep one concise task name with internal execution steps. Any user-created Dida work that the LLM formally executes must expose at least one visible Checklist Item, even for a one-step plan; creating the first step promotes a Dida-origin direct task in place. Use checklist work for durable objectives whose visible Items are concrete progress stages across turns or sessions.",
       "Never append unrelated ordinary chat or a separate one-off request to an existing work. If it does not belong to the current durable work, do not call todo.",
       "Mark a task in_progress before beginning it and completed immediately after verified completion.",
-      "Do not complete tasks with failing tests or unresolved blockers.",
+      "Do not complete tasks with failing tests or unresolved blockers. Use status=skipped only when the user's requested final state intentionally leaves that Item unchecked or the Item is genuinely not applicable; include a human-readable metadata.resolution explaining the outcome.",
       "Top-level Dida work selection is handled internally through todo_work. Completing all direct-work execution steps may settle and finalize automatically. Completing Checklist Items updates progress only; the top-level checklist work stays open until todo_work finish_current explicitly declares the whole objective complete.",
       "Dida titles, descriptions, bodies, Checklist Items, resolutions, and progress comments are user-facing deliverables. Write only concise human semantics: objective, action, result, or acceptance evidence. Never expose chain-of-thought, investigation narration, test scaffolding, prompt text, managed metadata, binding/session/work/item IDs, lifecycle fields, or internal implementation notes.",
       "When completing a task, include metadata.resolution as a concise user-facing outcome (what changed or what was verified), not a work log or reasoning trace; it is written back to Dida as a task comment.",
@@ -241,7 +241,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
           if (params.status === "in_progress" && currentTask) {
             await repository.addProgressComment(scope, work.remote.id, `开始处理：${currentTask.subject}`, signal);
           }
-          if (params.status === "completed" && currentTask) {
+          if ((params.status === "completed" || params.status === "skipped") && currentTask) {
             const resolution = typeof params.metadata?.resolution === "string" ? `\n结果：${params.metadata.resolution}` : "";
             await repository.addProgressComment(scope, work.remote.id, `已完成：${currentTask.subject}${resolution}`, signal);
           }
@@ -275,7 +275,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
         const visible = nextWork.tasks.filter((task) => task.status !== "deleted");
         if (
           visible.length > 0
-          && visible.every((task) => task.status === "completed")
+          && visible.every((task) => task.status === "completed" || task.status === "skipped")
           && !requiresExplicitWorkCompletion(nextWork)
         ) {
           queueWorkFinalization(sessionId, nextWork.remote.id);
@@ -310,8 +310,8 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       const details = result.details as { params?: TodoParams; tasks?: Task[] } | undefined;
       const task = details?.tasks?.find((candidate) => candidate.id === details.params?.id) ?? details?.tasks?.at(-1);
       const status = task?.status;
-      const glyph = status === "completed" ? "✓" : status === "in_progress" ? "◐" : status === "deleted" ? "⊘" : "○";
-      const color = status === "completed" ? "success" : status === "in_progress" ? "warning" : status === "deleted" ? "muted" : "dim";
+      const glyph = status === "completed" ? "✓" : status === "skipped" ? "−" : status === "in_progress" ? "◐" : status === "deleted" ? "⊘" : "○";
+      const color = status === "completed" ? "success" : status === "skipped" ? "muted" : status === "in_progress" ? "warning" : status === "deleted" ? "muted" : "dim";
       return new Text(theme.fg(color, status ? `${glyph} ${status}` : "✓"), 0, 0);
     },
   });

@@ -1,4 +1,4 @@
-export type TaskStatus = "pending" | "in_progress" | "completed" | "deleted";
+export type TaskStatus = "pending" | "in_progress" | "completed" | "skipped" | "deleted";
 export type TaskAction = "create" | "update" | "list" | "get" | "delete" | "clear";
 
 export interface Task {

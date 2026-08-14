@@ -99,7 +99,7 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
       const works = rankExecutableWorks(sync.works).map((work) => ({
         id: work.remote.id,
         title: work.remote.title,
-        completed: work.tasks.filter((task) => task.status === "completed").length,
+        completed: work.tasks.filter((task) => task.status === "completed" || task.status === "skipped").length,
         total: work.tasks.filter((task) => task.status !== "deleted").length,
         selected: work.remote.id === selected?.remote.id,
       }));

@@ -16,12 +16,14 @@ function taskLine(task: Task, theme: Theme): string {
   const glyph =
     task.status === "completed"
       ? theme.fg("success", "✓")
+      : task.status === "skipped"
+        ? theme.fg("muted", "−")
       : task.status === "in_progress"
         ? theme.fg("warning", "◐")
         : task.status === "deleted"
           ? theme.fg("error", "✗")
           : theme.fg("dim", "○");
-  let subject = theme.fg(task.status === "in_progress" ? "accent" : task.status === "completed" ? "muted" : "text", task.subject);
+  let subject = theme.fg(task.status === "in_progress" ? "accent" : task.status === "completed" || task.status === "skipped" ? "muted" : "text", task.subject);
   if (task.status === "completed" || task.status === "deleted") subject = theme.strikethrough(subject);
   let line = `${glyph} ${theme.fg("dim", `#${task.id}`)} ${subject}`;
   if (task.status === "in_progress" && task.activeForm) line += ` ${theme.fg("muted", `(${task.activeForm})`)}`;
@@ -101,7 +103,7 @@ export class TodoOverlay {
     const tasks = this.visibleTasks();
     if (!tasks.length) return [];
     const allTasks = this.getTasks().filter((task) => task.status !== "deleted");
-    const completed = allTasks.filter((task) => task.status === "completed").length;
+    const completed = allTasks.filter((task) => task.status === "completed" || task.status === "skipped").length;
     const active = allTasks.some((task) => task.status === "pending" || task.status === "in_progress");
     const workTitle = overlayHeadingTitle(this.getWorkTitle(), allTasks);
     const headingText = `${workTitle ? `${workTitle} · ` : ""}Todos (${completed}/${allTasks.length})`;
@@ -110,8 +112,8 @@ export class TodoOverlay {
     if (this.collapsed) return [truncate(heading), truncate(`${theme.fg("dim", "└─")} ${theme.fg("dim", `${this.collapseKey} 展开`)}`), ""];
 
     const budget = Math.max(2, this.getMaxLines()) - 1;
-    const unfinished = tasks.filter((task) => task.status !== "completed");
-    const completedTasks = tasks.filter((task) => task.status === "completed");
+    const unfinished = tasks.filter((task) => task.status !== "completed" && task.status !== "skipped");
+    const completedTasks = tasks.filter((task) => task.status === "completed" || task.status === "skipped");
     const ordered = [...unfinished, ...completedTasks];
     const visible = ordered.slice(0, budget);
     const lines = [truncate(heading)];

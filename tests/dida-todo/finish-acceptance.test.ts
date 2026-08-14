@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeManagedContent } from "../../extensions/dida-todo/codec.js";
+import { decodeMetadata, encodeManagedContent } from "../../extensions/dida-todo/codec.js";
 import { ACCEPTANCE_COMMENT } from "../../extensions/dida-todo/acceptance.js";
 import type { DidaProjectData, DidaTask, TodoScope, WorkMetadata } from "../../extensions/dida-todo/domain.js";
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
@@ -171,6 +171,31 @@ describe("完成工作强制人类验收", () => {
     expect(gateway.completed).toEqual(["work"]);
     expect(result.acceptanceTask.id).toBe("created-1");
     expect(gateway.comments).toEqual([{ taskId: "created-1", title: ACCEPTANCE_COMMENT }]);
+  });
+
+  it("按要求保留未勾的 skipped Item 在顶层完成后仍保持未勾", async () => {
+    const remote = completedWork();
+    const metadata = decodeMetadata(remote.content)!;
+    metadata.tasks = [
+      { id: 1, subject: "需要勾选", status: "completed", itemId: "item-1" },
+      { id: 2, subject: "按要求保留未勾", status: "skipped", itemId: "item-2", metadata: { resolution: "按要求保留未勾" } },
+    ];
+    metadata.nextId = 3;
+    remote.content = encodeManagedContent("需求说明", metadata);
+    remote.items = [
+      { id: "item-1", title: "需要勾选", status: 1 },
+      { id: "item-2", title: "按要求保留未勾", status: 0 },
+    ];
+    const gateway = new FinishGateway([remote]);
+    const repository = new DidaTodoRepository(gateway);
+
+    await repository.finishWork(scope, "work");
+
+    expect(gateway.tasks.find((task) => task.id === "work")?.items).toEqual([
+      expect.objectContaining({ title: "需要勾选", status: 1 }),
+      expect.objectContaining({ title: "按要求保留未勾", status: 0 }),
+    ]);
+    expect(gateway.completed).toEqual(["work"]);
   });
 
   it("完成顶层前强制把远端 Checklist Items 全部标记完成", async () => {

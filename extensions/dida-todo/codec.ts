@@ -85,11 +85,13 @@ export function decodeWorkTask(remote: DidaTask, storedMetadata?: WorkMetadata):
     if (item.id) matchedItemIds.add(item.id);
     const completed = item.status === 1 || item.status === 2;
     const piCompleted = stored.status === "completed" && stored.metadata?.source !== "dida";
-    const status: TaskStatus = completed || piCompleted
-      ? "completed"
-      : metadata.activeTaskId === stored.id
-        ? "in_progress"
-        : "pending";
+    const status: TaskStatus = stored.status === "skipped"
+      ? "skipped"
+      : completed || piCompleted
+        ? "completed"
+        : metadata.activeTaskId === stored.id
+          ? "in_progress"
+          : "pending";
     return {
       ...cloneTask(stored),
       ...(item.id ? { itemId: item.id } : {}),
