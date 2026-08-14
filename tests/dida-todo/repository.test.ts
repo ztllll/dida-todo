@@ -30,6 +30,7 @@ class FakeGateway implements DidaGateway {
       projectId: input.projectId as string,
       title: input.title as string,
       content: input.content as string,
+      ...(input.desc !== undefined ? { desc: String(input.desc) } : {}),
       status: 0,
       priority: Number(input.priority ?? 0),
       kind: "CHECKLIST",
@@ -91,6 +92,20 @@ describe("滴答 Todo Repository seam", () => {
 
     expect(updated.tasks).toEqual([{ id: 1, subject: "研究现有接口", status: "pending", itemId: "item-1" }]);
     expect(reloaded.tasks).toEqual(updated.tasks);
+  });
+
+  it("Checklist 连续 mutation 后描述与正文各只保留一份", async () => {
+    const gateway = new FakeGateway();
+    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    let work = await repo.createWork(scope, "验证描述幂等", undefined, "checklist", "稳定正文", "用户描述", 1);
+
+    work = await repo.createTask(scope, work.remote.id, { subject: "第一步" });
+    work = await repo.createTask(scope, work.remote.id, { subject: "第二步" });
+    await repo.updateTask(scope, work.remote.id, 1, { status: "in_progress" });
+    const remote = await gateway.getTask(scope.binding.projectId, work.remote.id);
+
+    expect(remote.desc).toBe("用户描述\n\n稳定正文");
+    expect(remote.desc?.split("稳定正文")).toHaveLength(2);
   });
 
   it("Checklist 已 ready 后追加同一请求的新 Item 会撤销收口状态", async () => {

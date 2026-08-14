@@ -7,6 +7,7 @@ All notable user-visible changes are recorded here. The project is released thro
 ### Fixed
 
 - Register Interactive/TUI sessions before activating their Dida binding, so a freshly installed plugin can load `/todos`, the Overlay, and Dida tools instead of rejecting its own `session_start` as inactive.
+- Keep Checklist descriptions idempotent across repeated Item creation and status updates, so the preserved task body appears exactly once instead of being appended again on every remote mutation.
 
 ## [0.7.0] - 2026-08-14
 
