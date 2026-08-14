@@ -75,6 +75,55 @@ describe("手工滴答任务接管 seam", () => {
     expect(second.tasks.slice(1).every((task) => task.metadata?.source !== "dida")).toBe(true);
   });
 
+  it("手工滴答一级任务产生执行步骤后提升为 Checklist，并保持 TUI 与滴答一致", async () => {
+    const gateway = new AdoptionGateway({
+      id: "manual-direct",
+      projectId: "project-1",
+      title: "用户一级任务",
+      content: "完整需求正文",
+      status: 0,
+      priority: 5,
+      kind: "TEXT",
+    });
+    const repo = new DidaTodoRepository(gateway);
+    const adopted = await repo.adoptWork(scope, "manual-direct");
+
+    expect(adopted.metadata).toMatchObject({ origin: "dida", workType: "direct" });
+    const decomposed = await repo.createTask(scope, adopted.remote.id, {
+      subject: "LLM 拆解步骤",
+      description: "步骤说明只保存在受管元数据中",
+    });
+
+    expect(decomposed.metadata).toMatchObject({ origin: "dida", workType: "checklist" });
+    expect(decomposed.remote.items).toEqual([
+      expect.objectContaining({ title: "LLM 拆解步骤", status: 0 }),
+    ]);
+    expect(decomposed.tasks).toEqual([
+      expect.objectContaining({ subject: "LLM 拆解步骤", description: "步骤说明只保存在受管元数据中" }),
+    ]);
+    expect(decomposed.userContent).toBe("完整需求正文");
+  });
+
+  it("历史上已拆解为内部步骤的手工 Direct Work 在下一次更新时自动提升", async () => {
+    const gateway = new AdoptionGateway({
+      id: "legacy-decomposed-direct",
+      projectId: "project-1",
+      title: "历史一级任务",
+      content: "<!-- pi-dida-todo:start -->\n{\"schemaVersion\":2,\"kind\":\"pi-todo-work\",\"bindingKey\":\"tmux:example:0.0\",\"origin\":\"dida\",\"lifecycle\":\"claimed\",\"workType\":\"direct\",\"nextId\":2,\"tasks\":[{\"id\":1,\"subject\":\"已有内部步骤\",\"status\":\"pending\"}]}\n<!-- pi-dida-todo:end -->",
+      status: 0,
+      priority: 5,
+      kind: "TEXT",
+    });
+    const repo = new DidaTodoRepository(gateway);
+
+    const promoted = await repo.updateTask(scope, "legacy-decomposed-direct", 1, { status: "in_progress" });
+
+    expect(promoted.metadata).toMatchObject({ origin: "dida", workType: "checklist" });
+    expect(promoted.remote.items).toEqual([
+      expect.objectContaining({ title: "已有内部步骤", status: 0 }),
+    ]);
+  });
+
   it("用户原始步骤只能推进状态，不能改名或删除；Pi 追加步骤可编辑", async () => {
     const gateway = new AdoptionGateway({
       id: "manual-work",

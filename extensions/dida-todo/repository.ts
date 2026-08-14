@@ -334,8 +334,10 @@ export class DidaTodoRepository {
         ...(input.metadata ? { metadata: { ...input.metadata } } : {}),
       };
       const metadata = migrateWorkMetadata(work.metadata);
+      const promoteDidaDirectToChecklist = metadata.origin === "dida" && metadata.workType === "direct";
       return {
         ...metadata,
+        ...(promoteDidaDirectToChecklist ? { workType: "checklist" as const } : {}),
         lifecycle: metadata.lifecycle === "ready_for_acceptance" ? "claimed" : metadata.lifecycle,
         finalization: metadata.lifecycle === "ready_for_acceptance" ? undefined : metadata.finalization,
         nextId: metadata.nextId + 1,
@@ -517,6 +519,9 @@ export class DidaTodoRepository {
       if (work.remote.status !== 0) throw new Error("已完成的工作任务不能修改 Checklist");
       let metadata = await reducer(work);
       metadata = migrateWorkMetadata(metadata);
+      if (metadata.origin === "dida" && metadata.workType === "direct" && metadata.tasks.some((task) => task.status !== "deleted")) {
+        metadata = { ...metadata, workType: "checklist" };
+      }
       const desired = metadataToItems(metadata, work.remote.items ?? []);
       let remote = await this.gateway.updateTask(
         workId,
