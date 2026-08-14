@@ -1,5 +1,5 @@
-import type { DidaTask, TodoScope } from "./domain.js";
-import { acceptanceMatchesSource } from "./acceptance.js";
+import type { DidaTask, TodoScope, WorkMetadata } from "./domain.js";
+import { acceptanceMatchesSource, buildAcceptanceSummary } from "./acceptance.js";
 import { MemoryWorkStateStore, type WorkStateStore } from "./state-store.js";
 import { occurrenceKeyForTask } from "./scheduling.js";
 
@@ -50,6 +50,25 @@ function resultTitle(sourceTitle: string, finalResponse: string): string {
   return `${ACCEPTANCE_TITLE_PREFIX}${suffix}`.slice(0, MAX_ACCEPTANCE_TITLE_LENGTH).trimEnd();
 }
 
+export function buildHumanAcceptanceResult(source: DidaTask, metadata: WorkMetadata | undefined, fallback: string): string {
+  if (metadata) {
+    const tasks = metadata.tasks.filter((task) => task.status !== "deleted");
+    if (tasks.length) {
+      return buildAcceptanceSummary(source.title, tasks, {
+        ...(metadata.schemaVersion === 2 && metadata.userDescription ? { description: metadata.userDescription } : {}),
+        ...(metadata.schemaVersion === 2 && metadata.userContent ? { content: metadata.userContent } : {}),
+      });
+    }
+  }
+  const clean = fallback
+    .replace(/<!-- pi-dida-todo:start -->[\s\S]*?<!-- pi-dida-todo:end -->/g, "")
+    .split("\n")
+    .filter((line) => !/\b(?:sourceWorkId|sourceOccurrence|bindingKey|sessionId|workId|itemId|lifecycle)\s*:/i.test(line))
+    .join("\n")
+    .trim();
+  return clean || `任务「${source.title}」已完成。`;
+}
+
 export interface AcceptanceResultGateway {
   getProjectData(projectId: string, signal?: AbortSignal): Promise<{ tasks: DidaTask[] }>;
   updateTask(taskId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<DidaTask>;
@@ -77,9 +96,15 @@ export class AcceptanceResultUpdater {
     const acceptance = (acceptanceId ? data.tasks.find((task) => task.id === acceptanceId && task.status === 0) : undefined)
       ?? data.tasks.find((task) => acceptanceMatchesSource(task, source));
     if (!acceptance) return undefined;
+    const metadata = await this.stateStore.get(scope.binding.projectId, source.id);
     return this.gateway.updateTask(
       acceptance.id,
-      buildAcceptanceResultUpdate(source, acceptance, finalResponse, options),
+      buildAcceptanceResultUpdate(
+        source,
+        acceptance,
+        buildHumanAcceptanceResult(source, metadata, finalResponse),
+        { ...options, ...(metadata ? { deriveTitle: false } : {}) },
+      ),
       signal,
     );
   }

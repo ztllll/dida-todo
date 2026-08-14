@@ -11,6 +11,7 @@ All notable user-visible changes are recorded here. The project is released thro
 - Keep Dida-visible titles, descriptions, bodies, Checklist Items, resolutions, progress comments, and acceptance reports strictly human-readable. Agent guidance now forbids chain-of-thought, investigation narration, test scaffolding, prompts, managed JSON, runtime IDs, and lifecycle fields in user-facing task text.
 - Move work metadata and acceptance/source/rework links into an atomic same-host JSON state store. Legacy managed blocks in Dida `content`/`desc` remain readable as migration input and are removed from the remote task on synchronization while preserving the user's original description and body.
 - Persist promoted Checklist body text as clean human-readable Dida description content, because Dida clears Checklist `content`; the structured original fields remain recoverable from local state without exposing machine data.
+- Generate each acceptance report from that source task's own objective and completed results instead of copying the whole queue's final conversation into every acceptance. Legacy acceptances with visible source IDs are migrated to concise per-task reports.
 
 ## [0.6.18] - 2026-08-14
 

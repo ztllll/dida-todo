@@ -14,6 +14,7 @@ import type {
   DidaWorkType,
 } from "./domain.js";
 import { buildCompletionReminderInput } from "./scheduling.js";
+import { buildAcceptanceResultUpdate, buildHumanAcceptanceResult } from "./acceptance-result.js";
 import { MemoryWorkStateStore, type WorkStateStore } from "./state-store.js";
 import {
   acceptanceReworkId,
@@ -472,7 +473,7 @@ export class DidaTodoRepository {
     const adoptedWorkIds: string[] = [];
     const acceptances: PendingAcceptance[] = [];
     const finalizationFailures: FinalizationFailure[] = [];
-    for (const remote of data.tasks) {
+    for (let remote of data.tasks) {
       if (remote.tags?.includes("pi-todo-reminder")) continue;
       if (classifyAcceptanceTask(remote)) {
         const legacyAcceptanceLink = this.legacyAcceptanceLink(remote);
@@ -483,6 +484,15 @@ export class DidaTodoRepository {
           ? await this.gateway.getTaskComments(scope.binding.projectId, remote.id, signal)
           : [];
         const storedAcceptance = await this.stateStore.getAcceptance(scope.binding.projectId, remote.id);
+        const sourceId = storedAcceptance?.sourceWorkId ?? legacyAcceptanceLink?.sourceWorkId;
+        if (sourceId && this.legacyAcceptanceLink(remote)) {
+          const sourceMetadata = await this.stateStore.get(scope.binding.projectId, sourceId);
+          const source = data.tasks.find((task) => task.id === sourceId)
+            ?? { id: sourceId, projectId: scope.binding.projectId, title: remote.title.replace(/^🧑‍🔬 待验收：/, ""), status: 2, priority: remote.priority };
+          const sourceForReport = { ...source, title: remote.title.replace(/^🧑‍🔬 待验收：/, "") };
+          const report = buildHumanAcceptanceResult(sourceForReport, sourceMetadata, remote.desc ?? "");
+          remote = await this.gateway.updateTask(remote.id, buildAcceptanceResultUpdate(sourceForReport, remote, report, { deriveTitle: false }), signal);
+        }
         if (authorizedAcceptanceFeedback(comments).length) {
           if (!storedAcceptance) {
             acceptances.push({ remote, comments });
