@@ -229,6 +229,8 @@ export class DidaTodoRepository {
         this.buildUpdateInput(remote, synced, userContent),
         signal,
       );
+      const finalMetadata = synchronizeItemIds(synced, remote);
+      await this.stateStore.set(remote.projectId, remote.id, finalMetadata);
       await this.stateStore.setRework(scope.binding.projectId, acceptanceId, remote.id);
       await this.gateway.addTaskComment!(
         scope.binding.projectId,
@@ -237,7 +239,7 @@ export class DidaTodoRepository {
         signal,
       );
       await this.gateway.completeTask(scope.binding.projectId, acceptanceId, signal);
-      const work = decodeWorkTask(remote, synced);
+      const work = decodeWorkTask(remote, finalMetadata);
       if (!work) throw new Error("创建后的返工任务无法解析为 Pi Todo 工作任务");
       return work;
     });
@@ -294,6 +296,8 @@ export class DidaTodoRepository {
       this.buildUpdateInput(remote, metadata, userContent),
       signal,
     );
+    metadata = synchronizeItemIds(metadata, updated);
+    await this.stateStore.set(updated.projectId, updated.id, metadata);
     const work = decodeWorkTask(updated, metadata);
     if (!work) throw new Error(`无法接管滴答工作任务: ${remote.id}`);
     return work;
@@ -346,7 +350,9 @@ export class DidaTodoRepository {
         this.buildUpdateInput(remote, synced, userContent),
         signal,
       );
-      return decodeWorkTask(remote, synced) ?? { remote, metadata: synced, tasks: synced.tasks, userContent };
+      const finalMetadata = synchronizeItemIds(synced, remote);
+      await this.stateStore.set(remote.projectId, remote.id, finalMetadata);
+      return decodeWorkTask(remote, finalMetadata) ?? { remote, metadata: finalMetadata, tasks: finalMetadata.tasks, userContent };
     });
   }
 
@@ -526,6 +532,8 @@ export class DidaTodoRepository {
           if (!stored) {
             await this.stateStore.set(scope.binding.projectId, remote.id, metadata);
             work = await this.cleanLegacyManagedFields(remote, metadata, signal);
+          } else if (JSON.stringify(metadata) !== JSON.stringify(migrateWorkMetadata(stored))) {
+            await this.stateStore.set(scope.binding.projectId, remote.id, metadata);
           }
           if (metadata.origin === "pi" && (remote.priority ?? 0) <= 0) {
             work = await this.migratePiWorkPriority(scope, remote.id, signal);
@@ -659,6 +667,8 @@ export class DidaTodoRepository {
         this.buildUpdateInput(remote, metadata, work.userContent),
         signal,
       );
+      metadata = synchronizeItemIds(metadata, remote);
+      await this.stateStore.set(scope.binding.projectId, workId, metadata);
       const decoded = decodeWorkTask(remote, metadata);
       if (!decoded) throw new Error("更新后的滴答任务无法解析为 Pi Todo 工作任务");
       if (completedTaskId !== undefined) {

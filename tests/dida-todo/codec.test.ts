@@ -161,4 +161,47 @@ describe("工作任务编解码 seam", () => {
       { id: 2, subject: "实现适配器", status: "completed", activeForm: "正在实现适配器", itemId: "item-b" },
     ]);
   });
+
+  it("服务端重写同名 Item ID 时一对一恢复，并移除远端已不存在的旧 Dida Item", () => {
+    const stored: WorkMetadata = {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: "tmux:example:0.0",
+      origin: "dida",
+      lifecycle: "claimed",
+      workType: "checklist",
+      nextId: 7,
+      tasks: [
+        { id: 1, subject: "二级任务", status: "completed", itemId: "old-1", metadata: { source: "dida", resolution: "仅完成第一项" } },
+        { id: 2, subject: "二级任务", status: "pending", itemId: "old-2", metadata: { source: "dida" } },
+        { id: 3, subject: "测试", status: "pending", itemId: "old-3", metadata: { source: "dida" } },
+        { id: 4, subject: "二级任务", status: "pending", itemId: "old-4", metadata: { source: "dida" } },
+        { id: 5, subject: "二级任务", status: "pending", itemId: "stale-5", metadata: { source: "dida" } },
+        { id: 6, subject: "二级任务", status: "pending", itemId: "stale-6", metadata: { source: "dida" } },
+      ],
+    };
+    const remote: DidaTask = {
+      id: "duplicate-items",
+      projectId: "project-1",
+      title: "同名 Checklist",
+      status: 0,
+      priority: 5,
+      kind: "CHECKLIST",
+      items: [
+        { id: "new-1", title: "二级任务", status: 1 },
+        { id: "new-2", title: "二级任务", status: 0 },
+        { id: "new-3", title: "测试", status: 0 },
+        { id: "new-4", title: "二级任务", status: 0 },
+      ],
+    };
+
+    const decoded = decodeWorkTask(remote, stored);
+
+    expect(decoded?.tasks).toEqual([
+      { id: 1, subject: "二级任务", status: "completed", itemId: "new-1", metadata: { source: "dida", resolution: "仅完成第一项" } },
+      { id: 2, subject: "二级任务", status: "pending", itemId: "new-2", metadata: { source: "dida" } },
+      { id: 3, subject: "测试", status: "pending", itemId: "new-3", metadata: { source: "dida" } },
+      { id: 4, subject: "二级任务", status: "pending", itemId: "new-4", metadata: { source: "dida" } },
+    ]);
+  });
 });

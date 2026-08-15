@@ -74,15 +74,20 @@ export function decodeWorkTask(remote: DidaTask, storedMetadata?: WorkMetadata):
   const metadata = storedMetadata ?? contentMetadata ?? descriptionMetadata;
   if (!metadata) return undefined;
   const items = remote.items ?? [];
-  const itemsById = new Map(items.filter((item) => item.id).map((item) => [item.id as string, item]));
-  const availableWithoutId = [...items];
-
-  const matchedItemIds = new Set<string>();
-  const tasks = metadata.tasks.map((stored) => {
-    let item = stored.itemId ? itemsById.get(stored.itemId) : undefined;
-    if (!item) item = availableWithoutId.find((candidate) => candidate.title === stored.subject);
-    if (!item || stored.status === "deleted") return cloneTask(stored);
-    if (item.id) matchedItemIds.add(item.id);
+  const unusedItemIndexes = new Set(items.map((_, index) => index));
+  const tasks = metadata.tasks.flatMap((stored) => {
+    if (stored.status === "deleted") return [cloneTask(stored)];
+    let itemIndex = stored.itemId
+      ? items.findIndex((item, index) => unusedItemIndexes.has(index) && item.id === stored.itemId)
+      : -1;
+    if (itemIndex < 0) {
+      itemIndex = items.findIndex((item, index) => unusedItemIndexes.has(index) && item.title === stored.subject);
+    }
+    if (itemIndex < 0) {
+      return stored.metadata?.source === "dida" ? [] : [cloneTask(stored)];
+    }
+    unusedItemIndexes.delete(itemIndex);
+    const item = items[itemIndex];
     const completed = item.status === 1 || item.status === 2;
     const piCompleted = stored.status === "completed" && stored.metadata?.source !== "dida";
     const status: TaskStatus = stored.status === "skipped"
@@ -92,19 +97,17 @@ export function decodeWorkTask(remote: DidaTask, storedMetadata?: WorkMetadata):
         : metadata.activeTaskId === stored.id
           ? "in_progress"
           : "pending";
-    return {
+    return [{
       ...cloneTask(stored),
       ...(item.id ? { itemId: item.id } : {}),
       subject: item.title,
       status,
-    };
+    }];
   });
 
   let nextId = Math.max(metadata.nextId, ...tasks.map((task) => task.id + 1), 1);
-  for (const item of items) {
-    if (item.id && matchedItemIds.has(item.id)) continue;
-    const duplicate = tasks.some((task) => task.status !== "deleted" && task.subject === item.title && (!item.id || task.itemId === item.id));
-    if (duplicate) continue;
+  for (const itemIndex of unusedItemIndexes) {
+    const item = items[itemIndex];
     const completed = item.status === 1 || item.status === 2;
     tasks.push({
       id: nextId++,

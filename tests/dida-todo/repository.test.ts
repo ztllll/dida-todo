@@ -10,6 +10,8 @@ class FakeGateway implements DidaGateway {
   nextTask = 1;
   nextItem = 1;
 
+  constructor(private readonly rewriteItemIdsOnUpdate = false) {}
+
   async getProjectData(projectId: string): Promise<DidaProjectData> {
     return {
       project: { id: projectId, name: "测试清单", kind: "TASK" },
@@ -44,7 +46,10 @@ class FakeGateway implements DidaGateway {
   async updateTask(taskId: string, input: Record<string, unknown>): Promise<DidaTask> {
     const current = this.tasks.get(taskId);
     if (!current) throw new Error("not found");
-    const task = this.assignItemIds({ ...current, ...structuredClone(input), id: taskId } as DidaTask);
+    const task = this.assignItemIds(
+      { ...current, ...structuredClone(input), id: taskId } as DidaTask,
+      this.rewriteItemIdsOnUpdate,
+    );
     this.tasks.set(taskId, task);
     return structuredClone(task);
   }
@@ -58,8 +63,11 @@ class FakeGateway implements DidaGateway {
   async addTaskComment(): Promise<void> {}
   async getTaskComments(): Promise<Array<{ id: string; title: string }>> { return []; }
 
-  private assignItemIds(task: DidaTask): DidaTask {
-    task.items = (task.items ?? []).map((item) => ({ ...item, id: item.id ?? `item-${this.nextItem++}` }));
+  private assignItemIds(task: DidaTask, rewrite = false): DidaTask {
+    task.items = (task.items ?? []).map((item) => ({
+      ...item,
+      id: rewrite ? `item-${this.nextItem++}` : item.id ?? `item-${this.nextItem++}`,
+    }));
     return task;
   }
 }
@@ -109,6 +117,92 @@ describe("滴答 Todo Repository seam", () => {
     expect(remote.desc).toBe("用户描述\n\n稳定正文");
     expect(remote.desc?.split("用户描述")).toHaveLength(2);
     expect(remote.desc?.split("稳定正文")).toHaveLength(2);
+  });
+
+  it("服务端每次更新都重写 Item ID 时持久化最终一轮 ID", async () => {
+    const gateway = new FakeGateway(true);
+    const stateStore = new MemoryWorkStateStore();
+    gateway.tasks.set("duplicate", {
+      id: "duplicate",
+      projectId: scope.binding.projectId,
+      title: "同名 Checklist",
+      content: "",
+      desc: "只完成第一项",
+      status: 0,
+      priority: 5,
+      kind: "CHECKLIST",
+      items: [
+        { id: "initial-1", title: "二级任务", status: 0 },
+        { id: "initial-2", title: "二级任务", status: 0 },
+        { id: "initial-3", title: "测试", status: 0 },
+        { id: "initial-4", title: "二级任务", status: 0 },
+      ],
+    });
+    const repo = new DidaTodoRepository(gateway, stateStore);
+    await repo.syncOpenWorks(scope, { adoptUnmanaged: true });
+    const adoptedRemote = await gateway.getTask(scope.binding.projectId, "duplicate");
+    const adoptedStored = await stateStore.get(scope.binding.projectId, "duplicate");
+    expect(adoptedStored?.tasks.map((task) => task.itemId)).toEqual(adoptedRemote.items?.map((item) => item.id));
+
+    await repo.updateTask(scope, "duplicate", 1, { status: "in_progress" });
+    const updated = await repo.updateTask(scope, "duplicate", 1, { status: "completed" });
+
+    const remote = await gateway.getTask(scope.binding.projectId, "duplicate");
+    const stored = await stateStore.get(scope.binding.projectId, "duplicate");
+    expect(updated.tasks).toHaveLength(4);
+    expect(remote.items).toHaveLength(4);
+    expect(stored?.tasks.map((task) => task.itemId)).toEqual(remote.items?.map((item) => item.id));
+  });
+
+  it("同步时自动净化同名 Item 造成的历史膨胀状态", async () => {
+    const gateway = new FakeGateway();
+    const stateStore = new MemoryWorkStateStore();
+    gateway.tasks.set("poller-test", {
+      id: "poller-test",
+      projectId: scope.binding.projectId,
+      title: "轮询测试",
+      content: "",
+      desc: "只勾选一个，保持未完成状态",
+      status: 0,
+      priority: 5,
+      kind: "CHECKLIST",
+      items: [
+        { id: "new-1", title: "二级任务", status: 1 },
+        { id: "new-2", title: "二级任务", status: 0 },
+        { id: "new-3", title: "测试", status: 0 },
+        { id: "new-4", title: "二级任务", status: 0 },
+      ],
+    });
+    await stateStore.set(scope.binding.projectId, "poller-test", {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: scope.bindingKey,
+      origin: "dida",
+      lifecycle: "claimed",
+      workType: "checklist",
+      nextId: 7,
+      tasks: [
+        { id: 1, subject: "二级任务", status: "completed", itemId: "old-1", metadata: { source: "dida" } },
+        { id: 2, subject: "二级任务", status: "pending", itemId: "old-2", metadata: { source: "dida" } },
+        { id: 3, subject: "测试", status: "pending", itemId: "old-3", metadata: { source: "dida" } },
+        { id: 4, subject: "二级任务", status: "pending", itemId: "old-4", metadata: { source: "dida" } },
+        { id: 5, subject: "二级任务", status: "pending", itemId: "stale-5", metadata: { source: "dida" } },
+        { id: 6, subject: "二级任务", status: "pending", itemId: "stale-6", metadata: { source: "dida" } },
+      ],
+    });
+    const repo = new DidaTodoRepository(gateway, stateStore);
+
+    const result = await repo.syncOpenWorks(scope, { adoptUnmanaged: true });
+
+    expect(result.works[0]?.tasks.map((task) => [task.subject, task.status])).toEqual([
+      ["二级任务", "completed"],
+      ["二级任务", "pending"],
+      ["测试", "pending"],
+      ["二级任务", "pending"],
+    ]);
+    expect((await stateStore.get(scope.binding.projectId, "poller-test"))?.tasks.map((task) => task.itemId)).toEqual([
+      "new-1", "new-2", "new-3", "new-4",
+    ]);
   });
 
   it("下一次 mutation 自动净化历史任务里重复追加的正文", async () => {

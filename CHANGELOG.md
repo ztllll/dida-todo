@@ -4,6 +4,13 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.27] - 2026-08-15
+
+### Fixed
+
+- Reconcile multiple Checklist Items with the same title one-to-one when Dida rewrites every Item ID. A single completed remote Item can no longer mark every same-title local step complete or duplicate the remaining Items.
+- Persist the final server-assigned Item IDs after adoption, creation, rework creation, and every Checklist mutation. Queue synchronization also repairs historical expanded local state from the authoritative remote Checklist without rewriting user-authored text.
+
 ## [0.6.26] - 2026-08-15
 
 ### Fixed
@@ -200,7 +207,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.26...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.27...HEAD
+[0.6.27]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.27
 [0.6.26]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.26
 [0.6.25]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.25
 [0.6.24]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.24
