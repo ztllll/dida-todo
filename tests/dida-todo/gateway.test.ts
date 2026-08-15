@@ -5,6 +5,19 @@ import { describe, expect, it } from "vitest";
 import { DidaCliGateway } from "../../extensions/dida-todo/gateway.js";
 
 describe("Dida CLI Adapter seam", () => {
+  it("把空清单返回的缺失集合归一化为领域空数组", async () => {
+    const pi = {
+      exec: async () => ({ code: 0, stdout: "{}", stderr: "", killed: false }),
+    } as never;
+    const gateway = new DidaCliGateway(pi, "dida");
+
+    await expect(gateway.getProjectData("empty-project")).resolves.toEqual({
+      project: { id: "empty-project", name: "empty-project" },
+      tasks: [],
+      columns: [],
+    });
+  });
+
   it("通过 argv 和 JSON 驱动 Checklist 工作任务", async () => {
     const dir = await mkdtemp(join(tmpdir(), "dida-gateway-"));
     const store = join(dir, "store.json");

@@ -28,7 +28,18 @@ export class DidaCliGateway implements DidaGateway {
   }
 
   async getProjectData(projectId: string, signal?: AbortSignal): Promise<DidaProjectData> {
-    return this.execJson(["project", "data", projectId, "--json"], signal);
+    const raw = await this.execJson<Partial<DidaProjectData> | null>(["project", "data", projectId, "--json"], signal);
+    const data = raw && typeof raw === "object" ? raw : {};
+    const project = data.project && typeof data.project === "object" ? data.project : undefined;
+    return {
+      project: {
+        ...project,
+        id: typeof project?.id === "string" && project.id ? project.id : projectId,
+        name: typeof project?.name === "string" && project.name ? project.name : projectId,
+      },
+      tasks: Array.isArray(data.tasks) ? data.tasks : [],
+      columns: Array.isArray(data.columns) ? data.columns : [],
+    };
   }
 
   async getTask(projectId: string, taskId: string, signal?: AbortSignal): Promise<DidaTask> {

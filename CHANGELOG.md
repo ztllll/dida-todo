@@ -4,6 +4,12 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.23] - 2026-08-15
+
+### Fixed
+
+- Normalize empty Dida project responses at the CLI Gateway boundary. Missing or `null` `tasks`/`columns` now become empty arrays and a missing `project` becomes a minimal project keyed by the requested ID, preventing Pi startup/reload from failing with `data.tasks is not iterable` on empty bound lists.
+
 ## [0.6.22] - 2026-08-15
 
 ### Fixed
@@ -175,7 +181,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.22...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.23...HEAD
+[0.6.23]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.23
 [0.6.22]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.22
 [0.6.21]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.21
 [0.6.20]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.20
