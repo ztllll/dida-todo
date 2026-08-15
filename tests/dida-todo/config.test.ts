@@ -19,6 +19,11 @@ describe("项目绑定解析 seam", () => {
     expect(resolveBinding(config, "/workspace/example-project/", undefined)?.projectId).toBe("project-cwd");
   });
 
+  it("tmux 绑定指向已删除清单时回退到仍存在的 cwd 绑定", () => {
+    expect(resolveBinding(config, "/workspace/example-project", "example:0.0", new Set(["project-cwd"]))?.projectId).toBe("project-cwd");
+    expect(resolveBinding(config, "/workspace/example-project", "example:0.0", new Set())).toBeUndefined();
+  });
+
   it("默认启用自动 provisioning，也允许显式关闭", () => {
     const defaults: DidaTodoConfig = { bindings: [] };
     const disabled: DidaTodoConfig = { bindings: [], autoProvisionProject: false };

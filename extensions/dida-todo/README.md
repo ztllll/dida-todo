@@ -82,7 +82,7 @@ list / switch / next / refresh / finish_current
 6. 读取待验收报告及评论；
 7. Overlay 与滴答状态同步。
 
-`pollIntervalMinutes` 默认 10 分钟，可配置为 1–1440。Poller 仅在 Pi 空闲且没有 pending message 时同步；只有优先级大于 0、未完成并满足 `timeZone` 日期/时间门的工作才发送 follow-up 并签发本轮队列授权。同步可以发现未来循环 occurrence，但 priority 不会绕过时间门：非全天任务必须是计划当天且当前时间不早于 `startDate`（缺失时回退 `dueDate`），全天任务只判断计划日期。提前轮询不会预约单项 timer；到点后的下一次轮询自动领取，也可完整输入 `检查todo` 立即触发。过期 occurrence 不自动补跑。
+`pollIntervalMinutes` 默认 10 分钟，可配置为 1–1440。Poller 只在 Interactive/TUI 主会话中注册；Print/RPC 子会话启动时只建立被动 cwd Runtime，不同步滴答、不自动 provisioning、不继承父 TUI 的 tmux pane，也不启动 Poller，精确 `检查todo` 或显式 setup 仍可按需同步。Interactive 启动前会校验 binding 的 projectId 仍存在；失效 tmux binding 会回退并持久修复到同 cwd 的有效清单。Poller 仅在 Pi 空闲且没有 pending message 时同步；只有优先级大于 0、未完成并满足 `timeZone` 日期/时间门的工作才发送 follow-up 并签发本轮队列授权。同步可以发现未来循环 occurrence，但 priority 不会绕过时间门：非全天任务必须是计划当天且当前时间不早于 `startDate`（缺失时回退 `dueDate`），全天任务只判断计划日期。提前轮询不会预约单项 timer；到点后的下一次轮询自动领取，也可完整输入 `检查todo` 立即触发。过期 occurrence 不自动补跑。
 
 ## 强制人类验收闭环
 

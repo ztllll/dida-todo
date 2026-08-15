@@ -4,6 +4,13 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.26] - 2026-08-15
+
+### Fixed
+
+- Keep Print/RPC child sessions from inheriting an Interactive pane's `TMUX_PANE`, provisioning during startup, overwriting the production tmux binding, or starting a background Poller. They now initialize only a passive cwd-bound Runtime with no startup Dida sync; exact `检查todo` and explicit setup remain available without borrowing the parent TUI's tmux identity.
+- Validate configured project IDs against the current Dida project list before choosing a binding. If an exact tmux binding points to a deleted project while the same cwd still has a valid binding, automatically fall back to that project and persistently repair the tmux alias instead of silently polling an empty normalized response.
+
 ## [0.6.25] - 2026-08-15
 
 ### Fixed
@@ -193,7 +200,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.25...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.26...HEAD
+[0.6.26]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.26
 [0.6.25]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.25
 [0.6.24]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.24
 [0.6.23]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.23

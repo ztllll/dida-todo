@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -36,6 +36,7 @@ describe("LLM setup tool", () => {
 
     const result = await tool.execute("id", { action: "login" }, undefined, undefined, {
       cwd: "/workspace/demo",
+      hasUI: true,
       sessionManager: { getSessionId: () => "session" },
     });
 
@@ -46,5 +47,27 @@ describe("LLM setup tool", () => {
     expect(result.content[0].text).toContain("无需 /reload");
     expect(result.details.ready).toBe(true);
     expect(config.bindings).toHaveLength(2);
+  });
+
+  it("Print/RPC 显式 setup 只使用其被动 cwd 上下文，不继承 Interactive tmux pane", async () => {
+    const configPath = join(await mkdtemp(join(tmpdir(), "dida-setup-print-")), "config.json");
+    let tool: any;
+    const gateway = new Gateway();
+    registerDidaSetupTool(
+      { registerTool(value: any) { tool = value; } } as never,
+      gateway as never,
+      { bindings: [] },
+      () => ({ cwd: "/workspace/print" }),
+      async () => {},
+      configPath,
+    );
+
+    await tool.execute("id", { action: "auto" }, undefined, undefined, {
+      cwd: "/workspace/print",
+      hasUI: false,
+      sessionManager: { getSessionId: () => "print-session" },
+    });
+    const saved = JSON.parse(await readFile(configPath, "utf8"));
+    expect(saved.bindings).toEqual([expect.objectContaining({ key: "cwd:/workspace/print" })]);
   });
 });

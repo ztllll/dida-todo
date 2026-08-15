@@ -55,18 +55,26 @@ export function bindingKeyFor(cwd: string, tmuxTarget?: string): string {
   return tmuxTarget ? `tmux:${tmuxTarget}` : `cwd:${normalizeCwd(cwd)}`;
 }
 
-export function resolveBinding(config: DidaTodoConfig, cwd: string, tmuxTarget?: string): ProjectBinding | undefined {
+export function resolveBinding(
+  config: DidaTodoConfig,
+  cwd: string,
+  tmuxTarget?: string,
+  availableProjectIds?: ReadonlySet<string>,
+): ProjectBinding | undefined {
   const normalizedCwd = normalizeCwd(cwd);
+  const isAvailable = (binding: ProjectBinding | undefined): binding is ProjectBinding =>
+    binding !== undefined && (availableProjectIds === undefined || availableProjectIds.has(binding.projectId));
   if (tmuxTarget) {
     const tmuxKey = `tmux:${tmuxTarget}`;
     const match = config.bindings.find((binding) => binding.key === tmuxKey);
-    if (match) {
+    if (isAvailable(match)) {
       if (match.cwd && normalizeCwd(match.cwd) !== normalizedCwd) return undefined;
       return match;
     }
   }
   const cwdKey = `cwd:${normalizedCwd}`;
-  return config.bindings.find((binding) => binding.key === cwdKey);
+  const cwdBinding = config.bindings.find((binding) => binding.key === cwdKey);
+  return isAvailable(cwdBinding) ? cwdBinding : undefined;
 }
 
 export function resolvePollIntervalMinutes(config: DidaTodoConfig): number {

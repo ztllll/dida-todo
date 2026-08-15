@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import {
   deriveBindingIdentity,
   ensureProjectBinding,
   isDidaAuthenticationError,
+  resolveAvailableProjectBinding,
 } from "../../extensions/dida-todo/provisioning.js";
 import { findImRouteIdentity, namespacedProjectName } from "../../extensions/dida-todo/provisioning-identity.js";
 
@@ -127,6 +128,30 @@ describe("零配置项目清单 provisioning", () => {
     expect(result.binding.projectId).toBe("existing");
     expect(result.createdProject).toBe(false);
     expect(gateway.created).toEqual([]);
+  });
+
+  it("重新 provisioning 时替换同 cwd 的失效 tmux 绑定", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "dida-provision-stale-"));
+    const configPath = join(dir, "config.json");
+    await writeFile(configPath, JSON.stringify({
+      bindings: [
+        { key: "tmux:demo:0.0", projectId: "deleted", cwd: "/workspace/demo", label: "deleted" },
+        { key: "cwd:/workspace/demo", projectId: "existing", cwd: "/workspace/demo", label: "demo" },
+      ],
+    }));
+    const gateway = new ProjectGateway([{ id: "existing", name: "demo", closed: false }]);
+
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    const result = await resolveAvailableProjectBinding({ gateway, cwd: "/workspace/demo", tmuxTarget: "demo:0.0", configPath, config });
+
+    expect(result.binding?.projectId).toBe("existing");
+    expect(result.repaired).toBe(true);
+    const saved = JSON.parse(await readFile(configPath, "utf8"));
+    expect(saved.bindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "tmux:demo:0.0", projectId: "existing" }),
+      expect.objectContaining({ key: "cwd:/workspace/demo", projectId: "existing" }),
+    ]));
+    expect(saved.bindings.some((binding: { projectId: string }) => binding.projectId === "deleted")).toBe(false);
   });
 
   it("同名清单不唯一时拒绝猜测，允许按 ID 显式绑定", async () => {

@@ -90,7 +90,7 @@ describe("安装登录后的完整首次使用", () => {
     };
     registerDidaSetupTool(pi, gateway as never, config, () => ({ cwd, tmuxTarget }), activate, configPath);
     registerTodoTool(pi, repository, () => {});
-    const ctx = { cwd, sessionManager: { getSessionId: () => sessionId } };
+    const ctx = { cwd, hasUI: true, sessionManager: { getSessionId: () => sessionId } };
 
     const login = await setupTool.execute("login", { action: "login" }, undefined, undefined, ctx);
     setAllowedTrackingReasons(sessionId, ["multi_step_implementation", "current_work_step"]);
@@ -135,7 +135,7 @@ describe("安装登录后的完整首次使用", () => {
     };
     registerDidaSetupTool(pi, gateway as never, config, () => ({ cwd, tmuxTarget }), activate, configPath);
     registerTodoTool(pi, repository, () => {});
-    const ctx = { cwd, sessionManager: { getSessionId: () => sessionId } };
+    const ctx = { cwd, hasUI: true, sessionManager: { getSessionId: () => sessionId } };
 
     await setupTool.execute("login", { action: "login" }, undefined, undefined, ctx);
     setAllowedTrackingReasons(sessionId, ["user_requested_tracking", "current_work_step"]);

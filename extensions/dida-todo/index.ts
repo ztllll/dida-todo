@@ -40,7 +40,7 @@ import { shouldAcceptAutomaticPollInput, shouldCheckTodoInput } from "./input-sy
 import { formatWorkQueueForAgent, isExecutableWork } from "./work-queue.js";
 import { registerTodoWorkTool } from "./work-tool.js";
 import { startTodoPoller } from "./poller.js";
-import { ensureProjectBinding, isDidaAuthenticationError } from "./provisioning.js";
+import { ensureProjectBinding, isDidaAuthenticationError, resolveAvailableProjectBinding } from "./provisioning.js";
 import { registerDidaSetupTool } from "./setup-tool.js";
 import { finalizeWorkAtSettlement } from "./settled-finalization.js";
 import { classifyTodoTrackingReasons } from "./tracking-policy.js";
@@ -53,6 +53,19 @@ async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Pro
     timeout: 3000,
   });
   return result.code === 0 ? result.stdout.trim() || undefined : undefined;
+}
+
+export function initializePassiveSession(config: import("./domain.js").DidaTodoConfig, cwd: string, sessionId: string): boolean {
+  const binding = resolveBinding(config, cwd);
+  if (!binding) return false;
+  const scope = {
+    binding,
+    bindingKey: binding.key,
+    cwd,
+    sessionId,
+  };
+  setSessionRuntime(sessionId, { scope, works: [], lastSyncAt: new Date().toISOString() });
+  return true;
 }
 
 export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
@@ -120,9 +133,11 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       setActiveSession(sessionId, ctx.ui);
       overlay.setUI(ctx.ui);
     }
-    if (ctx.hasUI) overlay.update(true);
-    stopPollers.get(sessionId)?.();
-    stopPollers.set(sessionId, startTodoPoller(pi, ctx, repository, resolvePollIntervalMinutes(config), () => overlay.update(true)));
+    if (ctx.hasUI) {
+      overlay.update(true);
+      stopPollers.get(sessionId)?.();
+      stopPollers.set(sessionId, startTodoPoller(pi, ctx, repository, resolvePollIntervalMinutes(config), () => overlay.update(true)));
+    }
     return sync;
   };
 
@@ -136,11 +151,22 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
 
   pi.on("session_start", async (_event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
+    if (!ctx.hasUI) {
+      setupContexts.set(sessionId, { cwd: ctx.cwd });
+      initializePassiveSession(config, ctx.cwd, sessionId);
+      return;
+    }
     const tmuxTarget = await detectTmuxTarget(pi, process.env.TMUX_PANE);
     setupContexts.set(sessionId, { cwd: ctx.cwd, ...(tmuxTarget ? { tmuxTarget } : {}) });
-    let binding = resolveBinding(config, ctx.cwd, tmuxTarget);
-    if (!binding && config.autoProvisionProject !== false) {
-      try {
+    let binding: import("./domain.js").ProjectBinding | undefined;
+    try {
+      const available = await resolveAvailableProjectBinding({ gateway, cwd: ctx.cwd, tmuxTarget, config, signal: ctx.signal });
+      binding = available.binding;
+      config.bindings = available.config.bindings;
+      if (available.repaired && binding && ctx.hasUI) {
+        ctx.ui.notify(`检测到已删除清单的失效 tmux 绑定，已自动恢复到当前 cwd 清单：${binding.label ?? binding.projectId}`, "warning");
+      }
+      if (!binding && config.autoProvisionProject !== false) {
         const namespace = await detectProvisioningNamespace(pi, tmuxTarget);
         const provisioned = await ensureProjectBinding({ gateway, cwd: ctx.cwd, tmuxTarget, namespace, signal: ctx.signal });
         binding = provisioned.binding;
@@ -153,13 +179,13 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
             "info",
           );
         }
-      } catch (error) {
-        if (ctx.hasUI && isDidaAuthenticationError(error)) {
-          ctx.ui.notify("dida-todo 已安装，但内置 Dida CLI 尚未登录。直接告诉 LLM“登录滴答”即可打开浏览器授权；也可在 dida-todo 安装目录运行 ./node_modules/.bin/dida auth login。登录后会自动创建并绑定当前项目清单。", "warning");
-          return;
-        }
-        throw error;
       }
+    } catch (error) {
+      if (ctx.hasUI && isDidaAuthenticationError(error)) {
+        ctx.ui.notify("dida-todo 已安装，但内置 Dida CLI 尚未登录。直接告诉 LLM“登录滴答”即可打开浏览器授权；也可在 dida-todo 安装目录运行 ./node_modules/.bin/dida auth login。登录后会自动创建并绑定当前项目清单。", "warning");
+        return;
+      }
+      throw error;
     }
     if (!binding) return;
     const sync = await activateBinding(ctx, binding);

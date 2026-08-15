@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { withHostLock } from "./host-lock.js";
-import { DEFAULT_CONFIG_PATH, normalizeCwd } from "./config.js";
+import { DEFAULT_CONFIG_PATH, normalizeCwd, resolveBinding } from "./config.js";
 import type { DidaProject, DidaTodoConfig, ProjectBinding } from "./domain.js";
 import { namespacedProjectName, type ProvisioningNamespace } from "./provisioning-identity.js";
 
@@ -37,6 +37,16 @@ interface ProvisioningInput {
 interface ExplicitBindingInput extends ProvisioningInput {
   projectId?: string;
   projectName?: string;
+}
+
+interface AvailableBindingInput extends ProvisioningInput {
+  config: DidaTodoConfig;
+}
+
+export interface AvailableBindingResult {
+  binding?: ProjectBinding;
+  config: DidaTodoConfig;
+  repaired: boolean;
 }
 
 function cleanName(value: string): string {
@@ -126,6 +136,30 @@ async function persistBinding(
 
 function openProjects(projects: DidaProject[]): DidaProject[] {
   return projects.filter((project) => project.closed !== true);
+}
+
+export async function resolveAvailableProjectBinding(input: AvailableBindingInput): Promise<AvailableBindingResult> {
+  const configPath = input.configPath ?? DEFAULT_CONFIG_PATH;
+  const projects = openProjects(await input.gateway.listProjects(input.signal));
+  const projectIds = new Set(projects.map((project) => project.id));
+  const binding = resolveBinding(input.config, input.cwd, input.tmuxTarget, projectIds);
+  if (!binding) return { config: input.config, repaired: false };
+
+  const tmuxKey = input.tmuxTarget ? `tmux:${input.tmuxTarget}` : undefined;
+  const exactTmux = tmuxKey ? input.config.bindings.find((candidate) => candidate.key === tmuxKey) : undefined;
+  if (!input.tmuxTarget || (exactTmux?.projectId === binding.projectId && projectIds.has(exactTmux.projectId))) {
+    return { binding, config: input.config, repaired: false };
+  }
+
+  const project = projects.find((candidate) => candidate.id === binding.projectId);
+  if (!project) return { config: input.config, repaired: false };
+  const identity = {
+    ...deriveBindingIdentity(input.cwd, input.tmuxTarget, input.namespace),
+    projectName: project.name,
+    label: binding.label ?? project.name,
+  };
+  const persisted = await persistBinding(configPath, input.config, identity, project, input.cwd, input.tmuxTarget);
+  return { ...persisted, repaired: true };
 }
 
 export async function ensureProjectBinding(input: ProvisioningInput): Promise<ProvisioningResult> {

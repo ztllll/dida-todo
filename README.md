@@ -154,7 +154,7 @@ Pi 自建 Direct Work 的全部 Execution Steps 完成，或 Checklist Work 明�
 ### 最简流程：全局安装 + 登录
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.25
+pi install git:github.com/ztllll/dida-todo@v0.6.26
 ```
 
 新开任意 Pi 会话，直接告诉 LLM：
@@ -174,16 +174,16 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 5. 当前会话立即同步并启用，无需填写 projectId；
 6. 空清单明确显示“滴答 Todo 已就绪”，直接口述第一项任务即可；首个 Todo 自动建立顶层工作与 Checklist。
 
-完成“登录滴答”的当前会话无需 `/reload` 或第二次配置。新启动的 Pi 会话会自动加载并复用登录状态。只有当某个 Pi 进程已经运行、用户再从外部安装或升级包时，该存量进程受 Pi Loader 生命周期限制需要执行一次 `/reload`；尚未加载的扩展无法自行让旧进程热更新。
+完成“登录滴答”的当前会话无需 `/reload` 或第二次配置。新启动的 Pi Interactive/TUI 会话会自动加载并复用登录状态。Print/RPC 子会话启动时只建立被动 cwd Runtime，不同步滴答、不执行自动 provisioning、不继承父 TUI 的 tmux pane，也不启动 Poller；精确输入 `检查todo` 或显式 setup 仍可按需同步。因此从 TUI 内运行 `pi -p` smoke 不会覆盖生产 tmux binding。只有当某个 Pi 进程已经运行、用户再从外部安装或升级包时，该存量进程受 Pi Loader 生命周期限制需要执行一次 `/reload`；尚未加载的扩展无法自行让旧进程热更新。
 
-存在多个同名清单时扩展拒绝猜测。用户可直接口述“把当前项目绑定到清单 X / projectId Y”，由内部 setup 工具改绑。设置 `autoProvisionProject: false` 可关闭默认自动 provisioning。
+存在多个同名清单时扩展拒绝猜测。用户可直接口述“把当前项目绑定到清单 X / projectId Y”，由内部 setup 工具改绑。设置 `autoProvisionProject: false` 可关闭默认自动 provisioning。启动时还会校验绑定的 projectId 是否仍存在：失效 tmux binding 会优先回退到同 cwd 的有效清单并持久修复；若没有任何有效绑定，再进入自动 provisioning。
 
 手工登录回退：进入 dida-todo Git 安装目录运行 `./node_modules/.bin/dida auth login`。
 
 升级：
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.25
+pi install git:github.com/ztllll/dida-todo@v0.6.26
 # 或安装 main：pi install git:github.com/ztllll/dida-todo
 ```
 
@@ -300,7 +300,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前 `v0.6.25` 已通过 40 个测试文件、197 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、官方 Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
+当前 `v0.6.26` 已通过 40 个测试文件、202 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、官方 Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
 
 ## 开发成员
 
@@ -370,7 +370,7 @@ One fixed Dida365 project per local project / tmux target
 ## Install
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.25
+pi install git:github.com/ztllll/dida-todo@v0.6.26
 ```
 
 In any new Pi session, tell the LLM:
@@ -417,7 +417,7 @@ Create `~/.config/pi-dida-todo/config.json`:
 }
 ```
 
-Exact tmux target matching takes precedence over exact cwd matching. By default, an unbound session reuses the unique same-name project or creates one; it never guesses between duplicate names. Set `autoProvisionProject: false` for fully explicit bindings. `pollIntervalMinutes` defaults to 10 and accepts 1–1440. Automatic and exact `检查todo` execution both respect priority and task-local date/time scheduling. Priority 0 is a user draft; Pi-created work is always 1/3/5, and historical Pi priority-0 work is migrated to low.
+Exact tmux target matching takes precedence over exact cwd matching when that project still exists. If a tmux binding points to a deleted project, an Interactive/TUI session falls back to a valid exact cwd binding and persistently repairs the tmux alias. By default, an unbound session reuses the unique same-name project or creates one; it never guesses between duplicate names. Print/RPC startup uses only a passive cwd Runtime: it does not inherit the parent TUI pane, perform startup Dida sync or auto-provisioning, or register a Poller; exact `检查todo` and explicit setup remain available. Set `autoProvisionProject: false` for fully explicit bindings. `pollIntervalMinutes` defaults to 10 and accepts 1–1440. Automatic and exact `检查todo` execution both respect priority and task-local date/time scheduling. Priority 0 is a user draft; Pi-created work is always 1/3/5, and historical Pi priority-0 work is migrated to low.
 
 ## Usage
 
@@ -481,7 +481,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, explicit multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, zero-configuration project provisioning, and UX simplification. Release `v0.6.25` passed 197 default automated tests across 40 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, explicit multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, zero-configuration project provisioning, and UX simplification. Release `v0.6.26` passed 202 default automated tests across 40 test files plus one opt-in isolated real-Dida gate, TypeScript, the official Extension Loader, package-content inspection, and credential scanning.
 
 ## Team
 
