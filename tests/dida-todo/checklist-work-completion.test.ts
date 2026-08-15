@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DidaTodoRepository } from "../../extensions/dida-todo/repository.js";
 import { registerTodoWorkTool } from "../../extensions/dida-todo/work-tool.js";
 import { getSessionRuntime, pendingWorkFinalizations, removeSessionRuntime, setSessionRuntime } from "../../extensions/dida-todo/runtime.js";
+import { registerTodoTool } from "../../extensions/dida-todo/tool.js";
 import type { TodoScope, WorkTask } from "../../extensions/dida-todo/domain.js";
 
 const scope: TodoScope = {
@@ -35,6 +36,43 @@ function completedChecklist(): WorkTask {
 }
 
 describe("Checklist 大任务整体完成", () => {
+  it("keepWorkOpen 的 skipped 更新不会排队 settled 收口", async () => {
+    const work = completedChecklist();
+    work.tasks = [
+      { id: 1, subject: "需要勾选", status: "completed" },
+      { id: 2, subject: "保持未勾", status: "pending" },
+    ];
+    work.metadata = { ...work.metadata, origin: "dida", tasks: structuredClone(work.tasks) } as WorkTask["metadata"];
+    const keptOpen: WorkTask = {
+      ...work,
+      tasks: [work.tasks[0]!, { ...work.tasks[1]!, status: "skipped" }],
+      metadata: {
+        ...work.metadata,
+        keepOpen: true,
+        tasks: [work.tasks[0]!, { ...work.tasks[1]!, status: "skipped" }],
+      } as WorkTask["metadata"],
+    };
+    setSessionRuntime(scope.sessionId, { scope, works: [work], work });
+    let tool: any;
+    const repository = {
+      async updateTask() { return structuredClone(keptOpen); },
+      async addProgressComment() {},
+    } as unknown as DidaTodoRepository;
+    registerTodoTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
+
+    await tool.execute("call", {
+      action: "update",
+      id: 2,
+      status: "skipped",
+      keepWorkOpen: true,
+      metadata: { resolution: "按要求保持未勾" },
+    }, undefined, undefined, { sessionManager: { getSessionId: () => scope.sessionId } });
+
+    expect(getSessionRuntime(scope.sessionId)?.work?.metadata).toMatchObject({ keepOpen: true });
+    expect(pendingWorkFinalizations(scope.sessionId)).toEqual([]);
+    removeSessionRuntime(scope.sessionId);
+  });
+
   it("finish_current 只标记整体完成并排队 settled 收口，不立即创建验收", async () => {
     const work = completedChecklist();
     const ready: WorkTask = {

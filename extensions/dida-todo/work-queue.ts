@@ -10,7 +10,9 @@ export function hasUnfinishedTasks(work: WorkTask): boolean {
   const visible = work.tasks.filter((task) => task.status !== "deleted");
   if (visible.length === 0) return true;
   if (visible.some((task) => task.status === "pending" || task.status === "in_progress")) return true;
-  return requiresExplicitWorkCompletion(work) && migrateWorkMetadata(work.metadata).lifecycle !== "ready_for_acceptance";
+  const metadata = migrateWorkMetadata(work.metadata);
+  if (metadata.keepOpen === true) return false;
+  return requiresExplicitWorkCompletion(work) && metadata.lifecycle !== "ready_for_acceptance";
 }
 
 export function isExecutableWork(work: WorkTask): boolean {

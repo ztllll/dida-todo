@@ -4,6 +4,13 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.28] - 2026-08-15
+
+### Fixed
+
+- Add an explicit local `keepOpen` delivery policy for tasks whose user requires the top-level Dida task to remain incomplete after selected Items are delivered. `skipped` Items stay unchecked, the Poller treats the work as settled, and settlement/startup repair no longer creates acceptance or completes the source until the user explicitly requests whole-work completion.
+- Explicit `finish_current` clears `keepOpen`, so a previously held-open task can still enter the normal acceptance flow later without changing its user-authored Checklist text.
+
 ## [0.6.27] - 2026-08-15
 
 ### Fixed
@@ -207,7 +214,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.27...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.28...HEAD
+[0.6.28]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.28
 [0.6.27]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.27
 [0.6.26]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.26
 [0.6.25]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.25

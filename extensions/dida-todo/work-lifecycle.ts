@@ -91,7 +91,8 @@ export function canFinalizeWork(work: WorkTask): boolean {
 }
 
 export function readyForAcceptance(metadata: WorkMetadata): WorkMetadataV2 {
-  return { ...migrateWorkMetadata(metadata), lifecycle: "ready_for_acceptance" };
+  const { keepOpen: _keepOpen, ...current } = migrateWorkMetadata(metadata);
+  return { ...current, lifecycle: "ready_for_acceptance" };
 }
 
 export function finalized(metadata: WorkMetadata, remote: DidaTask, acceptanceId: string): WorkMetadataV2 {

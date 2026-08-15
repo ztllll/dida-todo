@@ -27,7 +27,9 @@ export class WorkFinalizer {
 
   canAutoFinalize(work: WorkTask): boolean {
     const visible = visibleTasks(work);
+    const keepOpen = work.metadata.schemaVersion === 2 && work.metadata.keepOpen === true;
     return work.remote.status === 0
+      && !keepOpen
       && visible.length > 0
       && visible.every((task) => task.status === "completed" || task.status === "skipped")
       && isWorkReadyForFinalization(work)
@@ -47,6 +49,9 @@ export class WorkFinalizer {
       const existing = storedAcceptance ?? data.tasks.find((task) => acceptanceMatchesSource(task, work.remote));
       if (existing) return existing;
       return this.createAcceptance(work, signal);
+    }
+    if (work.metadata.schemaVersion === 2 && work.metadata.keepOpen === true) {
+      throw new Error("用户要求当前顶层任务保持未完成");
     }
     if (!canFinalizeWork(work) && !isLegacyPiWork(work)) {
       throw new Error("当前工作实例未被 Pi 接管，不能自动收口");

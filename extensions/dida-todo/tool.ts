@@ -22,6 +22,7 @@ const Params = Type.Object({
   description: Type.Optional(Type.String({ description: "Long-form task description" })),
   activeForm: Type.Optional(Type.String({ description: "Present-continuous label shown while in_progress" })),
   status: Type.Optional(StringEnum(["pending", "in_progress", "completed", "skipped", "deleted"] as const, { description: "Use skipped only when the requested deliverable is intentionally left unchecked or not applicable; it is treated as settled while the Dida Item remains unchecked." })),
+  keepWorkOpen: Type.Optional(Type.Boolean({ description: "Set true only when the user explicitly requires the top-level Dida task to remain incomplete after settled Items. It prevents automatic finalization while keeping skipped Items unchecked." })),
   blockedBy: Type.Optional(Type.Array(Type.Number())),
   addBlockedBy: Type.Optional(Type.Array(Type.Number())),
   removeBlockedBy: Type.Optional(Type.Array(Type.Number())),
@@ -43,6 +44,7 @@ export interface TodoParams {
   description?: string;
   activeForm?: string;
   status?: TaskStatus;
+  keepWorkOpen?: boolean;
   blockedBy?: number[];
   addBlockedBy?: number[];
   removeBlockedBy?: number[];
@@ -103,7 +105,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       "Pi-created direct work may keep one concise task name with internal execution steps. Any user-created Dida work that the LLM formally executes must expose at least one visible Checklist Item, even for a one-step plan; creating the first step promotes a Dida-origin direct task in place. Use checklist work for durable objectives whose visible Items are concrete progress stages across turns or sessions.",
       "Never append unrelated ordinary chat or a separate one-off request to an existing work. If it does not belong to the current durable work, do not call todo.",
       "Mark a task in_progress before beginning it and completed immediately after verified completion.",
-      "Do not complete tasks with failing tests or unresolved blockers. Use status=skipped only when the user's requested final state intentionally leaves that Item unchecked or the Item is genuinely not applicable; include a human-readable metadata.resolution explaining the outcome.",
+      "Do not complete tasks with failing tests or unresolved blockers. Use status=skipped only when the user's requested final state intentionally leaves that Item unchecked or the Item is genuinely not applicable; include a human-readable metadata.resolution explaining the outcome. If the user also explicitly requires the top-level Dida task to remain incomplete, set keepWorkOpen=true on the skipped update; do not use it merely to avoid acceptance.",
       "Top-level Dida work selection is handled internally through todo_work. Completing all direct-work execution steps may settle and finalize automatically. Completing Checklist Items updates progress only; the top-level checklist work stays open until todo_work finish_current explicitly declares the whole objective complete.",
       "Dida titles, descriptions, bodies, Checklist Items, resolutions, and progress comments are user-facing deliverables. Write only concise human semantics: objective, action, result, or acceptance evidence. Never expose chain-of-thought, investigation narration, test scaffolding, prompt text, managed metadata, binding/session/work/item IDs, lifecycle fields, or internal implementation notes.",
       "When completing a task, include metadata.resolution as a concise user-facing outcome (what changed or what was verified), not a work log or reasoning trace; it is written back to Dida as a task comment.",
@@ -228,6 +230,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
             ...(params.description !== undefined ? { description: params.description } : {}),
             ...(params.activeForm !== undefined ? { activeForm: params.activeForm } : {}),
             ...(params.status !== undefined ? { status: params.status } : {}),
+            ...(params.keepWorkOpen !== undefined ? { keepWorkOpen: params.keepWorkOpen } : {}),
             ...(params.owner !== undefined ? { owner: params.owner } : {}),
             ...(params.metadata !== undefined ? { metadata: params.metadata } : {}),
             ...(params.addBlockedBy !== undefined ? { addBlockedBy: params.addBlockedBy } : {}),
@@ -277,6 +280,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
           visible.length > 0
           && visible.every((task) => task.status === "completed" || task.status === "skipped")
           && !requiresExplicitWorkCompletion(nextWork)
+          && !(nextWork.metadata.schemaVersion === 2 && nextWork.metadata.keepOpen === true)
         ) {
           queueWorkFinalization(sessionId, nextWork.remote.id);
         } else {

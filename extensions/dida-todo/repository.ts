@@ -71,6 +71,7 @@ export interface UpdateTaskInput {
   description?: string;
   activeForm?: string;
   status?: TaskStatus;
+  keepWorkOpen?: boolean;
   owner?: string;
   metadata?: Record<string, unknown>;
   addBlockedBy?: number[];
@@ -442,7 +443,12 @@ export class DidaTodoRepository {
         updated.metadata = Object.keys(merged).length ? merged : undefined;
       }
       const tasks = work.tasks.map((task, candidate) => (candidate === index ? updated : cloneTask(task)));
-      const metadata: WorkMetadata = { ...claimed, tasks };
+      let metadata = migrateWorkMetadata({ ...claimed, tasks });
+      if (input.keepWorkOpen === true) metadata = { ...metadata, keepOpen: true };
+      else if (input.keepWorkOpen === false) {
+        const { keepOpen: _keepOpen, ...withoutKeepOpen } = metadata;
+        metadata = withoutKeepOpen;
+      }
       if (input.status === "in_progress") metadata.activeTaskId = id;
       else if (metadata.activeTaskId === id && (input.status === "completed" || input.status === "skipped" || input.status === "pending" || input.status === "deleted")) {
         delete metadata.activeTaskId;

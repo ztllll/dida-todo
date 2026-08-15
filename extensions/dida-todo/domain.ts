@@ -91,6 +91,7 @@ export interface WorkMetadataV2 {
   workType?: DidaWorkType;
   userDescription?: string;
   userContent?: string;
+  keepOpen?: boolean;
   workTypeMigratedFromLegacy?: boolean;
   migratedFromVersion?: 1;
   execution?: {

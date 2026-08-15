@@ -10,7 +10,7 @@ const scope: TodoScope = {
   sessionId: "session",
 };
 
-function work(statuses: Array<"pending" | "completed">, workType: "direct" | "checklist" = "direct"): WorkTask {
+function work(statuses: Array<"pending" | "completed" | "skipped">, workType: "direct" | "checklist" = "direct"): WorkTask {
   const tasks = statuses.map((status, index) => ({ id: index + 1, subject: `步骤${index + 1}`, status }));
   return {
     remote: { id: "work", projectId: "project", title: "完整用户请求", status: 0, priority: 1 },
@@ -60,6 +60,22 @@ describe("Agent settled 收口边界", () => {
     expect(result.state).toBe("finalized");
     expect(result.work.remote.status).toBe(2);
     expect(completed).toEqual(["work"]);
+  });
+
+  it("用户明确要求保持顶层未完成时，settled 不因 completed + skipped 自动收口", async () => {
+    const current = work(["completed", "skipped"], "checklist");
+    current.metadata = { ...current.metadata, origin: "dida", keepOpen: true } as WorkTask["metadata"];
+    let finishCalls = 0;
+    const repository = {
+      async getWork() { return structuredClone(current); },
+      async finishWork() { finishCalls += 1; return { acceptanceTask: {} }; },
+    } as unknown as DidaTodoRepository;
+
+    const result = await finalizeWorkAtSettlement(repository, scope, "work");
+
+    expect(result.state).toBe("not-ready");
+    expect(result.work.remote.status).toBe(0);
+    expect(finishCalls).toBe(0);
   });
 
   it("Pi 长期 Checklist 大任务即使当前 Items 全完成，settled 也不自动结束顶层", async () => {

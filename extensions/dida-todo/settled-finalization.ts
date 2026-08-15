@@ -14,7 +14,8 @@ export async function finalizeWorkAtSettlement(
 ): Promise<SettledFinalizationResult> {
   const work = await repository.getWork(scope, workId, signal);
   const visible = work.tasks.filter((task) => task.status !== "deleted");
-  if (!visible.length || !visible.every((task) => task.status === "completed" || task.status === "skipped") || !isWorkReadyForFinalization(work)) {
+  const keepOpen = work.metadata.schemaVersion === 2 && work.metadata.keepOpen === true;
+  if (keepOpen || !visible.length || !visible.every((task) => task.status === "completed" || task.status === "skipped") || !isWorkReadyForFinalization(work)) {
     return { state: "not-ready", work };
   }
   await repository.finishWork(scope, workId, signal);

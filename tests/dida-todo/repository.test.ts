@@ -226,6 +226,41 @@ describe("滴答 Todo Repository seam", () => {
     expect(migrateWorkMetadata(repairedMetadata!).userDescription).toBe("用户描述");
   });
 
+  it("用户要求保持顶层未完成时 skipped Item 不触发自动收口", async () => {
+    const gateway = new FakeGateway();
+    const repo = new DidaTodoRepository(gateway);
+    let work = await repo.createWork(scope, "保留顶层未完成", undefined, "checklist", "", "只勾选一项", 5);
+    work = await repo.createTask(scope, work.remote.id, { subject: "需要勾选" });
+    work = await repo.createTask(scope, work.remote.id, { subject: "保持未勾" });
+    work = await repo.updateTask(scope, work.remote.id, 1, { status: "completed" });
+
+    work = await repo.updateTask(scope, work.remote.id, 2, {
+      status: "skipped",
+      keepWorkOpen: true,
+      metadata: { resolution: "按用户要求保持未勾" },
+    });
+
+    expect(work.metadata).toMatchObject({ keepOpen: true, lifecycle: "claimed" });
+    const remote = await gateway.getTask(scope.binding.projectId, work.remote.id);
+    expect(remote.status).toBe(0);
+    expect(remote.items?.map((item) => item.status)).toEqual([1, 0]);
+  });
+
+  it("显式整体完成会清除 keepOpen 并恢复正常验收状态", async () => {
+    const gateway = new FakeGateway();
+    const repo = new DidaTodoRepository(gateway);
+    let work = await repo.createWork(scope, "重新允许整体完成", undefined, "checklist", "", "保持开放后再收口", 5);
+    work = await repo.createTask(scope, work.remote.id, { subject: "需要勾选" });
+    work = await repo.createTask(scope, work.remote.id, { subject: "保持未勾" });
+    work = await repo.updateTask(scope, work.remote.id, 1, { status: "completed" });
+    work = await repo.updateTask(scope, work.remote.id, 2, { status: "skipped", keepWorkOpen: true });
+
+    work = await repo.markWorkReadyForAcceptance(scope, work.remote.id);
+
+    expect(work.metadata).toMatchObject({ lifecycle: "ready_for_acceptance" });
+    expect(work.metadata.schemaVersion === 2 && work.metadata.keepOpen).toBeUndefined();
+  });
+
   it("Checklist 已 ready 后追加同一请求的新 Item 会撤销收口状态", async () => {
     const gateway = new FakeGateway();
     const repo = new DidaTodoRepository(gateway);
