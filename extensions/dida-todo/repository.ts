@@ -79,7 +79,11 @@ export interface UpdateTaskInput {
 function humanWorkDescription(metadata: WorkMetadata, userContent: string, remoteDescription?: string): string {
   const migrated = migrateWorkMetadata(metadata);
   const content = userContent.trim();
-  let description = (migrated.userDescription ?? stripManagedContent(remoteDescription)).trim();
+  const sourceDescription = migrated.userDescription ?? stripManagedContent(remoteDescription).replace(
+    /(?:^|\n\n)当前进展：[^\n]*\n已处理 \d+\/\d+ 项(?=\n\n|$)/g,
+    "",
+  );
+  let description = sourceDescription.trim();
   if (content) {
     const appendedContent = `\n\n${content}`;
     while (description.endsWith(appendedContent)) description = description.slice(0, -appendedContent.length).trimEnd();

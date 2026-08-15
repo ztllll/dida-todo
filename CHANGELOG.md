@@ -4,6 +4,12 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.22] - 2026-08-15
+
+### Fixed
+
+- Clean historical descriptions produced by the abandoned live-progress experiment: remove its exact `当前进展` / `已处理 n/m 项` block, then collapse all duplicated trailing task body copies to one on the next Pi mutation. Normal stored user descriptions remain authoritative.
+
 ## [0.6.21] - 2026-08-15
 
 ### Fixed
@@ -169,7 +175,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.21...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.22...HEAD
+[0.6.22]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.22
 [0.6.21]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.21
 [0.6.20]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.20
 [0.6.19]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.19

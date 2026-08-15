@@ -122,7 +122,7 @@ describe("滴答 Todo Repository seam", () => {
     expect(storedMetadata).toBeDefined();
     const { userDescription: _userDescription, ...legacyMetadata } = migrateWorkMetadata(storedMetadata!);
     await stateStore.set(scope.binding.projectId, work.remote.id, legacyMetadata);
-    gateway.tasks.get(work.remote.id)!.desc = "用户描述\n\n稳定正文\n\n稳定正文\n\n稳定正文";
+    gateway.tasks.get(work.remote.id)!.desc = "用户描述\n\n稳定正文\n\n当前进展：正在修复状态即时同步\n已处理 1/3 项\n\n稳定正文\n\n稳定正文\n\n稳定正文";
 
     await repo.updateTask(scope, work.remote.id, 1, { status: "in_progress" });
 
