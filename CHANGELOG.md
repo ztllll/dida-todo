@@ -4,6 +4,12 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.21] - 2026-08-15
+
+### Fixed
+
+- Keep Pi Checklist descriptions idempotent across repeated create/update mutations: persist the original user description locally, append the task body exactly once, and automatically collapse historical trailing duplicates on the next mutation.
+
 ## [0.6.20] - 2026-08-14
 
 ### Added
@@ -163,7 +169,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.20...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.21...HEAD
+[0.6.21]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.21
 [0.6.20]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.20
 [0.6.19]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.19
 [0.6.18]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.18

@@ -78,9 +78,14 @@ export interface UpdateTaskInput {
 
 function humanWorkDescription(metadata: WorkMetadata, userContent: string, remoteDescription?: string): string {
   const migrated = migrateWorkMetadata(metadata);
-  const description = migrated.userDescription ?? stripManagedContent(remoteDescription);
   const content = userContent.trim();
-  return [description.trim(), content].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join("\n\n");
+  let description = (migrated.userDescription ?? stripManagedContent(remoteDescription)).trim();
+  if (content) {
+    const appendedContent = `\n\n${content}`;
+    while (description.endsWith(appendedContent)) description = description.slice(0, -appendedContent.length).trimEnd();
+    if (description === content) description = "";
+  }
+  return [description, content].filter(Boolean).join("\n\n");
 }
 
 function humanVisibleText(value: string): string {
@@ -325,28 +330,33 @@ export class DidaTodoRepository {
           && work.remote.title === normalizedTitle;
       });
       if (currentWork) return currentWork;
-      const metadata: WorkMetadata = createPiWorkMetadata(scope, workType);
+      const metadata = createPiWorkMetadata(scope, workType);
       const userContent = content?.trim() ?? "";
-    const metadataWithContent: WorkMetadata = { ...metadata, userContent };
-    let remote = await this.gateway.createTask(
-      {
-        title: normalizedTitle,
-        projectId: scope.binding.projectId,
-        content: userContent,
-        ...(workType === "checklist" ? { items: [] } : {}),
-        ...(description?.trim() ? { desc: description.trim() } : {}),
-        priority,
-        tags: ["pi-todo"],
-      },
-      signal,
-    );
-    const synced = synchronizeItemIds(metadataWithContent, remote);
-    await this.stateStore.set(remote.projectId, remote.id, synced);
-    remote = await this.gateway.updateTask(
-      remote.id,
-      this.buildUpdateInput(remote, synced, userContent),
-      signal,
-    );
+      const userDescription = description?.trim() ?? "";
+      const metadataWithContent: WorkMetadata = {
+        ...metadata,
+        userContent,
+        ...(userDescription ? { userDescription } : {}),
+      };
+      let remote = await this.gateway.createTask(
+        {
+          title: normalizedTitle,
+          projectId: scope.binding.projectId,
+          content: userContent,
+          ...(workType === "checklist" ? { items: [] } : {}),
+          ...(userDescription ? { desc: userDescription } : {}),
+          priority,
+          tags: ["pi-todo"],
+        },
+        signal,
+      );
+      const synced = synchronizeItemIds(metadataWithContent, remote);
+      await this.stateStore.set(remote.projectId, remote.id, synced);
+      remote = await this.gateway.updateTask(
+        remote.id,
+        this.buildUpdateInput(remote, synced, userContent),
+        signal,
+      );
       return decodeWorkTask(remote, synced) ?? { remote, metadata: synced, tasks: synced.tasks, userContent };
     });
   }

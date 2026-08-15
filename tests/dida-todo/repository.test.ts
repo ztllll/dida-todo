@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
 import { encodeManagedContent, metadataToItems, synchronizeItemIds } from "../../extensions/dida-todo/codec.js";
 import type { DidaProjectData, DidaTask, TodoScope, WorkMetadata } from "../../extensions/dida-todo/domain.js";
+import { MemoryWorkStateStore } from "../../extensions/dida-todo/state-store.js";
+import { migrateWorkMetadata } from "../../extensions/dida-todo/work-lifecycle.js";
 
 class FakeGateway implements DidaGateway {
   tasks = new Map<string, DidaTask>();
@@ -29,6 +31,7 @@ class FakeGateway implements DidaGateway {
       projectId: input.projectId as string,
       title: input.title as string,
       content: input.content as string,
+      ...(input.desc !== undefined ? { desc: String(input.desc) } : {}),
       status: 0,
       priority: Number(input.priority ?? 0),
       kind: "CHECKLIST",
@@ -90,6 +93,41 @@ describe("滴答 Todo Repository seam", () => {
 
     expect(updated.tasks).toEqual([{ id: 1, subject: "研究现有接口", status: "pending", itemId: "item-1" }]);
     expect(reloaded.tasks).toEqual(updated.tasks);
+  });
+
+  it("Checklist 连续 mutation 后描述与正文各只保留一份", async () => {
+    const gateway = new FakeGateway();
+    const repo = new DidaTodoRepository(gateway);
+    let work = await repo.createWork(scope, "验证描述幂等", undefined, "checklist", "稳定正文", "用户描述", 1);
+
+    work = await repo.createTask(scope, work.remote.id, { subject: "第一步" });
+    work = await repo.createTask(scope, work.remote.id, { subject: "第二步" });
+    work = await repo.updateTask(scope, work.remote.id, 1, { status: "in_progress" });
+    await repo.updateTask(scope, work.remote.id, 1, { status: "completed" });
+
+    const remote = await gateway.getTask(scope.binding.projectId, work.remote.id);
+    expect(remote.desc).toBe("用户描述\n\n稳定正文");
+    expect(remote.desc?.split("用户描述")).toHaveLength(2);
+    expect(remote.desc?.split("稳定正文")).toHaveLength(2);
+  });
+
+  it("下一次 mutation 自动净化历史任务里重复追加的正文", async () => {
+    const gateway = new FakeGateway();
+    const stateStore = new MemoryWorkStateStore();
+    const repo = new DidaTodoRepository(gateway, stateStore);
+    let work = await repo.createWork(scope, "净化历史描述", undefined, "checklist", "稳定正文", "用户描述", 1);
+    work = await repo.createTask(scope, work.remote.id, { subject: "执行净化" });
+
+    const storedMetadata = await stateStore.get(scope.binding.projectId, work.remote.id);
+    expect(storedMetadata).toBeDefined();
+    const { userDescription: _userDescription, ...legacyMetadata } = migrateWorkMetadata(storedMetadata!);
+    await stateStore.set(scope.binding.projectId, work.remote.id, legacyMetadata);
+    gateway.tasks.get(work.remote.id)!.desc = "用户描述\n\n稳定正文\n\n稳定正文\n\n稳定正文";
+
+    await repo.updateTask(scope, work.remote.id, 1, { status: "in_progress" });
+
+    const remote = await gateway.getTask(scope.binding.projectId, work.remote.id);
+    expect(remote.desc).toBe("用户描述\n\n稳定正文");
   });
 
   it("Checklist 已 ready 后追加同一请求的新 Item 会撤销收口状态", async () => {
