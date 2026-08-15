@@ -4,6 +4,12 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.25] - 2026-08-15
+
+### Fixed
+
+- Persist a recovered original user description into local work metadata on the next Checklist mutation, and use the same recovery during final acceptance-result updates. Historical tasks no longer lose their original description after final-response materialization, while the task body still appears exactly once and abandoned progress blocks remain removed.
+
 ## [0.6.24] - 2026-08-15
 
 ### Fixed
@@ -187,7 +193,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.24...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.25...HEAD
+[0.6.25]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.25
 [0.6.24]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.24
 [0.6.23]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.23
 [0.6.22]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.22

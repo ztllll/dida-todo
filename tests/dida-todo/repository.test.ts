@@ -128,6 +128,8 @@ describe("滴答 Todo Repository seam", () => {
 
     const remote = await gateway.getTask(scope.binding.projectId, work.remote.id);
     expect(remote.desc).toBe("用户描述\n\n稳定正文");
+    const repairedMetadata = await stateStore.get(scope.binding.projectId, work.remote.id);
+    expect(migrateWorkMetadata(repairedMetadata!).userDescription).toBe("用户描述");
   });
 
   it("Checklist 已 ready 后追加同一请求的新 Item 会撤销收口状态", async () => {

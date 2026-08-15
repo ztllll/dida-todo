@@ -2,6 +2,7 @@ import type { DidaTask, TodoScope, WorkMetadata } from "./domain.js";
 import { acceptanceMatchesSource, buildAcceptanceSummary } from "./acceptance.js";
 import { MemoryWorkStateStore, type WorkStateStore } from "./state-store.js";
 import { occurrenceKeyForTask } from "./scheduling.js";
+import { originalHumanDescription } from "./human-task-surface.js";
 
 const ACCEPTANCE_TITLE_PREFIX = "🧑‍🔬 待验收：";
 const MAX_ACCEPTANCE_TITLE_LENGTH = 100;
@@ -54,9 +55,11 @@ export function buildHumanAcceptanceResult(source: DidaTask, metadata: WorkMetad
   if (metadata) {
     const tasks = metadata.tasks.filter((task) => task.status !== "deleted");
     if (tasks.length) {
+      const userContent = metadata.schemaVersion === 2 ? metadata.userContent ?? "" : "";
+      const description = originalHumanDescription(metadata, userContent, source.desc);
       return buildAcceptanceSummary(source.title, tasks, {
-        ...(metadata.schemaVersion === 2 && metadata.userDescription ? { description: metadata.userDescription } : {}),
-        ...(metadata.schemaVersion === 2 && metadata.userContent ? { content: metadata.userContent } : {}),
+        ...(description ? { description } : {}),
+        ...(userContent ? { content: userContent } : {}),
       });
     }
   }

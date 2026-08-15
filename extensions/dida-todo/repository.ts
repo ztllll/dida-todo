@@ -16,7 +16,7 @@ import type {
 import { buildCompletionReminderInput } from "./scheduling.js";
 import { buildAcceptanceResultUpdate, buildHumanAcceptanceResult } from "./acceptance-result.js";
 import { MemoryWorkStateStore, type WorkStateStore } from "./state-store.js";
-import { composeHumanWorkDescription } from "./human-task-surface.js";
+import { composeHumanWorkDescription, originalHumanDescription } from "./human-task-surface.js";
 import {
   acceptanceReworkId,
   authorizedAcceptanceFeedback,
@@ -640,7 +640,12 @@ export class DidaTodoRepository {
       if (metadata.origin === "dida" && metadata.workType === "direct" && metadata.tasks.some((task) => task.status !== "deleted")) {
         metadata = { ...metadata, workType: "checklist" };
       }
-      metadata = { ...metadata, userContent: work.userContent };
+      const userDescription = originalHumanDescription(metadata, work.userContent, work.remote.desc);
+      metadata = {
+        ...metadata,
+        userContent: work.userContent,
+        ...(userDescription ? { userDescription } : {}),
+      };
       const desired = metadataToItems(metadata, work.remote.items ?? []);
       let remote = await this.gateway.updateTask(
         workId,

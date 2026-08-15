@@ -113,6 +113,41 @@ describe("待验收最终回复回填", () => {
     expect(updates[0]?.id).toBe("acceptance");
   });
 
+  it("历史 metadata 缺少原始描述时从源任务恢复且正文只出现一次", async () => {
+    const combinedSource: DidaTask = {
+      ...source,
+      desc: "用户描述\n\n稳定正文\n\n当前进展：旧实验状态\n已处理 1/1 项\n\n稳定正文",
+    };
+    const cleanAcceptance = { ...acceptance, content: "等待验收的干净报告" };
+    const stateStore = new MemoryWorkStateStore();
+    await stateStore.set("project", "source", {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: "binding",
+      origin: "pi",
+      lifecycle: "finalized",
+      workType: "checklist",
+      userContent: "稳定正文",
+      execution: { claimedAt: "2026-08-15T00:00:00.000Z" },
+      nextId: 2,
+      tasks: [{ id: 1, subject: "完成测试", status: "completed", metadata: { resolution: "通过" } }],
+    });
+    await stateStore.setAcceptance("project", "acceptance", { sourceWorkId: "source" });
+    const updater = new AcceptanceResultUpdater({
+      async getProjectData() { return { tasks: [cleanAcceptance] }; },
+      async updateTask(_id, input) { return { ...cleanAcceptance, ...input } as DidaTask; },
+    }, stateStore);
+
+    const result = await updater.update({
+      binding: { key: "binding", projectId: "project" }, bindingKey: "binding", cwd: "/workspace", sessionId: "session",
+    }, combinedSource, "最终回复");
+
+    expect(result?.desc).toContain("任务说明：\n用户描述");
+    expect(result?.desc).toContain("补充内容：\n稳定正文");
+    expect(result?.desc?.split("稳定正文")).toHaveLength(2);
+    expect(result?.desc).not.toContain("当前进展：");
+  });
+
   it("找不到同源未完成验收时静默跳过", async () => {
     let updated = false;
     const updater = new AcceptanceResultUpdater({
