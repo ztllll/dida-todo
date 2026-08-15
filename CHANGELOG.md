@@ -4,6 +4,13 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.29] - 2026-08-15
+
+### Fixed
+
+- Treat Dida title, description, and body as the current semantic source of truth on every synchronization. When the user edits that top-level content, clear stale local `skipped` and `keepOpen` decisions, reopen the affected unchecked Items, and inject the latest complete task into the next authorized queue check.
+- Persist a compact semantic snapshot for Dida-origin work so extension-authored Checklist description normalization does not falsely reopen intentionally skipped Items when the user has not changed the task.
+
 ## [0.6.28] - 2026-08-15
 
 ### Fixed

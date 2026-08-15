@@ -281,6 +281,8 @@ export class DidaTodoRepository {
       bindingKey: scope.bindingKey,
       origin: "dida",
       lifecycle: "draft",
+      userTitle: remote.title,
+      didaSemanticSnapshot: JSON.stringify({ title: remote.title, description: remote.desc?.trim() ?? "", content: stripManagedContent(remote.content) }),
       nextId: tasks.length + 1,
       tasks,
       sessionIds: [scope.sessionId],

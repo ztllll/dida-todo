@@ -119,25 +119,67 @@ export function decodeWorkTask(remote: DidaTask, storedMetadata?: WorkMetadata):
   }
 
   let normalizedMetadata = migrateWorkMetadata({ ...metadata, nextId, tasks });
-  if (contentMetadata && !descriptionMetadata && remote.desc?.trim() && !normalizedMetadata.userDescription) {
-    normalizedMetadata = { ...normalizedMetadata, userDescription: remote.desc };
+  const legacyManagedInDescription = Boolean(descriptionMetadata);
+  const checklist = normalizedMetadata.workType === "checklist" || remote.kind === "CHECKLIST" || items.length > 0;
+  const remoteDescription = legacyManagedInDescription
+    ? normalizedMetadata.userDescription ?? ""
+    : remote.desc?.trim() ?? "";
+  const remoteContent = legacyManagedInDescription
+    ? stripManagedContent(remote.desc)
+    : stripManagedContent(remote.content);
+  const semanticSnapshot = JSON.stringify({
+    title: remote.title,
+    description: remoteDescription,
+    content: checklist ? "" : remoteContent,
+  });
+  const storedDescription = checklist
+    ? [normalizedMetadata.userDescription, normalizedMetadata.userContent].filter(Boolean).join("\n\n")
+    : normalizedMetadata.userDescription ?? "";
+  const didaContentChanged = normalizedMetadata.origin === "dida" && storedMetadata !== undefined && (
+    normalizedMetadata.didaSemanticSnapshot !== undefined
+      ? normalizedMetadata.didaSemanticSnapshot !== semanticSnapshot
+      : (normalizedMetadata.userTitle !== undefined && normalizedMetadata.userTitle !== remote.title)
+        || storedDescription !== remoteDescription
+        || (!checklist && (normalizedMetadata.userContent ?? "") !== remoteContent)
+  );
+  if (didaContentChanged) {
+    const reopenedTasks = tasks.map((task) => {
+      if (task.status !== "skipped") return cloneTask(task);
+      const metadata = task.metadata ? { ...task.metadata } : undefined;
+      if (metadata) delete metadata.resolution;
+      return { ...cloneTask(task), status: "pending" as const, ...(metadata && Object.keys(metadata).length ? { metadata } : { metadata: undefined }) };
+    });
+    const { keepOpen: _keepOpen, ...current } = normalizedMetadata;
+    normalizedMetadata = migrateWorkMetadata({
+      ...current,
+      userTitle: remote.title,
+      didaSemanticSnapshot: semanticSnapshot,
+      ...(checklist
+        ? { userDescription: remoteDescription }
+        : { userDescription: remoteDescription, userContent: remoteContent }),
+      lifecycle: "claimed",
+      tasks: reopenedTasks,
+    });
+    tasks.splice(0, tasks.length, ...reopenedTasks);
+  } else {
+    if (normalizedMetadata.origin === "dida" && normalizedMetadata.didaSemanticSnapshot === undefined) {
+      normalizedMetadata = { ...normalizedMetadata, userTitle: remote.title, didaSemanticSnapshot: semanticSnapshot };
+    }
+    if (contentMetadata && !descriptionMetadata && remote.desc?.trim() && !normalizedMetadata.userDescription) {
+      normalizedMetadata = { ...normalizedMetadata, userDescription: remote.desc };
+    }
   }
   const normalizedRemote = structuredClone(remote);
-  const legacyManagedInDescription = Boolean(descriptionMetadata);
   if (legacyManagedInDescription) {
     if (normalizedMetadata.userDescription) normalizedRemote.desc = normalizedMetadata.userDescription;
     else delete normalizedRemote.desc;
-  } else if (storedMetadata && normalizedMetadata.userDescription) {
-    normalizedRemote.desc = normalizedMetadata.userDescription;
   }
   if (contentMetadata) normalizedRemote.content = stripManagedContent(remote.content);
   return {
     remote: normalizedRemote,
     metadata: normalizedMetadata,
     tasks,
-    userContent: normalizedMetadata.userContent ?? (legacyManagedInDescription
-      ? stripManagedContent(remote.desc)
-      : stripManagedContent(remote.content)),
+    userContent: normalizedMetadata.userContent ?? remoteContent,
   };
 }
 

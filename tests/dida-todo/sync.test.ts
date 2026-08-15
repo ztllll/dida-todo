@@ -4,6 +4,7 @@ import { ACCEPTANCE_COMMENT, formatAcceptanceForAgent } from "../../extensions/d
 import type { DidaProjectData, DidaTask, TodoScope, WorkMetadata } from "../../extensions/dida-todo/domain.js";
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
 import { MemoryWorkStateStore } from "../../extensions/dida-todo/state-store.js";
+import { formatWorkQueueForAgent } from "../../extensions/dida-todo/work-queue.js";
 
 class SyncGateway implements DidaGateway {
   comments: Array<{ taskId: string; title: string; userId?: string | number }> = [];
@@ -340,6 +341,50 @@ describe("项目 Todo 同步 seam", () => {
     controller.abort();
 
     await expect(repository.syncOpenWorks(scope, { adoptUnmanaged: true }, controller.signal)).rejects.toThrow("create acceptance failed");
+  });
+
+  it("每次检查都以滴答最新内容重新打开被旧语义 skipped 的工作", async () => {
+    const remote: DidaTask = {
+      id: "edited-work",
+      projectId: scope.binding.projectId,
+      title: "定时轮询测试",
+      desc: "现在执行第二项，并继续保持顶层未完成",
+      content: "",
+      status: 0,
+      priority: 5,
+      kind: "CHECKLIST",
+      items: [
+        { id: "item-1", title: "已完成", status: 1 },
+        { id: "item-2", title: "原本保留未勾", status: 0 },
+      ],
+    };
+    const stateStore = new MemoryWorkStateStore();
+    await stateStore.set(scope.binding.projectId, remote.id, {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: scope.bindingKey,
+      origin: "dida",
+      lifecycle: "claimed",
+      workType: "checklist",
+      userTitle: remote.title,
+      userDescription: "只勾选一个，保持未完成状态",
+      didaSemanticSnapshot: JSON.stringify({ title: remote.title, description: "只勾选一个，保持未完成状态", content: "" }),
+      keepOpen: true,
+      nextId: 3,
+      tasks: [
+        { id: 1, subject: "已完成", status: "completed", itemId: "item-1", metadata: { source: "dida" } },
+        { id: 2, subject: "原本保留未勾", status: "skipped", itemId: "item-2", metadata: { source: "dida", resolution: "按原要求保留未勾" } },
+      ],
+    });
+    const repository = new DidaTodoRepository(new SyncGateway([remote]), stateStore);
+
+    const result = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
+    const injected = formatWorkQueueForAgent(result.works);
+
+    expect(result.works[0]?.tasks[1]?.status).toBe("pending");
+    expect(injected).toContain("定时轮询测试");
+    expect(injected).toContain("现在执行第二项，并继续保持顶层未完成");
+    expect(injected).not.toContain("当前没有未完成工作任务");
   });
 
   it("刷新时导入用户追加的 Item，并保留远端完成状态", async () => {

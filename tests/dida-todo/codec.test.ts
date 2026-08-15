@@ -162,6 +162,78 @@ describe("工作任务编解码 seam", () => {
     ]);
   });
 
+  it("用户修改顶层内容后以滴答最新语义重新打开本机 skipped 步骤", () => {
+    const stored: WorkMetadata = {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: "tmux:example:0.0",
+      origin: "dida",
+      lifecycle: "claimed",
+      workType: "checklist",
+      userDescription: "只勾选一个，保持未完成状态",
+      didaSemanticSnapshot: JSON.stringify({ title: "定时轮询测试", description: "只勾选一个，保持未完成状态", content: "" }),
+      keepOpen: true,
+      nextId: 3,
+      tasks: [
+        { id: 1, subject: "已完成", status: "completed", itemId: "item-1", metadata: { source: "dida" } },
+        { id: 2, subject: "原本保留未勾", status: "skipped", itemId: "item-2", metadata: { source: "dida", resolution: "按原要求保留未勾" } },
+      ],
+    };
+    const remote: DidaTask = {
+      id: "edited-work",
+      projectId: "project-1",
+      title: "定时轮询测试",
+      desc: "现在执行第二项，并继续保持顶层未完成",
+      content: "",
+      status: 0,
+      priority: 5,
+      kind: "CHECKLIST",
+      items: [
+        { id: "item-1", title: "已完成", status: 1 },
+        { id: "item-2", title: "原本保留未勾", status: 0 },
+      ],
+    };
+
+    const decoded = decodeWorkTask(remote, stored);
+
+    expect(decoded?.remote.desc).toBe("现在执行第二项，并继续保持顶层未完成");
+    expect(decoded?.tasks[1]?.status).toBe("pending");
+    expect(decoded?.metadata).not.toHaveProperty("keepOpen");
+  });
+
+  it("同步回写导致的描述形态变化不会误重开 skipped 步骤", () => {
+    const stored: WorkMetadata = {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: "tmux:example:0.0",
+      origin: "dida",
+      lifecycle: "claimed",
+      workType: "checklist",
+      userTitle: "测试任务",
+      userDescription: "只勾选一个，保持未完成状态",
+      userContent: "补充正文",
+      didaSemanticSnapshot: JSON.stringify({ title: "测试任务", description: "只勾选一个，保持未完成状态\n\n补充正文", content: "" }),
+      keepOpen: true,
+      nextId: 2,
+      tasks: [{ id: 1, subject: "保留未勾", status: "skipped", itemId: "item-1", metadata: { source: "dida" } }],
+    };
+
+    const decoded = decodeWorkTask({
+      id: "same-semantics",
+      projectId: "project-1",
+      title: "测试任务",
+      desc: "只勾选一个，保持未完成状态\n\n补充正文",
+      content: "",
+      status: 0,
+      priority: 5,
+      kind: "CHECKLIST",
+      items: [{ id: "item-1", title: "保留未勾", status: 0 }],
+    }, stored);
+
+    expect(decoded?.tasks[0]?.status).toBe("skipped");
+    expect(decoded?.metadata).toMatchObject({ keepOpen: true });
+  });
+
   it("服务端重写同名 Item ID 时一对一恢复，并移除远端已不存在的旧 Dida Item", () => {
     const stored: WorkMetadata = {
       schemaVersion: 2,

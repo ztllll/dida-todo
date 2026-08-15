@@ -89,6 +89,8 @@ export interface WorkMetadataV2 {
   origin: WorkOrigin;
   lifecycle: WorkLifecycleState;
   workType?: DidaWorkType;
+  userTitle?: string;
+  didaSemanticSnapshot?: string;
   userDescription?: string;
   userContent?: string;
   keepOpen?: boolean;
