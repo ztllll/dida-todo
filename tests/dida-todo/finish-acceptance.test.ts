@@ -173,6 +173,40 @@ describe("完成工作强制人类验收", () => {
     expect(gateway.comments).toEqual([{ taskId: "created-1", title: ACCEPTANCE_COMMENT }]);
   });
 
+  it("历史组合描述生成验收时正文只出现一次且不带旧进展块", async () => {
+    const remote = completedWork();
+    remote.content = "";
+    remote.desc = "用户描述\n\n需求说明\n\n当前进展：旧实验状态\n已处理 2/2 项\n\n需求说明\n\n需求说明";
+    const metadata: WorkMetadata = {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: scope.bindingKey,
+      origin: "pi",
+      lifecycle: "ready_for_acceptance",
+      workType: "checklist",
+      userContent: "需求说明",
+      execution: { claimedAt: "2026-08-15T00:00:00.000Z" },
+      nextId: 3,
+      tasks: [
+        { id: 1, subject: "实现功能", status: "completed", itemId: "one", metadata: { resolution: "实现搜索接口" } },
+        { id: 2, subject: "运行测试", status: "completed", itemId: "two", metadata: { resolution: "8 项测试通过" } },
+      ],
+    };
+    const stateStore = new MemoryWorkStateStore();
+    await stateStore.set(scope.binding.projectId, remote.id, metadata);
+    const gateway = new FinishGateway([remote]);
+    const repository = new DidaTodoRepository(gateway, stateStore);
+
+    await repository.finishWork(scope, "work");
+
+    const report = String(gateway.created[0]?.desc ?? "");
+    expect(report).toContain("任务说明：\n用户描述");
+    expect(report).toContain("补充内容：\n需求说明");
+    expect(report.split("需求说明")).toHaveLength(2);
+    expect(report).not.toContain("当前进展：");
+    expect(report).not.toContain("已处理 2/2 项");
+  });
+
   it("按要求保留未勾的 skipped Item 在顶层完成后仍保持未勾", async () => {
     const remote = completedWork();
     const metadata = decodeMetadata(remote.content)!;

@@ -4,6 +4,12 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.24] - 2026-08-15
+
+### Fixed
+
+- Reuse one Human Task Surface normalization path for Checklist mutations and acceptance creation. Historical combined descriptions now contribute only the original user description, while the task body appears exactly once in the acceptance report; abandoned live-progress blocks and accumulated body copies no longer leak into human-facing acceptance text.
+
 ## [0.6.23] - 2026-08-15
 
 ### Fixed
@@ -181,7 +187,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.23...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.24...HEAD
+[0.6.24]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.24
 [0.6.23]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.23
 [0.6.22]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.22
 [0.6.21]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.21

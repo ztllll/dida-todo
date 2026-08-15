@@ -16,6 +16,7 @@ import type {
 import { buildCompletionReminderInput } from "./scheduling.js";
 import { buildAcceptanceResultUpdate, buildHumanAcceptanceResult } from "./acceptance-result.js";
 import { MemoryWorkStateStore, type WorkStateStore } from "./state-store.js";
+import { composeHumanWorkDescription } from "./human-task-surface.js";
 import {
   acceptanceReworkId,
   authorizedAcceptanceFeedback,
@@ -74,22 +75,6 @@ export interface UpdateTaskInput {
   metadata?: Record<string, unknown>;
   addBlockedBy?: number[];
   removeBlockedBy?: number[];
-}
-
-function humanWorkDescription(metadata: WorkMetadata, userContent: string, remoteDescription?: string): string {
-  const migrated = migrateWorkMetadata(metadata);
-  const content = userContent.trim();
-  const sourceDescription = migrated.userDescription ?? stripManagedContent(remoteDescription).replace(
-    /(?:^|\n\n)当前进展：[^\n]*\n已处理 \d+\/\d+ 项(?=\n\n|$)/g,
-    "",
-  );
-  let description = sourceDescription.trim();
-  if (content) {
-    const appendedContent = `\n\n${content}`;
-    while (description.endsWith(appendedContent)) description = description.slice(0, -appendedContent.length).trimEnd();
-    if (description === content) description = "";
-  }
-  return [description, content].filter(Boolean).join("\n\n");
 }
 
 function humanVisibleText(value: string): string {
@@ -690,7 +675,7 @@ export class DidaTodoRepository {
     const migrated = migrateWorkMetadata(metadata);
     const checklist = migrated.workType === "checklist";
     const humanDescription = checklist
-      ? humanWorkDescription(metadata, userContent, remote.desc)
+      ? composeHumanWorkDescription(metadata, userContent, remote.desc)
       : migrated.userDescription ?? stripManagedContent(remote.desc);
     return {
       id: remote.id,

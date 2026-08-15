@@ -2,6 +2,7 @@ import type { DidaTask, TodoScope, WorkTask } from "./domain.js";
 import { ACCEPTANCE_COMMENT, acceptanceMatchesSource, buildAcceptanceSummary, buildAcceptanceTaskInput } from "./acceptance.js";
 import { canFinalizeWork, migrateWorkMetadata } from "./work-lifecycle.js";
 import { isWorkReadyForFinalization } from "./work-type.js";
+import { originalHumanDescription } from "./human-task-surface.js";
 
 export interface FinalizerGateway {
   getProjectData(projectId: string, signal?: AbortSignal): Promise<{ tasks: DidaTask[] }>;
@@ -103,12 +104,13 @@ export class WorkFinalizer {
 
   private async createAcceptance(work: WorkTask, signal?: AbortSignal): Promise<DidaTask> {
     const visible = visibleTasks(work);
+    const description = originalHumanDescription(work.metadata, work.userContent, work.remote.desc);
     return this.gateway.createTask(
       buildAcceptanceTaskInput(
         work.remote,
         3,
         buildAcceptanceSummary(work.remote.title, visible, {
-          ...(work.remote.desc ? { description: work.remote.desc } : {}),
+          ...(description ? { description } : {}),
           ...(work.userContent ? { content: work.userContent } : {}),
         }),
       ),
