@@ -104,7 +104,9 @@ describe("滴答 Todo Repository seam", () => {
     await repo.updateTask(scope, work.remote.id, 1, { status: "in_progress" });
     const remote = await gateway.getTask(scope.binding.projectId, work.remote.id);
 
-    expect(remote.desc).toBe("用户描述\n\n稳定正文");
+    expect(remote.desc).toContain("用户描述\n\n稳定正文");
+    expect(remote.desc).toContain("当前进展：第一步");
+    expect(remote.desc).toContain("已处理 0/2 项");
     expect(remote.desc?.split("稳定正文")).toHaveLength(2);
   });
 
@@ -146,10 +148,14 @@ describe("滴答 Todo Repository seam", () => {
     });
     expect(active.tasks[0]?.status).toBe("in_progress");
     expect(active.metadata.activeTaskId).toBe(1);
+    expect((await gateway.getTask(scope.binding.projectId, work.remote.id)).desc).toContain("当前进展：正在实现适配器");
+    expect((await gateway.getTask(scope.binding.projectId, work.remote.id)).desc).toContain("已处理 0/1 项");
 
     const completed = await repo.updateTask(scope, work.remote.id, 1, { status: "completed" });
     expect(completed.tasks[0]?.status).toBe("completed");
     expect(completed.metadata.activeTaskId).toBeUndefined();
+    expect((await gateway.getTask(scope.binding.projectId, work.remote.id)).desc).toContain("当前进展：全部执行项已处理，正在准备验收");
+    expect((await gateway.getTask(scope.binding.projectId, work.remote.id)).desc).toContain("已处理 1/1 项");
 
     await repo.markWorkReadyForAcceptance(scope, work.remote.id);
     await repo.finishWork(scope, work.remote.id);

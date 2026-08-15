@@ -58,7 +58,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 - `dida_todo create/update/delete` 会写入滴答 Checklist。
 - 滴答侧的标题修改和完成状态会同步回 OMP。
 - OMP Overlay 在当前工作对话内持续展示完整 Checklist；已完成步骤保留到新工作取代它或会话关闭，滴答中的完成历史不会删除。
-- 滴答 Checklist 没有原生“进行中”，该状态由受管元数据保存；滴答侧仍显示未完成。
+- 滴答 Checklist 没有原生“进行中”，Item 本身仍显示未勾；扩展会在每次创建、开始、完成或跳过步骤后，立即把当前动作和“已处理 n/m 项”投影到顶层描述，用户无需等顶层任务完成即可看到实时过程。原始任务说明始终保留在进度区上方。
 
 ### 4. 多工作任务与调度
 
@@ -126,7 +126,7 @@ Agent 自建 Direct Work 的全部 Execution Steps 完成，或 Checklist Work �
 
 ### 9. OMP 支持边界
 
-当前正式实现和发布单元只支持 OMP `17.3.3` Interactive/TUI 主会话。print、RPC、ACP、Pi、OpenClaw、Claude Code 与 Codex CLI 不属于 v0.7.0 的支持面；不得通过 prompt、会话文本或路径猜测主/子 Agent 身份。
+当前正式实现和发布单元只支持 OMP `17.3.3` Interactive/TUI 主会话。print、RPC、ACP、Pi、OpenClaw、Claude Code 与 Codex CLI 不属于 v0.7.1 的支持面；不得通过 prompt、会话文本或路径猜测主/子 Agent 身份。
 
 OMP 原生 `todo` 与 `/todo` 不会被覆盖。Dida 状态和 mutation 只通过 `dida_todo`、`dida_todo_work`、`dida_todo_setup` 与 `/todos` 暴露。旧 Pi metadata、`pi-todo-*` tags 和本机文件只作为单向迁移输入，首次 OMP 远端 mutation 后不得直接回退 Pi。
 
@@ -154,7 +154,7 @@ OMP 原生 `todo` 与 `/todo` 不会被覆盖。Dida 状态和 mutation 只通�
 ### 最简流程：安装固定 OMP plugin + 登录
 
 ```bash
-omp plugin install github:ztllll/dida-todo#v0.7.0
+omp plugin install github:ztllll/dida-todo#v0.7.1
 ```
 `omp plugin install` invokes the `bun` executable. Standard Bun-based OMP installations already provide it; a standalone/prebuilt OMP binary requires Bun `1.3.14+` on `PATH` before installing a plugin.
 
@@ -183,7 +183,7 @@ omp plugin install github:ztllll/dida-todo#v0.7.0
 升级：
 
 ```bash
-omp plugin install github:ztllll/dida-todo#v0.7.0
+omp plugin install github:ztllll/dida-todo#v0.7.1
 # 或安装 main：omp plugin install github:ztllll/dida-todo
 ```
 
@@ -264,7 +264,7 @@ omp plugin install github:ztllll/dida-todo#v0.7.0
 ## 诚实的限制
 
 1. Dida 官方 OpenAPI 不公开原生附件上传/下载；链接可以处理，图片和文件应通过当前 IM 通道交付。
-2. 滴答 Checklist 没有原生 `in_progress`，因此进行中状态主要在 OMP Overlay 可见。
+2. 滴答 Checklist 没有原生 `in_progress`；Item 仍显示未勾，但顶层描述会立即展示当前动作和已处理数量，OMP Overlay 同时显示进行中状态。
 3. Dida CLI 更新需要发送完整 Items；项目已做进程内和文件队列串行化，但跨主机并发、etag 冲突、限流和长期无人值守仍需更多验证。
 4. 当前重点支持滴答清单，不宣称兼容 TickTick 国际版。
 5. 自动接管会修改目标任务内容并加入受管元数据；建议使用专用清单并先在测试项目验收。
@@ -294,7 +294,7 @@ omp plugin install github:ztllll/dida-todo#v0.7.0
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前 `v0.7.0` 已通过 40 个测试文件、192 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、OMP Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
+当前 `v0.7.1` 已通过 40 个测试文件、192 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、OMP Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
 
 ## 开发成员
 
@@ -350,7 +350,7 @@ Capture ideas, bugs, and feature requests in Dida365 from your phone or browser.
 - **Identity-gated feedback loop:** keep acceptance open and comment with the current Dida OAuth account. The Repository matches the comment `userId` against the acceptance system-comment author, atomically creates a separate rework, and closes the superseded acceptance. Other or missing identities are silently ignored; descriptions remain non-control data.
 - **Links and files:** HTTPS links in task text round-trip and are treated as untrusted external resources. Dida's public OpenAPI has no native attachment upload/download surface; tmuxbot can instead deliver incoming and outgoing files through the exact Telegram/Feishu endpoint.
 - **Same-host resilience:** metadata v3 tracks origin/lifecycle/occurrence; v1/v2 metadata and `pi-todo-*` tags are migration inputs only. Real cross-process locks serialize mutation, priority migration, finalization, provisioning, and config writes. Cross-host strong consistency is not claimed without a Dida CAS/ETag/idempotency API.
-- **OMP-only release surface:** v0.7.0 supports OMP `17.3.3` Interactive/TUI sessions only. Print, RPC, ACP, Pi, OpenClaw, Claude Code, and Codex CLI are not supported; no agent role is inferred from prompts, paths, or session text.
+- **OMP-only release surface:** v0.7.1 supports OMP `17.3.3` Interactive/TUI sessions only. Print, RPC, ACP, Pi, OpenClaw, Claude Code, and Codex CLI are not supported; no agent role is inferred from prompts, paths, or session text.
 
 ## Model
 
@@ -364,7 +364,7 @@ One fixed Dida365 project per topic
 ## Install
 
 ```bash
-omp plugin install github:ztllll/dida-todo#v0.7.0
+omp plugin install github:ztllll/dida-todo#v0.7.1
 ```
 `omp plugin install` invokes `bun`. Standard Bun-based OMP installations already provide it; a standalone/prebuilt OMP binary needs Bun `1.3.14+` on `PATH` before plugin installation.
 
@@ -478,7 +478,7 @@ Third-party projects remain owned by their respective authors and retain their o
 
 ## Development story
 
-The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, explicit multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, zero-configuration project provisioning, and UX simplification. Release `v0.7.0` passes 188 default automated tests across 40 test files plus one opt-in isolated real-Dida gate, TypeScript, the OMP Extension Loader, package-content inspection, and credential scanning.
+The project was developed through a real Dida365-driven feedback loop: read-only inventory, domain modelling, fake-CLI TDD, real project acceptance, manual Checklist adoption, explicit multi-work execution, scheduling and comments, long-running visual observation, mandatory human acceptance, zero-configuration project provisioning, and UX simplification. Release `v0.7.1` passes 192 default automated tests across 40 test files plus one opt-in isolated real-Dida gate, TypeScript, the OMP Extension Loader, package-content inspection, and credential scanning.
 
 ## Team
 

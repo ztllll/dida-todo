@@ -2,7 +2,7 @@
 
 ## Supported host
 
-`dida-todo` v0.7.0 supports OMP `17.3.3` Interactive/TUI sessions only. The plugin uses OMP `ExtensionContext` timers and lifecycle events; print, RPC, ACP, Pi, OpenClaw, Claude Code, and Codex CLI are not supported operational surfaces.
+`dida-todo` v0.7.1 supports OMP `17.3.3` Interactive/TUI sessions only. The plugin uses OMP `ExtensionContext` timers and lifecycle events; print, RPC, ACP, Pi, OpenClaw, Claude Code, and Codex CLI are not supported operational surfaces.
 
 No extension logic infers interactive status, host identity, or child-agent identity from prompt text, session files, or paths. The host provides `ctx.hasUI` and the lifecycle context.
 
@@ -36,7 +36,7 @@ Queue execution grants are short-lived and host-issued. The trusted Poller follo
 Install a pinned release:
 
 ```bash
-omp plugin install github:ztllll/dida-todo#v0.7.0
+omp plugin install github:ztllll/dida-todo#v0.7.1
 ```
 OMP's plugin manager invokes `bun` to resolve plugin dependencies. A standard Bun-based OMP installation already has it; a standalone/prebuilt OMP binary needs Bun `1.3.14+` on `PATH` before this command.
 

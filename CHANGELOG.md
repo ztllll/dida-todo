@@ -4,6 +4,12 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-08-15
+
+### Fixed
+
+- Project internal `in_progress` into a clean human-readable `当前进展` section in the top-level Dida description. Every Checklist create/update mutation immediately refreshes the active action and settled/total count, while preserving the original user description and body exactly once.
+
 ### Changed
 
 - Use the human topic name as the default Dida project name and discovery alias. Persisted project IDs remain authoritative, while topic, exact tmux target, and cwd aliases converge changed entry points onto the same project without guessing, merging, or deleting duplicate projects.
@@ -187,7 +193,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/ztllll/dida-todo/releases/tag/v0.7.1
 [0.7.0]: https://github.com/ztllll/dida-todo/releases/tag/v0.7.0
 [0.6.20]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.20
 [0.6.19]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.19

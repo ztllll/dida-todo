@@ -1,6 +1,6 @@
 {
   "name": "dida-todo",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "type": "module",
   "description": "OMP Agent 扩展：以滴答清单为跨会话任务真源，支持自然语言执行、双向同步、提醒和强制人类验收闭环。",

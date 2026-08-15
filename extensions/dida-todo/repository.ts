@@ -80,13 +80,23 @@ export interface UpdateTaskInput {
 function humanWorkDescription(metadata: WorkMetadata, userContent: string, remoteDescription?: string): string {
   const migrated = migrateWorkMetadata(metadata);
   const content = userContent.trim();
-  let description = (migrated.userDescription ?? stripManagedContent(remoteDescription)).trim();
+  let description = (migrated.userDescription ?? stripManagedContent(remoteDescription).split("\n\n当前进展：")[0]).trim();
   if (content) {
     const appendedContent = `\n\n${content}`;
     while (description.endsWith(appendedContent)) description = description.slice(0, -appendedContent.length).trimEnd();
     if (description === content) description = "";
   }
-  return [description, content].filter(Boolean).join("\n\n");
+  const visible = migrated.tasks.filter((task) => task.status !== "deleted");
+  const settled = visible.filter((task) => task.status === "completed" || task.status === "skipped").length;
+  const active = visible.find((task) => task.status === "in_progress");
+  const progress = active
+    ? active.activeForm || active.subject
+    : visible.length > 0 && settled === visible.length
+      ? "全部执行项已处理，正在准备验收"
+      : visible.length > 0
+        ? "等待处理下一项"
+        : "正在整理执行计划";
+  return [description, content, `当前进展：${progress}\n已处理 ${settled}/${visible.length} 项`].filter(Boolean).join("\n\n");
 }
 
 function humanVisibleText(value: string): string {

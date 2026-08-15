@@ -19,7 +19,7 @@ const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.ur
 describe("dida-todo OMP plugin manifest", () => {
   it("uses the OMP v0.7 release contract", () => {
     expect(pkg.name).toBe("dida-todo");
-    expect(pkg.version).toBe("0.7.0");
+    expect(pkg.version).toBe("0.7.1");
     expect(pkg.private).toBe(true);
     expect(pkg.keywords).toEqual(expect.arrayContaining(["omp-plugin", "omp-extension"]));
     expect(pkg.omp.extensions).toEqual(["./extensions/dida-todo"]);

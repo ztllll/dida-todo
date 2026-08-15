@@ -119,7 +119,8 @@ describe("项目 Todo 同步 seam", () => {
     expect(result.works[1]?.tasks[0]).toMatchObject({ subject: "交给 LLM 实现", metadata: { source: "dida" } });
     const adopted = gateway.tasks.find((task) => task.id === "manual");
     expect(adopted?.content).toBe("");
-    expect(adopted?.desc).toBe("用户自己记录的说明");
+    expect(adopted?.desc).toContain("用户自己记录的说明");
+    expect(adopted?.desc).toContain("当前进展：等待处理下一项");
     expect(adopted?.desc ?? "").not.toContain("pi-dida-todo:start");
   });
 

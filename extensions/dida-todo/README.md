@@ -1,6 +1,6 @@
 # Dida Todo OMP Extension
 
-`dida-todo` v0.7.0 connects OMP Agent Interactive/TUI sessions to Dida365. Dida is the durable task source of truth; the local OMP runtime only caches current session state, metadata, bindings, and acceptance links.
+`dida-todo` v0.7.1 connects OMP Agent Interactive/TUI sessions to Dida365. Dida is the durable task source of truth; the local OMP runtime only caches current session state, metadata, bindings, and acceptance links.
 
 ## Supported surface
 
@@ -63,7 +63,7 @@ The first OMP remote mutation converts legacy remote records to the current form
 ## Installation and verification
 
 ```bash
-omp plugin install github:ztllll/dida-todo#v0.7.0
+omp plugin install github:ztllll/dida-todo#v0.7.1
 npm ci
 npm run check
 ```
