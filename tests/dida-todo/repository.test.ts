@@ -1,6 +1,5 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
-import { MemoryWorkStateStore } from "../../extensions/dida-todo/state-store.js";
 import { encodeManagedContent, metadataToItems, synchronizeItemIds } from "../../extensions/dida-todo/codec.js";
 import type { DidaProjectData, DidaTask, TodoScope, WorkMetadata } from "../../extensions/dida-todo/domain.js";
 
@@ -30,7 +29,6 @@ class FakeGateway implements DidaGateway {
       projectId: input.projectId as string,
       title: input.title as string,
       content: input.content as string,
-      ...(input.desc !== undefined ? { desc: String(input.desc) } : {}),
       status: 0,
       priority: Number(input.priority ?? 0),
       kind: "CHECKLIST",
@@ -74,7 +72,7 @@ const scope: TodoScope = {
 describe("滴答 Todo Repository seam", () => {
   it("创建 Pi 工作时默认写入可执行低优先级，而不是 priority=0 草稿", async () => {
     const gateway = new FakeGateway();
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const repo = new DidaTodoRepository(gateway);
 
     const created = await repo.createWork(scope, "实现联网 Todo");
 
@@ -84,7 +82,7 @@ describe("滴答 Todo Repository seam", () => {
 
   it("创建工作任务、添加执行步骤并永久读取", async () => {
     const gateway = new FakeGateway();
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const repo = new DidaTodoRepository(gateway);
 
     const created = await repo.createWork(scope, "实现联网 Todo");
     const updated = await repo.createTask(scope, created.remote.id, { subject: "研究现有接口" });
@@ -94,25 +92,9 @@ describe("滴答 Todo Repository seam", () => {
     expect(reloaded.tasks).toEqual(updated.tasks);
   });
 
-  it("Checklist 连续 mutation 后描述与正文各只保留一份", async () => {
-    const gateway = new FakeGateway();
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
-    let work = await repo.createWork(scope, "验证描述幂等", undefined, "checklist", "稳定正文", "用户描述", 1);
-
-    work = await repo.createTask(scope, work.remote.id, { subject: "第一步" });
-    work = await repo.createTask(scope, work.remote.id, { subject: "第二步" });
-    await repo.updateTask(scope, work.remote.id, 1, { status: "in_progress" });
-    const remote = await gateway.getTask(scope.binding.projectId, work.remote.id);
-
-    expect(remote.desc).toContain("用户描述\n\n稳定正文");
-    expect(remote.desc).toContain("当前进展：第一步");
-    expect(remote.desc).toContain("已处理 0/2 项");
-    expect(remote.desc?.split("稳定正文")).toHaveLength(2);
-  });
-
   it("Checklist 已 ready 后追加同一请求的新 Item 会撤销收口状态", async () => {
     const gateway = new FakeGateway();
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const repo = new DidaTodoRepository(gateway);
     let work = await repo.createWork(scope, "统一用户请求", undefined, "checklist", "", "", 3);
     work = await repo.createTask(scope, work.remote.id, { subject: "第一项" });
     work = await repo.updateTask(scope, work.remote.id, 1, { status: "completed" });
@@ -127,7 +109,7 @@ describe("滴答 Todo Repository seam", () => {
 
   it("同会话重复 bootstrap 相同标题时复用既有 Pi 工作", async () => {
     const gateway = new FakeGateway();
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const repo = new DidaTodoRepository(gateway);
 
     const first = await repo.createWork(scope, "实现联网 Todo");
     const second = await repo.createWork(scope, "实现联网 Todo");
@@ -138,7 +120,7 @@ describe("滴答 Todo Repository seam", () => {
 
   it("将一个步骤标为进行中，再完成步骤和顶层工作", async () => {
     const gateway = new FakeGateway();
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const repo = new DidaTodoRepository(gateway);
     const work = await repo.createWork(scope, "实现联网 Todo");
     const withTask = await repo.createTask(scope, work.remote.id, { subject: "实现适配器" });
 
@@ -148,14 +130,10 @@ describe("滴答 Todo Repository seam", () => {
     });
     expect(active.tasks[0]?.status).toBe("in_progress");
     expect(active.metadata.activeTaskId).toBe(1);
-    expect((await gateway.getTask(scope.binding.projectId, work.remote.id)).desc).toContain("当前进展：正在实现适配器");
-    expect((await gateway.getTask(scope.binding.projectId, work.remote.id)).desc).toContain("已处理 0/1 项");
 
     const completed = await repo.updateTask(scope, work.remote.id, 1, { status: "completed" });
     expect(completed.tasks[0]?.status).toBe("completed");
     expect(completed.metadata.activeTaskId).toBeUndefined();
-    expect((await gateway.getTask(scope.binding.projectId, work.remote.id)).desc).toContain("当前进展：全部执行项已处理，正在准备验收");
-    expect((await gateway.getTask(scope.binding.projectId, work.remote.id)).desc).toContain("已处理 1/1 项");
 
     await repo.markWorkReadyForAcceptance(scope, work.remote.id);
     await repo.finishWork(scope, work.remote.id);
@@ -164,10 +142,16 @@ describe("滴答 Todo Repository seam", () => {
 
   it("只恢复当前绑定下未完成的 Pi 工作任务", async () => {
     const gateway = new FakeGateway();
-    const good: WorkMetadata = { schemaVersion: 3, kind: "dida-todo-work", bindingKey: scope.bindingKey, origin: "agent", lifecycle: "claimed",
-    execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
-    nextId: 1,
-    tasks: [], };
+    const good: WorkMetadata = {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: scope.bindingKey,
+      origin: "pi",
+      lifecycle: "claimed",
+      execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
+      nextId: 1,
+      tasks: [],
+    };
     const other = { ...good, bindingKey: "cwd:/other" };
     for (const [id, metadata] of [["good", good], ["other", other]] as const) {
       const remote = await gateway.createTask({
@@ -180,7 +164,7 @@ describe("滴答 Todo Repository seam", () => {
       await gateway.updateTask(remote.id, { ...remote, content: encodeManagedContent("", synced) });
     }
 
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const repo = new DidaTodoRepository(gateway);
     const works = await repo.listOpenWorks(scope);
 
     expect(works.map((work) => work.remote.title)).toEqual(["good"]);

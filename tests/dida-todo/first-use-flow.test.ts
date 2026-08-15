@@ -1,40 +1,12 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import type { DidaProject, DidaProjectData, DidaTask, DidaTodoConfig, ProjectBinding, TodoScope } from "../../extensions/dida-todo/domain.js";
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
-import { MemoryWorkStateStore } from "../../extensions/dida-todo/state-store.js";
 import { registerDidaSetupTool } from "../../extensions/dida-todo/setup-tool.js";
-import { registerDidaTodoTool } from "../../extensions/dida-todo/tool.js";
+import { registerTodoTool } from "../../extensions/dida-todo/tool.js";
 import { getSessionRuntime, pendingAcceptanceResults, removeSessionRuntime, setAllowedTrackingReasons, setSessionRuntime } from "../../extensions/dida-todo/runtime.js";
-const TestType = {
-  Array: () => undefined,
-  Boolean: () => undefined,
-  Literal: (_value: string) => undefined,
-  Number: () => undefined,
-  Object: () => undefined,
-  Optional: <Schema>(schema: Schema) => schema,
-  Record: () => undefined,
-  String: () => undefined,
-  Union: () => undefined,
-  Unknown: () => undefined,
-};
-type RegisteredTool = {
-  name: string;
-  execute(...args: unknown[]): Promise<{ content: Array<{ text: string }>; details: { ready: boolean } }>;
-};
-
-function isRegisteredTool(value: unknown): value is RegisteredTool {
-  return value !== null
-    && typeof value === "object"
-    && "name" in value
-    && typeof value.name === "string"
-    && "execute" in value
-    && typeof value.execute === "function";
-}
-
-
 
 class FirstUseGateway implements DidaGateway {
   projects: DidaProject[] = [];
@@ -102,15 +74,13 @@ describe("安装登录后的完整首次使用", () => {
     const configPath = join(await mkdtemp(join(tmpdir(), "dida-first-use-")), "config.json");
     const config: DidaTodoConfig = { bindings: [] };
     const gateway = new FirstUseGateway();
-    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
-    let setupTool: RegisteredTool | undefined;
-    let todoTool: RegisteredTool | undefined;
+    const repository = new DidaTodoRepository(gateway);
+    let setupTool: any;
+    let todoTool: any;
     const pi = {
-      typebox: { Type: TestType },
-      registerTool(value: unknown) {
-        if (!isRegisteredTool(value)) return;
+      registerTool(value: any) {
         if (value.name === "dida_todo_setup") setupTool = value;
-        if (value.name === "dida_todo") todoTool = value;
+        if (value.name === "todo") todoTool = value;
       },
     } as never;
     const activate = async (_ctx: unknown, binding: ProjectBinding) => {
@@ -118,10 +88,9 @@ describe("安装登录后的完整首次使用", () => {
       const sync = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
       setSessionRuntime(sessionId, { scope, works: sync.works });
     };
-    registerDidaSetupTool(pi, gateway as never, config, () => ({ cwd, tmuxTarget }), activate, configPath, () => true);
-    registerDidaTodoTool(pi, repository, () => {});
-    if (!setupTool || !todoTool) throw new Error("Dida tools were not registered");
-    const ctx = { cwd, hasUI: true, sessionManager: { getSessionId: () => sessionId } };
+    registerDidaSetupTool(pi, gateway as never, config, () => ({ cwd, tmuxTarget }), activate, configPath);
+    registerTodoTool(pi, repository, () => {});
+    const ctx = { cwd, sessionManager: { getSessionId: () => sessionId } };
 
     const login = await setupTool.execute("login", { action: "login" }, undefined, undefined, ctx);
     setAllowedTrackingReasons(sessionId, ["multi_step_implementation", "current_work_step"]);
@@ -150,15 +119,13 @@ describe("安装登录后的完整首次使用", () => {
     const configPath = join(await mkdtemp(join(tmpdir(), "dida-next-work-")), "config.json");
     const config: DidaTodoConfig = { bindings: [] };
     const gateway = new FirstUseGateway();
-    const repository = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
-    let setupTool: RegisteredTool | undefined;
-    let todoTool: RegisteredTool | undefined;
+    const repository = new DidaTodoRepository(gateway);
+    let setupTool: any;
+    let todoTool: any;
     const pi = {
-      typebox: { Type: TestType },
-      registerTool(value: unknown) {
-        if (!isRegisteredTool(value)) return;
+      registerTool(value: any) {
         if (value.name === "dida_todo_setup") setupTool = value;
-        if (value.name === "dida_todo") todoTool = value;
+        if (value.name === "todo") todoTool = value;
       },
     } as never;
     const activate = async (_ctx: unknown, binding: ProjectBinding) => {
@@ -166,10 +133,9 @@ describe("安装登录后的完整首次使用", () => {
       const sync = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
       setSessionRuntime(sessionId, { scope, works: sync.works });
     };
-    registerDidaSetupTool(pi, gateway as never, config, () => ({ cwd, tmuxTarget }), activate, configPath, () => true);
-    registerDidaTodoTool(pi, repository, () => {});
-    if (!setupTool || !todoTool) throw new Error("Dida tools were not registered");
-    const ctx = { cwd, hasUI: true, sessionManager: { getSessionId: () => sessionId } };
+    registerDidaSetupTool(pi, gateway as never, config, () => ({ cwd, tmuxTarget }), activate, configPath);
+    registerTodoTool(pi, repository, () => {});
+    const ctx = { cwd, sessionManager: { getSessionId: () => sessionId } };
 
     await setupTool.execute("login", { action: "login" }, undefined, undefined, ctx);
     setAllowedTrackingReasons(sessionId, ["user_requested_tracking", "current_work_step"]);
@@ -198,8 +164,8 @@ describe("安装登录后的完整首次使用", () => {
     expect(second.content[0].text).toContain("Created #2");
     expect(getSessionRuntime(sessionId)?.work?.remote.title).toBe("跨阶段大任务");
     expect(getSessionRuntime(sessionId)?.work?.tasks.map((task) => task.subject)).toEqual(["第一项工作", "第二项工作"]);
-    expect(gateway.tasks.filter((task) => task.tags?.includes("dida-todo-work"))).toHaveLength(1);
-    expect(gateway.tasks.some((task) => task.tags?.includes("dida-todo-acceptance"))).toBe(false);
+    expect(gateway.tasks.filter((task) => task.tags?.includes("pi-todo"))).toHaveLength(1);
+    expect(gateway.tasks.some((task) => task.tags?.includes("pi-todo-acceptance"))).toBe(false);
     removeSessionRuntime(sessionId);
   });
 });

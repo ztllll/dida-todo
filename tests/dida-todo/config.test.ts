@@ -1,30 +1,21 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { BUNDLED_DIDA_COMMAND, resolveBinding, resolveDidaCommand } from "../../extensions/dida-todo/config.js";
 import type { DidaTodoConfig } from "../../extensions/dida-todo/domain.js";
 
 const config: DidaTodoConfig = {
   bindings: [
-    { key: "topic:example", projectId: "project-tmux", label: "Example" },
     { key: "tmux:example:0.0", projectId: "project-tmux", cwd: "/workspace/example-project" },
     { key: "cwd:/workspace/example-project", projectId: "project-cwd" },
   ],
 };
 
 describe("项目绑定解析 seam", () => {
-  it("精确 tmux 命中后返回同 projectId 的规范化话题绑定", () => {
-    expect(resolveBinding(config, "/workspace/example-project", "example:0.0", "Example")).toEqual({
-      key: "topic:example",
-      projectId: "project-tmux",
-      label: "Example",
-    });
-    expect(resolveBinding(config, "/wrong", "example:0.0", "Example")).toBeUndefined();
+  it("优先使用 tmux target 并校验 cwd", () => {
+    expect(resolveBinding(config, "/workspace/example-project", "example:0.0")?.projectId).toBe("project-tmux");
+    expect(resolveBinding(config, "/wrong", "example:0.0")).toBeUndefined();
   });
 
-  it("tmux 入口改变时通过话题别名回到同一 projectId", () => {
-    expect(resolveBinding(config, "/workspace/other", "renamed:1.0", " example ")?.projectId).toBe("project-tmux");
-  });
-
-  it("没有 tmux 或话题绑定时回退到规范化 cwd", () => {
+  it("没有 tmux 绑定时回退到规范化 cwd", () => {
     expect(resolveBinding(config, "/workspace/example-project/", undefined)?.projectId).toBe("project-cwd");
   });
 

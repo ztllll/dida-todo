@@ -1,15 +1,15 @@
-import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import { StringEnum } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import type { DidaTodoConfig } from "./domain.js";
 import type { DidaCliGateway } from "./gateway.js";
 import { bindExistingProject, ensureProjectBinding, isDidaAuthenticationError } from "./provisioning.js";
-import type { ProvisioningNamespace } from "./provisioning-identity.js";
 
 const ACTIONS = ["login", "auto", "bind"] as const;
 
 interface SetupContext {
   cwd: string;
   tmuxTarget?: string;
-  namespace?: ProvisioningNamespace;
 }
 
 export function registerDidaSetupTool(
@@ -18,34 +18,30 @@ export function registerDidaSetupTool(
   config: DidaTodoConfig,
   getContext: (sessionId: string) => SetupContext | undefined,
   activate: (ctx: ExtensionContext, binding: import("./domain.js").ProjectBinding) => Promise<void>,
-  configPath: string | undefined,
-  isInteractiveSession: (sessionId: string) => boolean,
+  configPath?: string,
 ): void {
-  const Type = pi.typebox.Type;
-  const Params = Type.Object({
-    action: Type.Union(ACTIONS.map((action) => Type.Literal(action))),
-    projectId: Type.Optional(Type.String()),
-    projectName: Type.Optional(Type.String()),
-  });
   pi.registerTool({
     name: "dida_todo_setup",
     label: "Dida Todo Setup",
     description: "Log in with the bundled Dida CLI, auto-provision this cwd/tmux target, or bind an existing project by ID/exact name.",
-    defaultInactive: true,
-    loadMode: "essential",
-    approval: "exec",
-    parameters: Params,
+    promptSnippet: "Auto-provision or rebind the Dida project for this Pi target",
+    promptGuidelines: [
+      "If dida-todo reports that Dida CLI is not logged in, call this tool with action login. Login automatically provisions, persists, and activates the current project; do not ask the user to find the package directory or run a second setup command.",
+      "Use bind only when the user explicitly asks to change the project or duplicate names require a projectId.",
+    ],
+    parameters: Type.Object({
+      action: StringEnum(ACTIONS),
+      projectId: Type.Optional(Type.String()),
+      projectName: Type.Optional(Type.String()),
+    }),
     async execute(_id, rawParams, signal, _update, ctx) {
       const params = rawParams as { action: (typeof ACTIONS)[number]; projectId?: string; projectName?: string };
       const sessionId = ctx.sessionManager.getSessionId();
-      if (!ctx.hasUI || !isInteractiveSession(sessionId)) {
-        throw new Error("dida_todo_setup 只能在已激活的 OMP Interactive/TUI 主会话中执行。");
-      }
       const current = getContext(sessionId) ?? { cwd: ctx.cwd };
       try {
         if (params.action === "login") {
           await gateway.login(signal);
-          const result = await ensureProjectBinding({ gateway, cwd: current.cwd, tmuxTarget: current.tmuxTarget, namespace: current.namespace, configPath, signal });
+          const result = await ensureProjectBinding({ gateway, cwd: current.cwd, tmuxTarget: current.tmuxTarget, configPath, signal });
           config.bindings = result.config.bindings;
           await activate(ctx, result.binding);
           return {
@@ -58,13 +54,12 @@ export function registerDidaSetupTool(
             gateway,
             cwd: current.cwd,
             tmuxTarget: current.tmuxTarget,
-            namespace: current.namespace,
             projectId: params.projectId,
             projectName: params.projectName,
             configPath,
             signal,
           })
-          : await ensureProjectBinding({ gateway, cwd: current.cwd, tmuxTarget: current.tmuxTarget, namespace: current.namespace, configPath, signal });
+          : await ensureProjectBinding({ gateway, cwd: current.cwd, tmuxTarget: current.tmuxTarget, configPath, signal });
         config.bindings = result.config.bindings;
         await activate(ctx, result.binding);
         return {

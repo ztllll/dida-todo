@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { encodeManagedContent } from "../../extensions/dida-todo/codec.js";
 import type { DidaTask, WorkMetadata } from "../../extensions/dida-todo/domain.js";
 
@@ -10,7 +10,7 @@ const repositoryModule = resolve(import.meta.dirname, "../../extensions/dida-tod
 
 function run(worker: string, store: string, state: string, action: "complete-item" | "finish", id?: number): Promise<void> {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(process.execPath, [worker, store, state, action, ...(id ? [String(id)] : [])], {
+    const child = spawn(process.execPath, ["./node_modules/vite-node/vite-node.mjs", worker, store, state, action, ...(id ? [String(id)] : [])], {
       cwd: resolve(import.meta.dirname, "../.."),
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -59,9 +59,11 @@ describe("同宿主多进程 Repository seam", () => {
     const store = join(directory, "store.json");
     const state = join(directory, "state.json");
     const worker = join(directory, "worker.ts");
-    const metadata: WorkMetadata = { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "tmux:demo:0.0", origin: "agent", lifecycle: "claimed",
-    execution: { claimedAt: "2026-08-11T00:00:00.000Z" }, nextId: 3,
-    tasks: [{ id: 1, subject: "步骤一", itemId: "one", status: "pending" }, { id: 2, subject: "步骤二", itemId: "two", status: "pending" }], };
+    const metadata: WorkMetadata = {
+      schemaVersion: 2, kind: "pi-todo-work", bindingKey: "tmux:demo:0.0", origin: "pi", lifecycle: "claimed",
+      execution: { claimedAt: "2026-08-11T00:00:00.000Z" }, nextId: 3,
+      tasks: [{ id: 1, subject: "步骤一", itemId: "one", status: "pending" }, { id: 2, subject: "步骤二", itemId: "two", status: "pending" }],
+    };
     await writeFile(store, JSON.stringify({ created: 1, tasks: [source(metadata, [{ id: "one", title: "步骤一", status: 0 }, { id: "two", title: "步骤二", status: 0 }])] }));
     await writeFile(worker, workerSource(repositoryModule));
     try {
@@ -78,15 +80,17 @@ describe("同宿主多进程 Repository seam", () => {
     const store = join(directory, "store.json");
     const state = join(directory, "state.json");
     const worker = join(directory, "worker.ts");
-    const metadata: WorkMetadata = { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "tmux:demo:0.0", origin: "agent", lifecycle: "claimed",
-    execution: { claimedAt: "2026-08-11T00:00:00.000Z" }, nextId: 2,
-    tasks: [{ id: 1, subject: "步骤", itemId: "one", status: "completed" }], };
+    const metadata: WorkMetadata = {
+      schemaVersion: 2, kind: "pi-todo-work", bindingKey: "tmux:demo:0.0", origin: "pi", lifecycle: "claimed",
+      execution: { claimedAt: "2026-08-11T00:00:00.000Z" }, nextId: 2,
+      tasks: [{ id: 1, subject: "步骤", itemId: "one", status: "completed" }],
+    };
     await writeFile(store, JSON.stringify({ created: 1, completes: 0, tasks: [source(metadata, [{ id: "one", title: "步骤", status: 1 }])] }));
     await writeFile(worker, workerSource(repositoryModule));
     try {
       await Promise.all([run(worker, store, state, "finish"), run(worker, store, state, "finish")]);
       const persisted = JSON.parse(await readFile(store, "utf8"));
-      expect(persisted.tasks.filter((task: DidaTask) => task.tags?.includes("dida-todo-acceptance"))).toHaveLength(1);
+      expect(persisted.tasks.filter((task: DidaTask) => task.tags?.includes("pi-todo-acceptance"))).toHaveLength(1);
       expect(persisted.completes).toBe(1);
     } finally {
       await rm(directory, { recursive: true, force: true });

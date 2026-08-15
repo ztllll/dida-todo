@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import {
   ACCEPTANCE_COMMENT,
   ACCEPTANCE_FEEDBACK_ACK_PREFIX,
@@ -38,7 +38,7 @@ describe("人类验收闭环", () => {
         "TRIGGER:PT3M",
       ],
       desc: "实现全文搜索并新增 8 项测试，全部通过。",
-      tags: ["dida-todo-acceptance"],
+      tags: ["pi-todo-acceptance"],
     });
     expect(input.content).toContain("实现全文搜索并新增 8 项测试");
     expect(input.content).toContain("如果验收通过，请在滴答中完成此任务");

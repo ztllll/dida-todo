@@ -1,15 +1,21 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { decodeWorkTask, encodeManagedContent, metadataToItems } from "../../extensions/dida-todo/codec.js";
 import type { DidaTask, WorkMetadata } from "../../extensions/dida-todo/domain.js";
 
-const metadata: WorkMetadata = { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "tmux:example:0.0", origin: "agent", lifecycle: "claimed",
-execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
-nextId: 3,
-activeTaskId: 2,
-tasks: [
-  { id: 1, subject: "研究接口", status: "completed", itemId: "item-a" },
-  { id: 2, subject: "实现适配器", status: "in_progress", activeForm: "正在实现适配器", itemId: "item-b" },
-], };
+const metadata: WorkMetadata = {
+  schemaVersion: 2,
+  kind: "pi-todo-work",
+  bindingKey: "tmux:example:0.0",
+  origin: "pi",
+  lifecycle: "claimed",
+  execution: { claimedAt: "2026-08-10T08:00:00.000Z" },
+  nextId: 3,
+  activeTaskId: 2,
+  tasks: [
+    { id: 1, subject: "研究接口", status: "completed", itemId: "item-a" },
+    { id: 2, subject: "实现适配器", status: "in_progress", activeForm: "正在实现适配器", itemId: "item-b" },
+  ],
+};
 
 describe("工作任务编解码 seam", () => {
   it("保留用户内容并往返 Pi Todo 元数据", () => {
@@ -59,11 +65,17 @@ describe("工作任务编解码 seam", () => {
   });
 
   it("Checklist 可从 desc 恢复 managed metadata，并还原用户原始描述", () => {
-    const checklistMetadata: WorkMetadata = { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "tmux:pi-agent:0.0", origin: "dida", lifecycle: "claimed",
-    workType: "checklist",
-    userDescription: "用户原始描述",
-    nextId: 2,
-    tasks: [{ id: 1, subject: "等待确认", status: "pending", itemId: "item-1" }], };
+    const checklistMetadata: WorkMetadata = {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: "tmux:pi-agent:0.0",
+      origin: "dida",
+      lifecycle: "claimed",
+      workType: "checklist",
+      userDescription: "用户原始描述",
+      nextId: 2,
+      tasks: [{ id: 1, subject: "等待确认", status: "pending", itemId: "item-1" }],
+    };
     const decoded = decodeWorkTask({
       id: "work-desc",
       projectId: "project-1",
@@ -82,10 +94,16 @@ describe("工作任务编解码 seam", () => {
   });
 
   it("旧 Checklist 从 content 读取时自动记住原始用户描述", () => {
-    const checklistMetadata: WorkMetadata = { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "tmux:pi-agent:0.0", origin: "dida", lifecycle: "claimed",
-    workType: "checklist",
-    nextId: 1,
-    tasks: [], };
+    const checklistMetadata: WorkMetadata = {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: "tmux:pi-agent:0.0",
+      origin: "dida",
+      lifecycle: "claimed",
+      workType: "checklist",
+      nextId: 1,
+      tasks: [],
+    };
     const decoded = decodeWorkTask({
       id: "legacy-content",
       projectId: "project-1",

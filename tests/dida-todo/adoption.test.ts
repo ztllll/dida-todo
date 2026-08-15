@@ -1,6 +1,5 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
-import { MemoryWorkStateStore } from "../../extensions/dida-todo/state-store.js";
 import type { DidaProjectData, DidaTask, TodoScope } from "../../extensions/dida-todo/domain.js";
 
 class AdoptionGateway implements DidaGateway {
@@ -63,7 +62,7 @@ describe("手工滴答任务接管 seam", () => {
         { id: "i2", title: "这是我手动添加的", status: 0 },
       ],
     });
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const repo = new DidaTodoRepository(gateway);
 
     const work = await repo.adoptWork(scope, "manual-work");
     const reloaded = await repo.getWork(scope, "manual-work");
@@ -87,7 +86,7 @@ describe("手工滴答任务接管 seam", () => {
       kind: "CHECKLIST",
       items: [{ id: "user-1", title: "用户原始步骤", content: "用户说明", status: 0 }],
     });
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const repo = new DidaTodoRepository(gateway);
     const adopted = await repo.adoptWork(scope, "manual-work");
 
     const first = await repo.createTask(scope, adopted.remote.id, { subject: "Pi 追加步骤一" });
@@ -108,7 +107,7 @@ describe("手工滴答任务接管 seam", () => {
       priority: 5,
       kind: "TEXT",
     });
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const repo = new DidaTodoRepository(gateway);
     const adopted = await repo.adoptWork(scope, "manual-direct");
 
     expect(adopted.metadata).toMatchObject({ origin: "dida", workType: "direct" });
@@ -137,7 +136,7 @@ describe("手工滴答任务接管 seam", () => {
       priority: 5,
       kind: "TEXT",
     });
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const repo = new DidaTodoRepository(gateway);
     const adopted = await repo.adoptWork(scope, "normalized-direct");
 
     await repo.createTask(scope, adopted.remote.id, { subject: "等待用户确认" });
@@ -145,8 +144,7 @@ describe("手工滴答任务接管 seam", () => {
     const completed = await repo.updateTask(scope, adopted.remote.id, 1, { status: "completed" }, undefined, { deferFinalization: true });
 
     expect(gateway.task).toMatchObject({ kind: "CHECKLIST", content: "" });
-    expect(gateway.task.desc).toContain("用户原始正文");
-    expect(gateway.task.desc).toContain("当前进展：全部执行项已处理，正在准备验收");
+    expect(gateway.task.desc).toBe("用户原始正文");
     expect(gateway.task.desc ?? "").not.toContain("pi-dida-todo:start");
     expect(persisted.userContent).toBe("用户原始正文");
     expect(persisted.tasks[0]).toMatchObject({ itemId: "persisted-1", status: "pending" });
@@ -163,7 +161,7 @@ describe("手工滴答任务接管 seam", () => {
       priority: 5,
       kind: "TEXT",
     });
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const repo = new DidaTodoRepository(gateway);
 
     const promoted = await repo.updateTask(scope, "legacy-decomposed-direct", 1, { status: "in_progress" });
 
@@ -183,7 +181,7 @@ describe("手工滴答任务接管 seam", () => {
       kind: "CHECKLIST",
       items: [{ id: "user-1", title: "用户原始步骤", status: 0 }],
     });
-    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const repo = new DidaTodoRepository(gateway);
     const adopted = await repo.adoptWork(scope, "manual-work");
     const appended = await repo.createTask(scope, adopted.remote.id, { subject: "Pi 步骤" });
 

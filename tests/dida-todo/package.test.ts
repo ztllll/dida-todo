@@ -1,28 +1,15 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-type PackageManifest = {
-  name: string;
-  version: string;
-  private: boolean;
-  keywords: string[];
-  files: string[];
-  omp: { extensions: string[] };
-  dependencies: Record<string, string>;
-  peerDependencies: Record<string, string>;
-  devDependencies: Record<string, string>;
-  engines: Record<string, string>;
-};
+const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as Record<string, any>;
 
-const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as PackageManifest;
-
-describe("dida-todo OMP plugin manifest", () => {
-  it("uses the OMP v0.7 release contract", () => {
+describe("dida-todo Pi Package manifest", () => {
+  it("使用正式名称并只发布 dida-todo 扩展", () => {
     expect(pkg.name).toBe("dida-todo");
-    expect(pkg.version).toBe("0.7.1");
+    expect(pkg.version).toBe("0.6.20");
     expect(pkg.private).toBe(true);
-    expect(pkg.keywords).toEqual(expect.arrayContaining(["omp-plugin", "omp-extension"]));
-    expect(pkg.omp.extensions).toEqual(["./extensions/dida-todo"]);
+    expect(pkg.keywords).toContain("pi-package");
+    expect(pkg.pi.extensions).toEqual(["./extensions/dida-todo"]);
     expect(pkg.files).toEqual([
       "extensions/dida-todo",
       "docs/adr",
@@ -37,14 +24,13 @@ describe("dida-todo OMP plugin manifest", () => {
     ]);
   });
 
-  it("declares the bundled CLI plus OMP peer and local Bun test dependencies", () => {
+  it("声明运行依赖和 Pi peerDependencies", () => {
     expect(pkg.dependencies["@suibiji/dida-cli"]).toBeDefined();
-    expect(pkg.peerDependencies).toEqual({
-      "@oh-my-pi/pi-coding-agent": ">=17.3.3 <18",
-      "@oh-my-pi/pi-tui": ">=17.3.3 <18",
+    expect(pkg.peerDependencies).toMatchObject({
+      "@earendil-works/pi-ai": "*",
+      "@earendil-works/pi-coding-agent": "*",
+      "@earendil-works/pi-tui": "*",
+      typebox: "*",
     });
-    expect(pkg.devDependencies.bun).toBe("1.3.14");
-    expect(pkg.devDependencies["@types/bun"]).toBe("1.3.14");
-    expect(pkg.engines).toEqual({ node: ">=20", bun: ">=1.3.14" });
   });
 });

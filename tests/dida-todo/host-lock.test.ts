@@ -3,11 +3,11 @@ import { hostLockPath } from "../../extensions/dida-todo/host-lock.js";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 function run(script: string, key: string, holdMs: number): Promise<string> {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(process.execPath, [script, key, String(holdMs)], {
+    const child = spawn(process.execPath, ["./node_modules/vite-node/vite-node.mjs", script, key, String(holdMs)], {
       cwd: resolve(import.meta.dirname, "../.."),
       stdio: ["ignore", "pipe", "pipe"],
     });

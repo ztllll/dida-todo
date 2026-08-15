@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Task, TodoScope, WorkTask } from "./domain.js";
 import { DidaTodoRepository } from "./repository.js";
 import { getSessionRuntime, pendingWorkFinalizations, updateSessionWork, updateSessionWorks } from "./runtime.js";
@@ -40,17 +40,11 @@ function runtimeFor(ctx: ExtensionCommandContext): { scope: TodoScope; work?: Wo
   return runtime;
 }
 
-export function registerCommands(
-  pi: ExtensionAPI,
-  repository: DidaTodoRepository,
-  onWorkChanged: () => void,
-  isInteractiveSession: (sessionId: string) => boolean,
-): void {
+export function registerCommands(pi: ExtensionAPI, repository: DidaTodoRepository, onWorkChanged: () => void): void {
   pi.registerCommand("todos", {
     description: "从滴答刷新并显示当前工作任务的全部执行步骤",
     handler: async (_args, ctx) => {
       const sessionId = ctx.sessionManager.getSessionId();
-      if (!ctx.hasUI || !isInteractiveSession(sessionId)) return;
       const runtime = runtimeFor(ctx);
       const result = await repository.syncOpenWorks(runtime.scope, {
         adoptUnmanaged: true,

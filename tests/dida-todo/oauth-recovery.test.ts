@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { isDidaAuthenticationError } from "../../extensions/dida-todo/provisioning.js";
 
 const RECOVERY_TEXT = "Dida CLI 尚未登录";

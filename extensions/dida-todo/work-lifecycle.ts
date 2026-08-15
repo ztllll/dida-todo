@@ -1,5 +1,5 @@
 import { occurrenceKeyForTask } from "./scheduling.js";
-import type { DidaTask, DidaWorkType, PersistedWorkMetadata, TodoScope, WorkLifecycleState, WorkMetadata, WorkOrigin, WorkTask } from "./domain.js";
+import type { DidaTask, DidaWorkType, TodoScope, WorkLifecycleState, WorkMetadata, WorkMetadataV2, WorkOrigin, WorkTask } from "./domain.js";
 import { inferWorkType } from "./work-type.js";
 
 function now(): string {
@@ -10,36 +10,29 @@ function hostId(): string {
   return process.env.HOSTNAME?.trim() || "unknown-host";
 }
 
-function v3Base(metadata: Exclude<PersistedWorkMetadata, WorkMetadata>, origin: WorkOrigin, lifecycle: WorkLifecycleState): WorkMetadata {
+function v2Base(metadata: WorkMetadata, origin: WorkOrigin, lifecycle: WorkLifecycleState): WorkMetadataV2 {
   return {
     ...metadata,
-    schemaVersion: 3,
-    kind: "dida-todo-work",
+    schemaVersion: 2,
+    kind: "pi-todo-work",
     origin,
     lifecycle,
-    tasks: metadata.tasks.map((task) => ({ ...task })),
   };
 }
 
-export function migrateWorkMetadata(metadata: PersistedWorkMetadata): WorkMetadata {
-  if (metadata.schemaVersion === 3) return { ...metadata, tasks: metadata.tasks.map((task) => ({ ...task })) };
-  if (metadata.schemaVersion === 2) {
-    return {
-      ...v3Base(metadata, metadata.origin === "pi" ? "agent" : "dida", metadata.lifecycle),
-      migratedFromVersion: metadata.migratedFromVersion ?? 2,
-    };
-  }
-  // V1 lacks lifecycle provenance. Preserve it as a non-executable draft,
-  // with an explicit marker for safe legacy finalization recovery.
-  return { ...v3Base(metadata, "dida", "draft"), migratedFromVersion: 1 };
+export function migrateWorkMetadata(metadata: WorkMetadata): WorkMetadataV2 {
+  if (metadata.schemaVersion === 2) return { ...metadata, tasks: metadata.tasks.map((task) => ({ ...task })) };
+  // v1 lacks lifecycle provenance. Preserve it as a non-executable draft,
+  // but retain an explicit migration marker for safe legacy finalization recovery.
+  return { ...v2Base(metadata, "dida", "draft"), migratedFromVersion: 1 };
 }
 
-export function createAgentWorkMetadata(scope: TodoScope, workType: DidaWorkType = "checklist"): WorkMetadata {
+export function createPiWorkMetadata(scope: TodoScope, workType: DidaWorkType = "checklist"): WorkMetadataV2 {
   return {
-    schemaVersion: 3,
-    kind: "dida-todo-work",
+    schemaVersion: 2,
+    kind: "pi-todo-work",
     bindingKey: scope.bindingKey,
-    origin: "agent",
+    origin: "pi",
     lifecycle: "claimed",
     workType,
     execution: {
@@ -54,7 +47,7 @@ export function createAgentWorkMetadata(scope: TodoScope, workType: DidaWorkType
   };
 }
 
-export function claimDidaWork(metadata: PersistedWorkMetadata, remote: DidaTask, scope: TodoScope): WorkMetadata {
+export function claimDidaWork(metadata: WorkMetadata, remote: DidaTask, scope: TodoScope): WorkMetadataV2 {
   const current = migrateWorkMetadata(metadata);
   const workType = current.workType ?? inferWorkType(remote);
   if ((remote.priority ?? 0) <= 0) return { ...current, origin: "dida", lifecycle: "draft", workType };
@@ -71,7 +64,7 @@ export function claimDidaWork(metadata: PersistedWorkMetadata, remote: DidaTask,
   };
 }
 
-export function claimCurrentOccurrence(metadata: PersistedWorkMetadata, remote: DidaTask, scope: TodoScope): WorkMetadata {
+export function claimCurrentOccurrence(metadata: WorkMetadata, remote: DidaTask, scope: TodoScope): WorkMetadataV2 {
   const current = migrateWorkMetadata(metadata);
   if (current.origin === "dida" && (remote.priority ?? 0) <= 0) return current;
   const occurrence = occurrenceKeyForTask(remote);
@@ -90,16 +83,18 @@ export function claimCurrentOccurrence(metadata: PersistedWorkMetadata, remote: 
 
 export function canFinalizeWork(work: WorkTask): boolean {
   const metadata = migrateWorkMetadata(work.metadata);
-  if ((work.remote.priority ?? 0) <= 0 && metadata.origin !== "agent") return false;
+  if ((work.remote.priority ?? 0) <= 0 && metadata.origin !== "pi") return false;
   if (metadata.lifecycle === "draft" || metadata.lifecycle === "finalized") return false;
-  return metadata.execution?.occurrence === occurrenceKeyForTask(work.remote);
+  const claimedOccurrence = metadata.execution?.occurrence;
+  const currentOccurrence = occurrenceKeyForTask(work.remote);
+  return claimedOccurrence === currentOccurrence;
 }
 
-export function readyForAcceptance(metadata: PersistedWorkMetadata): WorkMetadata {
+export function readyForAcceptance(metadata: WorkMetadata): WorkMetadataV2 {
   return { ...migrateWorkMetadata(metadata), lifecycle: "ready_for_acceptance" };
 }
 
-export function finalized(metadata: PersistedWorkMetadata, remote: DidaTask, acceptanceId: string): WorkMetadata {
+export function finalized(metadata: WorkMetadata, remote: DidaTask, acceptanceId: string): WorkMetadataV2 {
   return {
     ...migrateWorkMetadata(metadata),
     lifecycle: "finalized",

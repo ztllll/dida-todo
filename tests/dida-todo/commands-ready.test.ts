@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import type { DidaTodoRepository } from "../../extensions/dida-todo/repository.js";
 import { registerCommands } from "../../extensions/dida-todo/commands.js";
 import { removeSessionRuntime, setSessionRuntime } from "../../extensions/dida-todo/runtime.js";
@@ -20,10 +20,9 @@ describe("/todos 空清单状态", () => {
     const repository = {
       async syncOpenWorks() { return { works: [], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] }; },
     } as unknown as DidaTodoRepository;
-    registerCommands({ registerCommand(_name: string, value: any) { command = value; } } as never, repository, () => {}, () => true);
+    registerCommands({ registerCommand(_name: string, value: any) { command = value; } } as never, repository, () => {});
 
     await command.handler("", {
-      hasUI: true,
       sessionManager: { getSessionId: () => sessionId },
       ui: { notify(message: string, level: string) { notifications.push({ message, level }); } },
     });
@@ -55,10 +54,9 @@ describe("/todos 空清单状态", () => {
         };
       },
     } as unknown as DidaTodoRepository;
-    registerCommands({ registerCommand(_name: string, value: any) { command = value; } } as never, repository, () => {}, () => true);
+    registerCommands({ registerCommand(_name: string, value: any) { command = value; } } as never, repository, () => {});
 
     await command.handler("", {
-      hasUI: true,
       sessionManager: { getSessionId: () => sessionId },
       ui: { notify(message: string, level: string) { notifications.push({ message, level }); } },
     });
@@ -78,7 +76,7 @@ describe("/todos 空清单状态", () => {
     const task = { id: 1, subject: "收窄 Todo 检查触发词", description: "具体要求", status: "pending" as const };
     const work: WorkTask = {
       remote: { id: "work", projectId: "project", title: task.subject, desc: "具体要求", status: 0, priority: 1 },
-      metadata: { schemaVersion: 3, kind: "dida-todo-work", bindingKey: scope.bindingKey, origin: "agent", lifecycle: "claimed", workType: "direct", execution: { claimedAt: "2026-08-13T00:00:00.000Z" }, nextId: 2, tasks: [task] },
+      metadata: { schemaVersion: 2, kind: "pi-todo-work", bindingKey: scope.bindingKey, origin: "pi", lifecycle: "claimed", workType: "direct", execution: { claimedAt: "2026-08-13T00:00:00.000Z" }, nextId: 2, tasks: [task] },
       tasks: [task],
       userContent: "",
     };
@@ -86,10 +84,9 @@ describe("/todos 空清单状态", () => {
     let command: any;
     const notifications: string[] = [];
     const repository = { async syncOpenWorks() { return { works: [work], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] }; } } as unknown as DidaTodoRepository;
-    registerCommands({ registerCommand(_name: string, value: any) { command = value; } } as never, repository, () => {}, () => true);
+    registerCommands({ registerCommand(_name: string, value: any) { command = value; } } as never, repository, () => {});
 
     await command.handler("", {
-      hasUI: true,
       sessionManager: { getSessionId: () => sessionId },
       ui: { notify(message: string) { notifications.push(message); } },
     });
@@ -111,7 +108,7 @@ describe("/todos 空清单状态", () => {
     };
     const work: WorkTask = {
       remote: { id: "work", projectId: "project", title: "顶层标题", desc: "顶层描述", status: 0, priority: 1 },
-      metadata: { schemaVersion: 3, kind: "dida-todo-work", bindingKey: scope.bindingKey, origin: "dida", lifecycle: "draft", nextId: 2, tasks: [{ id: 1, subject: "步骤", description: "步骤说明", status: "pending" }] },
+      metadata: { schemaVersion: 1, kind: "pi-todo-work", bindingKey: scope.bindingKey, nextId: 2, tasks: [{ id: 1, subject: "步骤", description: "步骤说明", status: "pending" }] },
       tasks: [{ id: 1, subject: "步骤", description: "步骤说明", status: "pending" }],
       userContent: "顶层正文 123321",
     };
@@ -121,10 +118,9 @@ describe("/todos 空清单状态", () => {
     const repository = {
       async syncOpenWorks() { return { works: [work], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] }; },
     } as unknown as DidaTodoRepository;
-    registerCommands({ registerCommand(_name: string, value: any) { command = value; } } as never, repository, () => {}, () => true);
+    registerCommands({ registerCommand(_name: string, value: any) { command = value; } } as never, repository, () => {});
 
     await command.handler("", {
-      hasUI: true,
       sessionManager: { getSessionId: () => sessionId },
       ui: { notify(message: string, level: string) { notifications.push({ message, level }); } },
     });
@@ -146,7 +142,7 @@ describe("/todos 空清单状态", () => {
     };
     const draft: WorkTask = {
       remote: { id: "draft", projectId: "project", title: "草稿", status: 0, priority: 0 },
-      metadata: { schemaVersion: 3, kind: "dida-todo-work", bindingKey: scope.bindingKey, origin: "dida", lifecycle: "draft", nextId: 1, tasks: [] },
+      metadata: { schemaVersion: 1, kind: "pi-todo-work", bindingKey: scope.bindingKey, nextId: 1, tasks: [] },
       tasks: [],
       userContent: "",
     };
@@ -156,10 +152,9 @@ describe("/todos 空清单状态", () => {
     const repository = {
       async syncOpenWorks() { return { works: [draft], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] }; },
     } as unknown as DidaTodoRepository;
-    registerCommands({ registerCommand(_name: string, value: any) { command = value; } } as never, repository, () => {}, () => true);
+    registerCommands({ registerCommand(_name: string, value: any) { command = value; } } as never, repository, () => {});
 
     await command.handler("", {
-      hasUI: true,
       sessionManager: { getSessionId: () => sessionId },
       ui: { notify(message: string, level: string) { notifications.push({ message, level }); } },
     });

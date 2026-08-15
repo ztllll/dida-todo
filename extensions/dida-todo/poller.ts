@@ -1,7 +1,7 @@
-import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { WorkTask } from "./domain.js";
 import type { DidaTodoRepository } from "./repository.js";
-import { DIDA_AUTO_POLL_PREFIX } from "./input-sync.js";
+import { TODO_AUTO_POLL_PREFIX } from "./input-sync.js";
 import {
   getSessionRuntime,
   pendingWorkFinalizations,
@@ -74,7 +74,7 @@ export function startTodoPoller(
       onWorkChanged();
       pi.sendUserMessage(
         [
-          `${DIDA_AUTO_POLL_PREFIX}此消息由 dida-todo 可信 Poller 生成，授权本轮同步、领取并按顺序执行所有符合条件的工作；不要处理 priority=0 草稿。`,
+          `${TODO_AUTO_POLL_PREFIX}此消息由 dida-todo 可信 Poller 生成，授权本轮同步、领取并按顺序执行所有符合条件的工作；不要处理 priority=0 草稿。`,
           "",
           formatWorkQueueForAgent(sync.works, sync.adoptedWorkIds.length, sync.acceptances, sync.finalizationFailures),
         ].join("\n"),
@@ -85,14 +85,13 @@ export function startTodoPoller(
     }
   };
   const reportPollError = (error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    pi.logger.error(`dida-todo poll failed: ${message}`);
+    if (process.env.PI_DIDA_TODO_DEBUG === "1") console.error("dida-todo poll failed", error);
   };
   void poll().catch(reportPollError);
-  const timer = ctx.setInterval(() => { void poll().catch(reportPollError); }, intervalMinutes * 60_000);
+  const timer = setInterval(() => { void poll().catch(reportPollError); }, intervalMinutes * 60_000);
+  timer.unref();
   return () => {
-    if (stopped) return;
     stopped = true;
-    ctx.clearTimer(timer);
+    clearInterval(timer);
   };
 }

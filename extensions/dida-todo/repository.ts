@@ -1,6 +1,7 @@
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { withHostLock } from "./host-lock.js";
 import { decodeMetadata, decodeWorkTask, metadataToItems, stripManagedContent, synchronizeItemIds } from "./codec.js";
-import { claimCurrentOccurrence, claimDidaWork, createAgentWorkMetadata, migrateWorkMetadata, readyForAcceptance } from "./work-lifecycle.js";
+import { claimCurrentOccurrence, claimDidaWork, createPiWorkMetadata, migrateWorkMetadata, readyForAcceptance } from "./work-lifecycle.js";
 import { WorkFinalizer } from "./work-finalizer.js";
 import type {
   DidaProjectData,
@@ -14,16 +15,14 @@ import type {
 } from "./domain.js";
 import { buildCompletionReminderInput } from "./scheduling.js";
 import { buildAcceptanceResultUpdate, buildHumanAcceptanceResult } from "./acceptance-result.js";
-import type { WorkStateStore } from "./state-store.js";
+import { MemoryWorkStateStore, type WorkStateStore } from "./state-store.js";
 import {
   acceptanceReworkId,
-  ACCEPTANCE_REWORK_COMMENT_PREFIX,
   authorizedAcceptanceFeedback,
   buildAcceptanceTaskInput,
   classifyAcceptanceTask,
   type DidaComment,
 } from "./acceptance.js";
-import { DIDA_REWORK_TAG, DIDA_WORK_TAG, hasDidaReminderTag, managedWorkTags } from "./tags.js";
 
 export interface DidaGateway {
   getProjectData(projectId: string, signal?: AbortSignal): Promise<DidaProjectData>;
@@ -79,29 +78,14 @@ export interface UpdateTaskInput {
 
 function humanWorkDescription(metadata: WorkMetadata, userContent: string, remoteDescription?: string): string {
   const migrated = migrateWorkMetadata(metadata);
+  const description = migrated.userDescription ?? stripManagedContent(remoteDescription);
   const content = userContent.trim();
-  let description = (migrated.userDescription ?? stripManagedContent(remoteDescription).split("\n\n当前进展：")[0]).trim();
-  if (content) {
-    const appendedContent = `\n\n${content}`;
-    while (description.endsWith(appendedContent)) description = description.slice(0, -appendedContent.length).trimEnd();
-    if (description === content) description = "";
-  }
-  const visible = migrated.tasks.filter((task) => task.status !== "deleted");
-  const settled = visible.filter((task) => task.status === "completed" || task.status === "skipped").length;
-  const active = visible.find((task) => task.status === "in_progress");
-  const progress = active
-    ? active.activeForm || active.subject
-    : visible.length > 0 && settled === visible.length
-      ? "全部执行项已处理，正在准备验收"
-      : visible.length > 0
-        ? "等待处理下一项"
-        : "正在整理执行计划";
-  return [description, content, `当前进展：${progress}\n已处理 ${settled}/${visible.length} 项`].filter(Boolean).join("\n\n");
+  return [description.trim(), content].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join("\n\n");
 }
 
 function humanVisibleText(value: string): string {
   return value
-    .replace(/<!-- (?:pi-dida-todo|dida-todo):start -->[\s\S]*?<!-- (?:pi-dida-todo|dida-todo):end -->/g, "")
+    .replace(/<!-- pi-dida-todo:start -->[\s\S]*?<!-- pi-dida-todo:end -->/g, "")
     .replace(/\b(?:bindingKey|sessionId|workId|itemId|sourceWorkId|sourceOccurrence|lifecycle)\s*[:=]\s*\S+/gi, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -120,7 +104,8 @@ function taskQueueKey(scope: TodoScope, workId: string): string {
 }
 
 async function withWorkLock<T>(scope: TodoScope, workId: string, action: () => Promise<T>): Promise<T> {
-  return withHostLock(taskQueueKey(scope, workId), action);
+  const key = taskQueueKey(scope, workId);
+  return withFileMutationQueue(`/tmp/${key.replaceAll(":", "-")}.queue`, () => withHostLock(key, action));
 }
 
 export class DidaTodoRepository {
@@ -128,7 +113,7 @@ export class DidaTodoRepository {
 
   constructor(
     private readonly gateway: DidaGateway,
-    private readonly stateStore: WorkStateStore,
+    private readonly stateStore: WorkStateStore = new MemoryWorkStateStore(),
   ) {
     this.finalizer = new WorkFinalizer(gateway);
   }
@@ -225,7 +210,7 @@ export class DidaTodoRepository {
       if (!storedAcceptance) throw new Error("本机状态库缺少验收来源关联，不能安全创建返工");
       const sourceTitle = acceptance.title.replace(/^🧑‍🔬 待验收：/, "");
       const feedback = userComments.map((comment) => `- ${comment.title}`).join("\n");
-      const metadata = createAgentWorkMetadata(scope);
+      const metadata = createPiWorkMetadata(scope);
       const firstTask: Task = {
         id: 1,
         subject: `按验收反馈返工：${sourceTitle}`,
@@ -241,7 +226,7 @@ export class DidaTodoRepository {
         content: userContent,
         items: metadataToItems(reworkMetadata),
         priority: acceptance.priority ?? 1,
-        tags: [DIDA_WORK_TAG, DIDA_REWORK_TAG],
+        tags: ["pi-todo", "pi-todo-rework"],
       }, signal);
       const synced = synchronizeItemIds(reworkMetadata, remote);
       await this.stateStore.set(remote.projectId, remote.id, synced);
@@ -254,7 +239,7 @@ export class DidaTodoRepository {
       await this.gateway.addTaskComment!(
         scope.binding.projectId,
         acceptanceId,
-        `${ACCEPTANCE_REWORK_COMMENT_PREFIX}${remote.id}`,
+        "🤖 已根据你的反馈创建返工任务。",
         signal,
       );
       await this.gateway.completeTask(scope.binding.projectId, acceptanceId, signal);
@@ -294,8 +279,8 @@ export class DidaTodoRepository {
       metadata: { source: "dida" },
     }));
     let metadata: WorkMetadata = claimDidaWork({
-      schemaVersion: 3,
-      kind: "dida-todo-work",
+      schemaVersion: 2,
+      kind: "pi-todo-work",
       bindingKey: scope.bindingKey,
       origin: "dida",
       lifecycle: "draft",
@@ -335,19 +320,14 @@ export class DidaTodoRepository {
       const existing = await this.collectOpenWorks(scope, { adoptUnmanaged: false }, signal);
       const currentWork = existing.works.find((work) => {
         const metadata = migrateWorkMetadata(work.metadata);
-        return metadata.origin === "agent"
+        return metadata.origin === "pi"
           && metadata.execution?.owner?.sessionId === scope.sessionId
           && work.remote.title === normalizedTitle;
       });
       if (currentWork) return currentWork;
-      const metadata = createAgentWorkMetadata(scope, workType);
+      const metadata: WorkMetadata = createPiWorkMetadata(scope, workType);
       const userContent = content?.trim() ?? "";
-      const userDescription = description?.trim() ?? "";
-      const metadataWithContent: WorkMetadata = {
-        ...metadata,
-        userContent,
-        ...(userDescription ? { userDescription } : {}),
-      };
+    const metadataWithContent: WorkMetadata = { ...metadata, userContent };
     let remote = await this.gateway.createTask(
       {
         title: normalizedTitle,
@@ -356,7 +336,7 @@ export class DidaTodoRepository {
         ...(workType === "checklist" ? { items: [] } : {}),
         ...(description?.trim() ? { desc: description.trim() } : {}),
         priority,
-        tags: [DIDA_WORK_TAG],
+        tags: ["pi-todo"],
       },
       signal,
     );
@@ -494,7 +474,7 @@ export class DidaTodoRepository {
     const acceptances: PendingAcceptance[] = [];
     const finalizationFailures: FinalizationFailure[] = [];
     for (let remote of data.tasks) {
-      if (hasDidaReminderTag(remote.tags)) continue;
+      if (remote.tags?.includes("pi-todo-reminder")) continue;
       if (classifyAcceptanceTask(remote)) {
         const legacyAcceptanceLink = this.legacyAcceptanceLink(remote);
         if (legacyAcceptanceLink && !(await this.stateStore.getAcceptance(scope.binding.projectId, remote.id))) {
@@ -548,14 +528,14 @@ export class DidaTodoRepository {
             await this.stateStore.set(scope.binding.projectId, remote.id, metadata);
             work = await this.cleanLegacyManagedFields(remote, metadata, signal);
           }
-          if (metadata.origin === "agent" && (remote.priority ?? 0) <= 0) {
-            work = await this.migrateLegacyAgentWorkPriority(scope, remote.id, signal);
+          if (metadata.origin === "pi" && (remote.priority ?? 0) <= 0) {
+            work = await this.migratePiWorkPriority(scope, remote.id, signal);
           }
           works.push(work);
         }
         continue;
       }
-      if (!options.adoptUnmanaged || remote.status !== 0 || hasDidaReminderTag(remote.tags)) continue;
+      if (!options.adoptUnmanaged || remote.status !== 0 || remote.tags?.includes("pi-todo-reminder")) continue;
       work = await this.adoptRemoteTask(scope, remote, signal);
       works.push(work);
       adoptedWorkIds.push(remote.id);
@@ -564,7 +544,7 @@ export class DidaTodoRepository {
   }
 
   private async finishWorkLocked(scope: TodoScope, work: WorkTask, signal?: AbortSignal): Promise<FinishWorkResult> {
-    const sourceOccurrence = work.metadata.execution?.occurrence;
+    const sourceOccurrence = work.metadata.schemaVersion === 2 ? work.metadata.execution?.occurrence : undefined;
     const existingAcceptanceId = await this.stateStore.findAcceptance(
       scope.binding.projectId,
       work.remote.id,
@@ -625,23 +605,23 @@ export class DidaTodoRepository {
     return decoded;
   }
 
-  private async migrateLegacyAgentWorkPriority(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<WorkTask> {
+  private async migratePiWorkPriority(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<WorkTask> {
     return withWorkLock(scope, workId, async () => {
       const currentRemote = await this.gateway.getTask(scope.binding.projectId, workId, signal);
       const stored = await this.stateStore.get(scope.binding.projectId, workId);
       const current = decodeWorkTask(currentRemote, stored);
-      if (!current) throw new Error(`迁移旧 Agent 工作优先级时滴答任务无法解析: ${workId}`);
+      if (!current) throw new Error(`迁移优先级时滴答任务无法解析为 Pi 工作: ${workId}`);
       if (current.metadata.bindingKey !== scope.bindingKey) throw new Error(`滴答任务 ${workId} 不属于当前项目绑定`);
       const metadata = migrateWorkMetadata(current.metadata);
-      if (metadata.origin !== "agent" || (currentRemote.priority ?? 0) > 0) return current;
+      if (metadata.origin !== "pi" || (currentRemote.priority ?? 0) > 0) return current;
       const migrated = await this.gateway.updateTask(
         workId,
         this.buildUpdateInput({ ...currentRemote, priority: 1 }, current.metadata, current.userContent),
         signal,
       );
       const decoded = decodeWorkTask(migrated, current.metadata);
-      if (!decoded) throw new Error(`迁移旧 Agent 工作优先级后无法解析任务: ${workId}`);
-      if ((decoded.remote.priority ?? 0) !== 1) throw new Error(`旧 Agent 工作优先级迁移失败: ${workId}`);
+      if (!decoded) throw new Error(`迁移 Pi 工作优先级后无法解析任务: ${workId}`);
+      if ((decoded.remote.priority ?? 0) !== 1) throw new Error(`Pi 工作优先级迁移失败: ${workId}`);
       return decoded;
     });
   }
@@ -704,7 +684,7 @@ export class DidaTodoRepository {
       title: remote.title,
       content: checklist ? "" : userContent,
       ...(checklist ? { items } : {}),
-      tags: managedWorkTags(remote.tags),
+      tags: [...new Set([...(remote.tags ?? []), "pi-todo"])],
       priority: remote.priority ?? 0,
       ...(humanDescription ? { desc: humanDescription } : remote.desc !== undefined ? { desc: "" } : {}),
       ...(remote.isAllDay !== undefined ? { isAllDay: remote.isAllDay } : {}),

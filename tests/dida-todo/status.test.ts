@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { DIDA_TODO_STATUS_KEYS } from "../../extensions/dida-todo/status.js";
 
 describe("dida-todo 状态栏策略", () => {

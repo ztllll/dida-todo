@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { buildCompletionReminderInput, formatWorkSchedule, isTaskScheduledForNow, occurrenceKeyForTask } from "../../extensions/dida-todo/scheduling.js";
 import type { DidaTask } from "../../extensions/dida-todo/domain.js";
 
@@ -18,7 +18,6 @@ const task: DidaTask = {
 describe("滴答调度字段", () => {
   it("把优先级、时间范围和提醒提供给 Agent", () => {
     const text = formatWorkSchedule(task);
-    if (!task.startDate || !task.dueDate) throw new Error("scheduled fixture requires a start and due date");
     expect(text).toContain("高");
     expect(text).toContain(task.startDate);
     expect(text).toContain(task.dueDate);
@@ -27,8 +26,6 @@ describe("滴答调度字段", () => {
 
   it("构造独立的完成提醒任务，避免原任务完成后提醒失效", () => {
     const input = buildCompletionReminderInput(task, 2, new Date("2026-08-10T11:10:00.000Z"));
-    expect(input).toBeDefined();
-    if (!input) throw new Error("scheduled task must create a reminder");
     expect(input).toMatchObject({
       projectId: "project",
       title: "🔔 已完成：高优先级测试",
@@ -38,7 +35,7 @@ describe("滴答调度字段", () => {
       timeZone: "Asia/Shanghai",
       isAllDay: false,
       reminders: ["TRIGGER:PT0S"],
-      tags: ["dida-todo-reminder"],
+      tags: ["pi-todo-reminder"],
     });
     expect(input).not.toHaveProperty("id");
   });

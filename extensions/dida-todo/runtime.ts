@@ -1,4 +1,4 @@
-import type { ExtensionUIContext } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { Task, TodoScope, WorkTask } from "./domain.js";
 import type { TodoTrackingReason } from "./tracking-policy.js";
 import { isExecutableWork } from "./work-queue.js";

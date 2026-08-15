@@ -1,17 +1,9 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import type { WorkTask } from "../../extensions/dida-todo/domain.js";
-import { registerDidaTodoWorkTool, selectWorkResult } from "../../extensions/dida-todo/work-tool.js";
+import { registerTodoWorkTool, selectWorkResult } from "../../extensions/dida-todo/work-tool.js";
 import type { DidaTodoRepository } from "../../extensions/dida-todo/repository.js";
 import { removeSessionRuntime, setQueueCheckPermission, setSessionRuntime } from "../../extensions/dida-todo/runtime.js";
 import type { TodoScope } from "../../extensions/dida-todo/domain.js";
-
-const TestType = {
-  Literal: (_value: string) => undefined,
-  Object: () => undefined,
-  Optional: <Schema>(schema: Schema) => schema,
-  String: () => undefined,
-  Union: () => undefined,
-};
 
 function work(id: string, statuses: Array<"pending" | "completed">, priority = 1): WorkTask {
   const tasks = statuses.map((status, index) => ({ id: index + 1, subject: `步骤${index + 1}`, status }));
@@ -19,7 +11,7 @@ function work(id: string, statuses: Array<"pending" | "completed">, priority = 1
     remote: { id, projectId: "project", title: id, status: 0, priority },
     tasks,
     userContent: "",
-    metadata: { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "binding", origin: "dida", lifecycle: "draft", nextId: tasks.length + 1, tasks },
+    metadata: { schemaVersion: 1, kind: "pi-todo-work", bindingKey: "binding", nextId: tasks.length + 1, tasks },
   };
 }
 
@@ -48,7 +40,7 @@ describe("LLM 工作任务切换工具", () => {
     const repository = {
       async syncOpenWorks() { syncCalls += 1; return { works: [], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] }; },
     } as unknown as DidaTodoRepository;
-    registerDidaTodoWorkTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, repository, () => {});
+    registerTodoWorkTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
 
     await expect(tool.execute("call", { action }, undefined, undefined, {
       sessionManager: { getSessionId: () => sessionId },
@@ -76,7 +68,7 @@ describe("LLM 工作任务切换工具", () => {
     const repository = {
       async syncOpenWorks() { return { works: [selected], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] }; },
     } as unknown as DidaTodoRepository;
-    registerDidaTodoWorkTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, repository, () => {});
+    registerTodoWorkTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
 
     const result = await tool.execute("call", { action: "list" }, undefined, undefined, {
       sessionManager: { getSessionId: () => sessionId },
@@ -92,10 +84,16 @@ describe("LLM 工作任务切换工具", () => {
   it("所有 priority-0 工作都拒绝执行；Pi 历史工作必须先由 Repository 迁移为 low", () => {
     expect(() => selectWorkResult([work("draft", [], 0)], "draft")).toThrow("没有设置优先级");
     const piWork = work("pi-work", ["pending"], 0);
-    piWork.metadata = { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "binding", origin: "agent", lifecycle: "claimed",
-    execution: { claimedAt: "2026-08-11T00:00:00.000Z" },
-    nextId: 2,
-    tasks: piWork.tasks, };
+    piWork.metadata = {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: "binding",
+      origin: "pi",
+      lifecycle: "claimed",
+      execution: { claimedAt: "2026-08-11T00:00:00.000Z" },
+      nextId: 2,
+      tasks: piWork.tasks,
+    };
     expect(() => selectWorkResult([piWork], "pi-work")).toThrow("没有设置优先级");
   });
 
@@ -121,7 +119,7 @@ describe("LLM 工作任务切换工具", () => {
       async markWorkReadyForAcceptance() { return current; },
       async syncOpenWorks() { syncCalls += 1; return { works: [current, next], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] }; },
     } as unknown as DidaTodoRepository;
-    registerDidaTodoWorkTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, repository, () => {});
+    registerTodoWorkTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
 
     const result = await tool.execute("call", { action: "finish_current" }, undefined, undefined, {
       sessionManager: { getSessionId: () => sessionId },
@@ -147,7 +145,7 @@ describe("LLM 工作任务切换工具", () => {
     const repository = {
       async syncOpenWorks() { syncCalls += 1; return { works: [], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] }; },
     } as unknown as DidaTodoRepository;
-    registerDidaTodoWorkTool({ typebox: { Type: TestType }, registerTool(value: any) { tool = value; } } as never, repository, () => {});
+    registerTodoWorkTool({ registerTool(value: any) { tool = value; } } as never, repository, () => {});
 
     const result = await tool.execute("call", { action: "finish_current" }, undefined, undefined, {
       sessionManager: { getSessionId: () => sessionId },

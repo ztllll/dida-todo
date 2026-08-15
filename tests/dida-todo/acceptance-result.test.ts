@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import {
   AcceptanceResultUpdater,
   buildAcceptanceResultUpdate,
@@ -83,7 +83,7 @@ describe("待验收最终回复回填", () => {
       dueDate: acceptance.dueDate,
       timeZone: "Asia/Shanghai",
       reminders: ["TRIGGER:PT0S", "TRIGGER:PT3M"],
-      tags: ["dida-todo-acceptance"],
+      tags: ["pi-todo-acceptance"],
       items: [],
     });
     expect(String(update.content)).toContain("## 完成结果\n" + finalResponse);

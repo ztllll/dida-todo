@@ -1,4 +1,4 @@
-export const DIDA_TRACKING_REASONS = [
+export const TODO_TRACKING_REASONS = [
   "user_requested_tracking",
   "multi_step_implementation",
   "cross_turn_recovery",
@@ -6,7 +6,7 @@ export const DIDA_TRACKING_REASONS = [
   "current_work_step",
 ] as const;
 
-export type TodoTrackingReason = (typeof DIDA_TRACKING_REASONS)[number];
+export type TodoTrackingReason = (typeof TODO_TRACKING_REASONS)[number];
 
 const EXPLICIT_TRACKING = /(?:\btodo\b|待办|滴答|dida|任务清单|加入.{0,4}清单|记到.{0,4}清单|记录.{0,6}(?:任务|进度)|跟踪.{0,6}(?:任务|进度)|追踪.{0,6}(?:任务|进度))/i;
 const IMPLEMENTATION = /(?:帮我|请|需要|把|将|给我|现在|直接|去)?\s*(?:修复|实现|开发|编写|新增|添加|修改|更改|删除|重构|部署|安装|升级|迁移|发布|配置|接入|替换|启用|禁用|优化|落地|制作)/i;

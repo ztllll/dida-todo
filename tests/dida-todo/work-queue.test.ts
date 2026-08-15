@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import type { WorkTask } from "../../extensions/dida-todo/domain.js";
 import { formatWorkQueueForAgent, hasUnfinishedTasks, isExecutableWork, nextUnfinishedWork, rankExecutableWorks } from "../../extensions/dida-todo/work-queue.js";
 
@@ -7,7 +7,13 @@ function work(id: string, title: string, statuses: Array<"pending" | "in_progres
     remote: { id, projectId: "project", title, status: 0, priority },
     userContent: "",
     tasks: statuses.map((status, index) => ({ id: index + 1, subject: `${title}-${index + 1}`, status })),
-    metadata: { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "binding", origin: "dida", lifecycle: "draft", nextId: statuses.length + 1, tasks: statuses.map((status, index) => ({ id: index + 1, subject: `${title}-${index + 1}`, status })), },
+    metadata: {
+      schemaVersion: 1,
+      kind: "pi-todo-work",
+      bindingKey: "binding",
+      nextId: statuses.length + 1,
+      tasks: statuses.map((status, index) => ({ id: index + 1, subject: `${title}-${index + 1}`, status })),
+    },
   };
 }
 
@@ -44,14 +50,20 @@ describe("多工作任务执行队列", () => {
 
   it("Pi 自建 Direct Work 保持内部 executionSteps，不强制写成滴答 Checklist", () => {
     const direct = work("pi-direct", "Pi 直接工作", ["pending"]);
-    direct.metadata = { schemaVersion: 3, kind: "dida-todo-work", bindingKey: "binding", origin: "agent", lifecycle: "claimed",
-    workType: "direct",
-    execution: { claimedAt: "2026-08-14T00:00:00.000Z" },
-    nextId: 2,
-    tasks: direct.tasks, };
+    direct.metadata = {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: "binding",
+      origin: "pi",
+      lifecycle: "claimed",
+      workType: "direct",
+      execution: { claimedAt: "2026-08-14T00:00:00.000Z" },
+      nextId: 2,
+      tasks: direct.tasks,
+    };
 
     const text = formatWorkQueueForAgent([direct]);
-    expect(text).toContain('"origin":"agent"');
+    expect(text).toContain('"origin":"pi"');
     expect(text).toContain('"executionSteps"');
     expect(text).not.toContain('"mustCreateVisibleChecklistStep":true');
   });

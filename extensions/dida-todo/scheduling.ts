@@ -1,5 +1,4 @@
 import type { DidaTask } from "./domain.js";
-import { DIDA_REMINDER_TAG } from "./tags.js";
 
 const PRIORITY_LABELS: Record<number, string> = { 0: "无", 1: "低", 3: "中", 5: "高" };
 
@@ -55,7 +54,7 @@ export function buildCompletionReminderInput(task: DidaTask, minutes: number, no
   return {
     projectId: task.projectId,
     title: `🔔 已完成：${task.title}`,
-    content: `dida-todo/OMP Agent 已完成工作任务「${task.title}」。此提醒由 dida-todo/OMP Agent 在完成后自动创建。`,
+    content: `Pi 已完成工作任务「${task.title}」。此提醒由 Pi 在完成后自动创建。`,
     isAllDay: false,
     startDate: date,
     dueDate: date,
@@ -63,6 +62,6 @@ export function buildCompletionReminderInput(task: DidaTask, minutes: number, no
     reminders: ["TRIGGER:PT0S"],
     priority: task.priority ?? 0,
     items: [],
-    tags: [DIDA_REMINDER_TAG],
+    tags: ["pi-todo-reminder"],
   };
 }

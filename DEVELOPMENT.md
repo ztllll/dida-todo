@@ -1,17 +1,27 @@
 # Development Guide
 
-`dida-todo` v0.7.0 is an [OMP Agent](https://omp.sh) extension. The supported runtime is OMP `17.3.3` Interactive/TUI; print, RPC, ACP, Pi, OpenClaw, Claude Code, and Codex integrations are not supported release surfaces.
+当前正式功能只支持 Pi。OpenClaw、Claude Code 和 Codex CLI Adapter 尚未实现；本仓库已经准备好第一方研究、架构决策和可执行开发手册，供后续 LLM/开发者接手。
 
-## Runtime contract
+## 多 CLI Adapter 开发入口
 
-- `package.json` declares `omp.extensions: ["./extensions/dida-todo"]`, OMP peer ranges `>=17.3.3 <18`, and a local Bun `1.3.14` test runner.
-- The extension never shadows OMP-native `todo` or `/todo`. Its durable tools are `dida_todo`, `dida_todo_work`, and `dida_todo_setup`; `/todos` and the Overlay are the public Dida surfaces.
-- Initialization, provisioning, polling, rendering, and setup are gated to an Interactive/TUI session with `ctx.hasUI`. No host or child-agent identity is inferred from prompts, paths, or session text.
-- All new work writes `WorkMetadata v3` and `dida-todo-*` tags. v1/v2 metadata and `pi-todo-*` tags are read-only migration inputs; synchronization rewrites them to the v3/local-state form.
-- New Dida creation text is Chinese by default. Set `allowNonChinese: true` only when the user explicitly requests non-Chinese content.
-- Provisioning uses one human-visible Dida project name per topic: exact IM route name, then stable cwd basename, then tmux session only when cwd cannot provide a name. Host/channel stay out of the visible name. Normalized topic aliases discover a project, but persisted `projectId` remains the permanent identity; exact tmux and cwd are local aliases only.
+按顺序阅读：
 
-## Local workflow
+1. [README](README.md) — 当前已发布行为与限制
+2. [领域词汇](CONTEXT.md) — Todo Engine、Host Adapter、Turn Grant、Adapter Namespace
+3. [架构决策](docs/adr/0001-host-neutral-core-with-isolated-cli-adapters.md)
+4. [第一方可行性研究](docs/research/2026-08-13-multi-cli-adapter-feasibility.md)
+5. [可执行开发手册](docs/development/multi-cli-adapter-development-guide.md)
+
+## 当前基线
+
+```text
+Runtime: v0.6.13
+Pi automated tests: 178 passed, 1 opt-in real-Dida gate skipped
+Recommended first adapter: OpenClaw native plugin
+Non-Pi adapters implemented: none
+```
+
+## 开始前
 
 ```bash
 npm ci
@@ -20,20 +30,17 @@ git diff --check
 npm audit --omit=dev
 ```
 
-`npm test` resolves the repository-local Bun binary installed by `npm ci`; do not assume a global Bun installation.
-This local Bun fallback does not satisfy OMP's plugin manager: `omp plugin install` invokes a `bun` executable from `PATH`. Standard Bun-based OMP installations already have it; standalone/prebuilt OMP binaries need Bun `1.3.14+` installed on `PATH`.
+禁止直接从“大规模抽 Core”开始。第一条实现 Issue 应是：为 `DidaCliGateway` 写 `ProcessRunner` seam 的红测，并保持 Pi observable behavior 完全不变。
 
+## 不可破坏的边界
 
-## Non-negotiable behavior
+- Pi Adapter 的 `todo`、`todo_work`、`dida_todo_setup`、`/todos` 和 Overlay 保持兼容；
+- 只有精确 `检查todo` 才授权整队列；
+- mutation 不扫描；
+- 普通 Poller 保持 no-op；
+- 新 Adapter 默认使用独立 Dida project/binding namespace；
+- Skill/提示词不能代替 Turn Grant；
+- 真实 Dida 测试必须隔离并清理；
+- 没有真实宿主验收不得宣称支持。
 
-- Only exact `检查todo` grants a full queue check; ordinary mutations and near matches do not scan.
-- Polling runs only while the OMP interactive session is idle and has no pending messages. Its timer is owned by `ExtensionContext` and is cleared on shutdown.
-- Repository mutation uses the same-host lock and atomic local state. Do not add a second lock implementation or reintroduce global process state.
-- The finalization path is `session_idle` / `agent_end` plus `session_shutdown` recovery. Do not revive terminal-event or settled-finalization hooks.
-- Human-visible task text contains only objective, action, result, and acceptance evidence; it never contains prompts, thought process, metadata, identifiers, or lifecycle internals.
-- Real Dida tests remain opt-in, isolated, and cleanup their temporary project/tasks.
-
-## Release verification
-
-Before tagging, run the complete check command, inspect the packed files, and load the tagged plugin in an isolated OMP profile. Verify `/todo` remains native, `/todos` shows Dida state, exact `检查todo` grants the queue, ordinary mutations do not scan, and no Pi process polls the same Dida project concurrently.
-
+完整开发、测试、发布和交接流程见[多 CLI Adapter 开发手册](docs/development/multi-cli-adapter-development-guide.md)。

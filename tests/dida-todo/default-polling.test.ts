@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { DEFAULT_POLL_INTERVAL_MINUTES, resolvePollIntervalMinutes } from "../../extensions/dida-todo/config.js";
 
 describe("自动领取轮询配置", () => {

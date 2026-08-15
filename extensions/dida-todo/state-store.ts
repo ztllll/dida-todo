@@ -2,18 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { PersistedWorkMetadata, WorkMetadata } from "./domain.js";
+import type { WorkMetadata } from "./domain.js";
 import { withHostLock } from "./host-lock.js";
-import { migrateLegacyLocalFile } from "./local-file-migration.js";
-import { migrateWorkMetadata } from "./work-lifecycle.js";
 
 interface StoredWorkState {
   metadata: WorkMetadata;
-  updatedAt: string;
-}
-
-interface PersistedStoredWorkState {
-  metadata: PersistedWorkMetadata;
   updatedAt: string;
 }
 
@@ -30,12 +23,6 @@ interface StoredAcceptanceLink extends AcceptanceLink {
 interface StateFile {
   schemaVersion: 1;
   works: Record<string, StoredWorkState>;
-  acceptances: Record<string, StoredAcceptanceLink>;
-}
-
-interface PersistedStateFile {
-  schemaVersion: 1;
-  works: Record<string, PersistedStoredWorkState>;
   acceptances: Record<string, StoredAcceptanceLink>;
 }
 
@@ -57,15 +44,8 @@ function emptyState(): StateFile {
   return { schemaVersion: 1, works: {}, acceptances: {} };
 }
 
-export const DEFAULT_WORK_STATE_PATH = join(homedir(), ".local", "state", "omp-dida-todo", "work-state.json");
-export const LEGACY_WORK_STATE_PATH = join(homedir(), ".local", "state", "pi-dida-todo", "work-state.json");
-
 export function defaultWorkStatePath(): string {
-  return DEFAULT_WORK_STATE_PATH;
-}
-
-export function resolveWorkStatePath(environment: NodeJS.ProcessEnv = process.env): string {
-  return environment.OMP_DIDA_TODO_STATE_PATH?.trim() || DEFAULT_WORK_STATE_PATH;
+  return join(homedir(), ".local", "state", "pi-dida-todo", "work-state.json");
 }
 
 function workKey(projectId: string, workId: string): string {
@@ -74,19 +54,12 @@ function workKey(projectId: string, workId: string): string {
 
 export class JsonWorkStateStore implements WorkStateStore {
   private writeChain = Promise.resolve();
-  private readonly path: string;
-  private readonly migrateLegacyState: boolean;
-  private legacyMigrationChecked = false;
 
-  constructor(path?: string) {
-    const configuredPath = process.env.OMP_DIDA_TODO_STATE_PATH?.trim();
-    this.path = path ?? resolveWorkStatePath();
-    this.migrateLegacyState = path === undefined && !configuredPath;
-  }
+  constructor(private readonly path = defaultWorkStatePath()) {}
 
   async get(projectId: string, workId: string): Promise<WorkMetadata | undefined> {
     await this.writeChain;
-    const stored = (await this.load()).works[workKey(projectId, workId)];
+    const stored = (await this.read()).works[workKey(projectId, workId)];
     return stored ? cloneMetadata(stored.metadata) : undefined;
   }
 
@@ -107,7 +80,7 @@ export class JsonWorkStateStore implements WorkStateStore {
 
   async getAcceptance(projectId: string, acceptanceId: string): Promise<AcceptanceLink | undefined> {
     await this.writeChain;
-    const link = (await this.load()).acceptances[workKey(projectId, acceptanceId)];
+    const link = (await this.read()).acceptances[workKey(projectId, acceptanceId)];
     if (!link) return undefined;
     const { updatedAt: _updatedAt, ...value } = link;
     return structuredClone(value);
@@ -115,7 +88,7 @@ export class JsonWorkStateStore implements WorkStateStore {
 
   async findAcceptance(projectId: string, sourceWorkId: string, sourceOccurrence?: string): Promise<string | undefined> {
     await this.writeChain;
-    const state = await this.load();
+    const state = await this.read();
     const prefix = `${projectId}:`;
     for (const [key, link] of Object.entries(state.acceptances)) {
       if (key.startsWith(prefix) && link.sourceWorkId === sourceWorkId && link.sourceOccurrence === sourceOccurrence) {
@@ -145,8 +118,7 @@ export class JsonWorkStateStore implements WorkStateStore {
 
   private async mutate(change: (state: StateFile) => void): Promise<void> {
     const operation = this.writeChain.then(() => withHostLock(`state-store:${this.path}`, async () => {
-      await this.migrateLegacyStateIfNeeded();
-      const { state } = await this.readState();
+      const state = await this.read();
       change(state);
       await this.write(state);
     }));
@@ -154,46 +126,21 @@ export class JsonWorkStateStore implements WorkStateStore {
     await operation;
   }
 
-  private async load(): Promise<StateFile> {
-    return withHostLock(`state-store:${this.path}`, async () => {
-      await this.migrateLegacyStateIfNeeded();
-      const { state, migrated } = await this.readState();
-      if (migrated) await this.write(state);
-      return state;
-    });
-  }
-
-  private async migrateLegacyStateIfNeeded(): Promise<void> {
-    if (!this.migrateLegacyState || this.legacyMigrationChecked) return;
-    await migrateLegacyLocalFile(LEGACY_WORK_STATE_PATH, this.path);
-    this.legacyMigrationChecked = true;
-  }
-
-  private async readState(): Promise<{ state: StateFile; migrated: boolean }> {
+  private async read(): Promise<StateFile> {
     try {
-      const value = JSON.parse(await readFile(this.path, "utf8")) as Partial<PersistedStateFile>;
+      const value = JSON.parse(await readFile(this.path, "utf8")) as Partial<StateFile>;
       if (value.schemaVersion !== 1 || !value.works || typeof value.works !== "object" || Array.isArray(value.works)) {
         throw new Error("state schema invalid");
       }
-      let migrated = false;
-      const works: StateFile["works"] = {};
-      for (const [key, stored] of Object.entries(value.works as PersistedStateFile["works"])) {
-        const metadata = migrateWorkMetadata(stored.metadata);
-        if (stored.metadata.schemaVersion !== 3 || stored.metadata.kind !== "dida-todo-work") migrated = true;
-        works[key] = { metadata, updatedAt: stored.updatedAt };
-      }
       return {
-        state: {
-          schemaVersion: 1,
-          works,
-          acceptances: value.acceptances && typeof value.acceptances === "object" && !Array.isArray(value.acceptances)
-            ? structuredClone(value.acceptances) as StateFile["acceptances"]
-            : {},
-        },
-        migrated,
+        schemaVersion: 1,
+        works: structuredClone(value.works) as StateFile["works"],
+        acceptances: value.acceptances && typeof value.acceptances === "object" && !Array.isArray(value.acceptances)
+          ? structuredClone(value.acceptances) as StateFile["acceptances"]
+          : {},
       };
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { state: emptyState(), migrated: false };
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyState();
       throw new Error(`无法读取 dida-todo 本机状态库 ${this.path}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }

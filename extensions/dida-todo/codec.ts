@@ -1,11 +1,8 @@
-import type { DidaChecklistItem, DidaTask, LegacyWorkMetadata, Task, TaskStatus, WorkMetadata, WorkTask } from "./domain.js";
+import type { DidaChecklistItem, DidaTask, Task, TaskStatus, WorkMetadata, WorkTask } from "./domain.js";
 import { migrateWorkMetadata } from "./work-lifecycle.js";
 
-const CURRENT_START = "<!-- dida-todo:start -->";
-const CURRENT_END = "<!-- dida-todo:end -->";
-const LEGACY_START = "<!-- pi-dida-todo:start -->";
-const LEGACY_END = "<!-- pi-dida-todo:end -->";
-const MANAGED_BLOCK = /<!-- (?:dida-todo|pi-dida-todo):start -->[\s\S]*?<!-- (?:dida-todo|pi-dida-todo):end -->/g;
+const START = "<!-- pi-dida-todo:start -->";
+const END = "<!-- pi-dida-todo:end -->";
 
 function cloneTask(task: Task): Task {
   return {
@@ -17,53 +14,49 @@ function cloneTask(task: Task): Task {
 
 export function encodeManagedContent(userContent: string, metadata: WorkMetadata): string {
   const cleanUserContent = stripManagedContent(userContent).trimEnd();
-  const block = `${CURRENT_START}\n${JSON.stringify(metadata)}\n${CURRENT_END}`;
+  const block = `${START}\n${JSON.stringify(metadata)}\n${END}`;
   return cleanUserContent ? `${cleanUserContent}\n\n${block}` : block;
 }
 
 export function stripManagedContent(content: string | undefined): string {
-  return content ? content.replace(MANAGED_BLOCK, "").trimEnd() : "";
+  if (!content) return "";
+  const start = content.indexOf(START);
+  if (start === -1) return content;
+  const end = content.indexOf(END, start + START.length);
+  if (end === -1) return content;
+  return `${content.slice(0, start)}${content.slice(end + END.length)}`.trimEnd();
 }
 
 export function decodeMetadata(content: string | undefined): WorkMetadata | undefined {
   if (!content) return undefined;
-  for (const [startMarker, endMarker] of [[CURRENT_START, CURRENT_END], [LEGACY_START, LEGACY_END]] as const) {
-    const start = content.indexOf(startMarker);
-    if (start === -1) continue;
-    const end = content.indexOf(endMarker, start + startMarker.length);
-    if (end === -1) continue;
-    const raw = content.slice(start + startMarker.length, end).trim();
-    try {
-      const value = JSON.parse(raw) as {
-        schemaVersion?: unknown;
-        kind?: unknown;
-        origin?: unknown;
-        bindingKey?: unknown;
-        nextId?: unknown;
-        tasks?: unknown;
-      };
-      const validFields = typeof value.bindingKey === "string" && typeof value.nextId === "number" && Array.isArray(value.tasks);
-      const isCurrent = value.schemaVersion === 3 && value.kind === "dida-todo-work" && (value.origin === "agent" || value.origin === "dida");
-      const isLegacy = (value.schemaVersion === 1 || value.schemaVersion === 2)
-        && value.kind === "pi-todo-work"
-        && (value.schemaVersion === 1 || value.origin === "pi" || value.origin === "dida");
-      if (!validFields || (!isCurrent && !isLegacy)) continue;
-      const tasks = value.tasks as Task[];
-      const metadata = {
-        ...value,
-        ...(isCurrent ? { schemaVersion: 3 as const, kind: "dida-todo-work" as const } : { kind: "pi-todo-work" as const }),
-        tasks: tasks.map(cloneTask),
-      } as WorkMetadata | LegacyWorkMetadata;
-      return migrateWorkMetadata(metadata);
-    } catch {
-      continue;
+  const start = content.indexOf(START);
+  const end = content.indexOf(END, start + START.length);
+  if (start === -1 || end === -1) return undefined;
+  const raw = content.slice(start + START.length, end).trim();
+  try {
+    const value = JSON.parse(raw) as Partial<WorkMetadata>;
+    if (
+      (value.schemaVersion !== 1 && value.schemaVersion !== 2) ||
+      value.kind !== "pi-todo-work" ||
+      typeof value.bindingKey !== "string" ||
+      typeof value.nextId !== "number" ||
+      !Array.isArray(value.tasks)
+    ) {
+      return undefined;
     }
+    const metadata = {
+      ...value,
+      kind: "pi-todo-work",
+      tasks: value.tasks.map(cloneTask),
+    } as WorkMetadata;
+    return migrateWorkMetadata(metadata);
+  } catch {
+    return undefined;
   }
-  return undefined;
 }
 
 export function metadataToItems(metadata: WorkMetadata, remoteItems: DidaChecklistItem[] = []): DidaChecklistItem[] {
-  if (metadata.workType === "direct") return [];
+  if (metadata.schemaVersion === 2 && metadata.workType === "direct") return [];
   const byId = new Map(remoteItems.filter((item) => item.id).map((item) => [item.id as string, item]));
   return metadata.tasks
     .filter((task) => task.status !== "deleted")
@@ -91,10 +84,10 @@ export function decodeWorkTask(remote: DidaTask, storedMetadata?: WorkMetadata):
     if (!item || stored.status === "deleted") return cloneTask(stored);
     if (item.id) matchedItemIds.add(item.id);
     const completed = item.status === 1 || item.status === 2;
-    const agentCompleted = stored.status === "completed" && stored.metadata?.source !== "dida";
+    const piCompleted = stored.status === "completed" && stored.metadata?.source !== "dida";
     const status: TaskStatus = stored.status === "skipped"
       ? "skipped"
-      : completed || agentCompleted
+      : completed || piCompleted
         ? "completed"
         : metadata.activeTaskId === stored.id
           ? "in_progress"
@@ -127,8 +120,8 @@ export function decodeWorkTask(remote: DidaTask, storedMetadata?: WorkMetadata):
     normalizedMetadata = { ...normalizedMetadata, userDescription: remote.desc };
   }
   const normalizedRemote = structuredClone(remote);
-  const managedInDescription = Boolean(descriptionMetadata);
-  if (managedInDescription) {
+  const legacyManagedInDescription = Boolean(descriptionMetadata);
+  if (legacyManagedInDescription) {
     if (normalizedMetadata.userDescription) normalizedRemote.desc = normalizedMetadata.userDescription;
     else delete normalizedRemote.desc;
   } else if (storedMetadata && normalizedMetadata.userDescription) {
@@ -139,7 +132,7 @@ export function decodeWorkTask(remote: DidaTask, storedMetadata?: WorkMetadata):
     remote: normalizedRemote,
     metadata: normalizedMetadata,
     tasks,
-    userContent: normalizedMetadata.userContent ?? (managedInDescription
+    userContent: normalizedMetadata.userContent ?? (legacyManagedInDescription
       ? stripManagedContent(remote.desc)
       : stripManagedContent(remote.content)),
   };

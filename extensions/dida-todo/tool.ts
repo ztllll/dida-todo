@@ -1,11 +1,35 @@
-import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import { Text } from "@oh-my-pi/pi-tui";
+import { StringEnum } from "@earendil-works/pi-ai";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
+import { Type } from "typebox";
 import type { DidaWorkPriority, DidaWorkType, Task, TaskStatus, TodoScope, WorkTask } from "./domain.js";
 import { DidaTodoRepository, type CreateTaskInput, type UpdateTaskInput } from "./repository.js";
 import { allowedTrackingReasons, getActiveTasks, getSessionRuntime, queueWorkFinalization, resolveWorkFinalization, updateSessionWork } from "./runtime.js";
-import { DIDA_TRACKING_REASONS, type TodoTrackingReason } from "./tracking-policy.js";
+import { TODO_TRACKING_REASONS, type TodoTrackingReason } from "./tracking-policy.js";
 import { requiresExplicitWorkCompletion } from "./work-type.js";
 
+const Params = Type.Object({
+  action: StringEnum(["create", "update", "list", "get", "delete", "clear"] as const),
+  subject: Type.Optional(Type.String({ description: "Required for create. For direct work, use an LLM-organized concise task name. For checklist work, use one concrete Item that is distinct from the aggregate workTitle." })),
+  workTitle: Type.Optional(Type.String({ description: "LLM-generated concise aggregate title for checklist work only. It must summarize the whole objective and must not duplicate the first concrete subject." })),
+  workDescription: Type.Optional(Type.String({ description: "Top-level Dida task description, distinct from the Checklist step description." })),
+  workContent: Type.Optional(Type.String({ description: "Top-level Dida task body/details, distinct from Checklist Items." })),
+  workType: Type.Optional(StringEnum(["direct", "checklist"] as const, { description: "Required when create starts a new work. direct keeps execution steps in managed metadata; checklist writes visible Dida Checklist Items and requires explicit top-level completion." })),
+  workPriority: Type.Optional(StringEnum(["low", "medium", "high"] as const, { description: "Required when create starts a new top-level work. Choose actual urgency/impact: low=1, medium=3, high=5. Priority 0 is reserved for user drafts." })),
+  trackingReason: Type.Optional(StringEnum(TODO_TRACKING_REASONS, {
+    description: "Required for every create. Use current_work_step only for a genuine additional step of the active Dida work; otherwise use one durable top-level tracking reason. Ordinary chat, Q&A, one-off research, read-only inspection, translation, summarization, or merely using multiple tools are not valid reasons.",
+  })),
+  description: Type.Optional(Type.String({ description: "Long-form task description" })),
+  activeForm: Type.Optional(Type.String({ description: "Present-continuous label shown while in_progress" })),
+  status: Type.Optional(StringEnum(["pending", "in_progress", "completed", "skipped", "deleted"] as const, { description: "Use skipped only when the requested deliverable is intentionally left unchecked or not applicable; it is treated as settled while the Dida Item remains unchecked." })),
+  blockedBy: Type.Optional(Type.Array(Type.Number())),
+  addBlockedBy: Type.Optional(Type.Array(Type.Number())),
+  removeBlockedBy: Type.Optional(Type.Array(Type.Number())),
+  owner: Type.Optional(Type.String()),
+  metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  id: Type.Optional(Type.Number()),
+  includeDeleted: Type.Optional(Type.Boolean()),
+});
 
 export interface TodoParams {
   action: "create" | "update" | "list" | "get" | "delete" | "clear";
@@ -16,7 +40,6 @@ export interface TodoParams {
   workType?: DidaWorkType;
   workPriority?: DidaWorkPriority;
   trackingReason?: TodoTrackingReason;
-  allowNonChinese?: boolean;
   description?: string;
   activeForm?: string;
   status?: TaskStatus;
@@ -39,26 +62,9 @@ function sameTaskText(left: string, right: string): boolean {
   return normalizedTaskText(left) === normalizedTaskText(right);
 }
 
-const CHINESE_CHARACTER = /\p{Script=Han}/u;
-
-export function requireChineseCreationText(params: TodoParams): void {
-  if (params.allowNonChinese) return;
-  const fields: ReadonlyArray<readonly [string, string | undefined]> = [
-    ["subject", params.subject],
-    ["workTitle", params.workTitle],
-    ["workDescription", params.workDescription],
-    ["workContent", params.workContent],
-    ["description", params.description],
-  ];
-  const nonChineseField = fields.find(([, value]) => value?.trim() && !CHINESE_CHARACTER.test(value));
-  if (nonChineseField) {
-    throw new Error(`${nonChineseField[0]} 必须用中文表达；仅在用户明确要求保留非中文内容时才能设置 allowNonChinese=true`);
-  }
-}
-
 function requireInitializedRuntime(sessionId: string): { scope: TodoScope; work?: WorkTask; works: WorkTask[] } {
   const runtime = getSessionRuntime(sessionId);
-  if (!runtime) throw new Error("当前 OMP 会话尚未初始化滴答 Todo");
+  if (!runtime) throw new Error("当前 Pi 会话尚未初始化滴答 Todo");
   return { scope: runtime.scope, works: runtime.works, ...(runtime.work ? { work: runtime.work } : {}) };
 }
 
@@ -83,40 +89,26 @@ function getText(tasks: Task[], id: number): string {
   return lines.join("\n");
 }
 
-export function registerDidaTodoTool(pi: ExtensionAPI, repository: DidaTodoRepository, onWorkChanged: () => void): void {
-  const Type = pi.typebox.Type;
-  const enumSchema = (values: readonly string[], description?: string) => Type.Union(
-    values.map((value) => Type.Literal(value)),
-    description ? { description } : undefined,
-  );
-  const Params = Type.Object({
-    action: enumSchema(["create", "update", "list", "get", "delete", "clear"]),
-    subject: Type.Optional(Type.String({ description: "Required for create. For direct work, use an LLM-organized concise task name. For checklist work, use one concrete Item that is distinct from the aggregate workTitle." })),
-    workTitle: Type.Optional(Type.String({ description: "LLM-generated concise aggregate title for checklist work only. It must summarize the whole objective and must not duplicate the first concrete subject." })),
-    workDescription: Type.Optional(Type.String({ description: "Top-level Dida task description, distinct from the Checklist step description." })),
-    workContent: Type.Optional(Type.String({ description: "Top-level Dida task body/details, distinct from Checklist Items." })),
-    workType: Type.Optional(enumSchema(["direct", "checklist"], "Required when create starts a new work. direct keeps execution steps in managed metadata; checklist writes visible Dida Checklist Items and requires explicit top-level completion.")),
-    workPriority: Type.Optional(enumSchema(["low", "medium", "high"], "Required when create starts a new top-level work. Choose actual urgency/impact: low=1, medium=3, high=5. Priority 0 is reserved for user drafts.")),
-    trackingReason: Type.Optional(enumSchema(DIDA_TRACKING_REASONS, "Required for every create. Use current_work_step only for a genuine additional step of the active Dida work; otherwise use one durable top-level tracking reason. Ordinary chat, Q&A, one-off research, read-only inspection, translation, summarization, or merely using multiple tools are not valid reasons.")),
-    allowNonChinese: Type.Optional(Type.Boolean({ description: "Defaults to false. New Todo text must use Chinese semantics. Set true only when the user explicitly requests non-Chinese text; retain Chinese action and goal wording whenever possible." })),
-    description: Type.Optional(Type.String({ description: "Long-form task description" })),
-    activeForm: Type.Optional(Type.String({ description: "Present-continuous label shown while in_progress" })),
-    status: Type.Optional(enumSchema(["pending", "in_progress", "completed", "skipped", "deleted"], "Use skipped only when the requested deliverable is intentionally left unchecked or not applicable; it is treated as settled while the Dida Item remains unchecked.")),
-    blockedBy: Type.Optional(Type.Array(Type.Number())),
-    addBlockedBy: Type.Optional(Type.Array(Type.Number())),
-    removeBlockedBy: Type.Optional(Type.Array(Type.Number())),
-    owner: Type.Optional(Type.String()),
-    metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-    id: Type.Optional(Type.Number()),
-    includeDeleted: Type.Optional(Type.Boolean()),
-  });
+export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepository, onWorkChanged: () => void): void {
   pi.registerTool({
-    name: "dida_todo",
-    label: "Dida Todo",
-    description: "Manage durable, explicitly tracked Dida work. Do not call for ordinary chat, simple Q&A, one-off research, read-only inspection, translation, rewriting, or summarization. Dida is the source of truth for work that genuinely needs persistent progress. New Todo text must use Chinese semantics unless the user explicitly authorizes allowNonChinese=true.",
-    defaultInactive: true,
-    loadMode: "essential",
-    approval: "write",
+    name: "todo",
+    label: "Todo",
+    description: "Manage durable, explicitly tracked Dida work. Do not call for ordinary chat, simple Q&A, one-off research, read-only inspection, translation, rewriting, or summarization. Dida is the source of truth for work that genuinely needs persistent progress.",
+    promptSnippet: "Manage only durable Dida-backed work; never use for ordinary chat or one-off queries",
+    promptGuidelines: [
+      "Only when the user's trimmed input is exactly `检查todo`, execute the Dida-synchronized queue injected into the prompt. Near matches, add/append/update requests, and ordinary Todo mentions must not scan or switch top-level work.",
+      "Use todo only for durable user work that needs persistent progress: the user explicitly requested tracking, a multi-step implementation changes code/config/services, the work must survive across turns/sessions, or background work needs later acceptance. Keep exactly one task in_progress.",
+      "Do not use todo for ordinary chat, simple Q&A, one-off web research, read-only inspection, a short command, diagnosis that does not become implementation, translation, rewriting, or summarization. The number of internal tool calls is never by itself a reason to create Todo.",
+      "Every todo create requires trackingReason. Starting a top-level work also requires workType and workPriority. Choose low/medium/high from actual urgency and impact (1/3/5); priority 0 is reserved for user drafts and must never be used for Pi-created work. For checklist work, generate a concise aggregate workTitle that summarizes the whole objective and differs from the first concrete subject. For direct work, omit workTitle: subject is the LLM-organized task name and description/workContent carry detailed requirements. current_work_step is valid only for a genuine additional step of the active Dida work.",
+      "Pi-created direct work may keep one concise task name with internal execution steps. Any user-created Dida work that the LLM formally executes must expose at least one visible Checklist Item, even for a one-step plan; creating the first step promotes a Dida-origin direct task in place. Use checklist work for durable objectives whose visible Items are concrete progress stages across turns or sessions.",
+      "Never append unrelated ordinary chat or a separate one-off request to an existing work. If it does not belong to the current durable work, do not call todo.",
+      "Mark a task in_progress before beginning it and completed immediately after verified completion.",
+      "Do not complete tasks with failing tests or unresolved blockers. Use status=skipped only when the user's requested final state intentionally leaves that Item unchecked or the Item is genuinely not applicable; include a human-readable metadata.resolution explaining the outcome.",
+      "Top-level Dida work selection is handled internally through todo_work. Completing all direct-work execution steps may settle and finalize automatically. Completing Checklist Items updates progress only; the top-level checklist work stays open until todo_work finish_current explicitly declares the whole objective complete.",
+      "Dida titles, descriptions, bodies, Checklist Items, resolutions, and progress comments are user-facing deliverables. Write only concise human semantics: objective, action, result, or acceptance evidence. Never expose chain-of-thought, investigation narration, test scaffolding, prompt text, managed metadata, binding/session/work/item IDs, lifecycle fields, or internal implementation notes.",
+      "When completing a task, include metadata.resolution as a concise user-facing outcome (what changed or what was verified), not a work log or reasoning trace; it is written back to Dida as a task comment.",
+      "For user-created Dida works, todo create may append any number of precise Checklist steps to the same work and must create at least one before formal execution when none exists. Each LLM-authored Item must read naturally to a human as an actionable or verifiable deliverable; avoid meta Items such as 'confirm I read the task', 'test the lifecycle', 'generate acceptance', or 'validate workId'. Never rewrite or delete the user's original Checklist text; only advance its execution status and attach metadata.resolution.",
+    ],
     parameters: Params,
     async execute(_id, rawParams, signal, _update, ctx) {
       const params = rawParams as TodoParams;
@@ -131,7 +123,6 @@ export function registerDidaTodoTool(pi: ExtensionAPI, repository: DidaTodoRepos
           throw new Error(`Todo 创建未获当前用户请求授权：trackingReason=${params.trackingReason ?? "missing"}；允许值=${allowed.join(",") || "none"}`);
         }
       }
-      if (params.action === "create") requireChineseCreationText(params);
       if (!work) {
         const readyText = initialized.works.length
           ? `滴答 Todo 已就绪：已同步 ${initialized.works.length} 个顶层任务，但当前没有已选中的可执行工作。完整输入“检查todo”可执行队列，也可直接创建新 Todo。`
@@ -305,9 +296,9 @@ export function registerDidaTodoTool(pi: ExtensionAPI, repository: DidaTodoRepos
         },
       };
     },
-    renderCall(args, _options, theme) {
+    renderCall(args, theme) {
       const params = args as TodoParams;
-      let text = theme.fg("toolTitle", theme.bold("dida_todo ")) + theme.fg("muted", params.action);
+      let text = theme.fg("toolTitle", theme.bold("todo ")) + theme.fg("muted", params.action);
       if (params.subject) text += ` ${theme.fg("dim", params.subject)}`;
       if (params.id !== undefined) {
         const task = getActiveTasks().find((candidate) => candidate.id === params.id);
@@ -315,7 +306,7 @@ export function registerDidaTodoTool(pi: ExtensionAPI, repository: DidaTodoRepos
       }
       return new Text(text, 0, 0);
     },
-    renderResult(result, _options, theme, _args) {
+    renderResult(result, _opts, theme) {
       const details = result.details as { params?: TodoParams; tasks?: Task[] } | undefined;
       const task = details?.tasks?.find((candidate) => candidate.id === details.params?.id) ?? details?.tasks?.at(-1);
       const status = task?.status;

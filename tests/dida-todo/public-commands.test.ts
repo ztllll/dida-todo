@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { PUBLIC_DIDA_TODO_COMMANDS } from "../../extensions/dida-todo/commands.js";
 
 describe("Dida Todo 公开命令面", () => {

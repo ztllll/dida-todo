@@ -9,15 +9,15 @@ export function workTypeOf(work: Pick<WorkTask, "metadata" | "remote">): DidaWor
 }
 
 export function workTypeOfMetadata(metadata: WorkMetadata, remote: DidaTask): DidaWorkType {
-  return metadata.workType ?? inferWorkType(remote);
+  return metadata.schemaVersion === 2 && metadata.workType ? metadata.workType : inferWorkType(remote);
 }
 
 export function requiresExplicitWorkCompletion(work: Pick<WorkTask, "metadata" | "remote">): boolean {
-  const metadata = work.metadata;
-  return metadata.workType === "checklist" && metadata.origin === "agent" && metadata.migratedFromVersion !== 1;
+  const metadata = work.metadata.schemaVersion === 2 ? work.metadata : undefined;
+  return metadata?.workType === "checklist" && metadata.origin === "pi" && metadata.migratedFromVersion !== 1;
 }
 
 export function isWorkReadyForFinalization(work: Pick<WorkTask, "metadata" | "remote">): boolean {
   if (!requiresExplicitWorkCompletion(work)) return true;
-  return work.metadata.lifecycle === "ready_for_acceptance";
+  return work.metadata.schemaVersion === 2 && work.metadata.lifecycle === "ready_for_acceptance";
 }
