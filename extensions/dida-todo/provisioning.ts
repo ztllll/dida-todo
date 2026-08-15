@@ -51,8 +51,9 @@ export function deriveBindingIdentity(
   namespace: ProvisioningNamespace = {},
 ): BindingIdentity {
   const normalizedCwd = normalizeCwd(cwd);
+  const cwdName = basename(normalizedCwd).trim();
   const tmuxSession = tmuxTarget?.split(":", 1)[0]?.trim();
-  const baseName = cleanName(tmuxSession || basename(normalizedCwd) || "Dida Todo");
+  const baseName = cleanName(cwdName || tmuxSession || "Dida Todo");
   const projectName = cleanName(topicProjectName(baseName, namespace));
   return {
     projectName,

@@ -169,7 +169,7 @@ omp plugin install github:ztllll/dida-todo#v0.7.0
 
 登录成功后，扩展自动完成：
 
-1. 首次自动 provisioning 统一使用话题名称：tmuxbot route 可精确识别时使用 `route-name`，否则依次使用 tmux session 和 cwd 目录名；hostname 与 channel 不再进入人类可见清单名；
+1. 首次自动 provisioning 统一使用话题名称：tmuxbot route 可精确识别时使用 `route-name`，否则优先使用稳定的 cwd 目录名，仅在 cwd 无法提供名称时回退 tmux session；hostname 与 channel 不再进入人类可见清单名；
 2. route 只通过 tmuxbot canonical Admin inventory 按精确 tmux target 读取；不把 credential、chat_id、thread_id、token、hostname 或 channel 写入滴答清单名；
 3. 按规范化话题名称查找清单：唯一匹配时复用，不存在时创建 TASK/list 清单，多个匹配时拒绝猜测并要求按 projectId 显式绑定；
 4. projectId 是永久身份；扩展同时持久化话题名称、精确 tmux target 和 cwd alias。入口或 tmux target 改变后，仍通过话题 alias 回到同一 projectId；cwd alias 仅在未被另一话题占用或指向同一 project 时写入；
@@ -377,7 +377,7 @@ Log in to Dida365
 
 The plugin installs `@suibiji/dida-cli`; no global `dida` command is required. The internal `dida_todo_setup login` tool opens browser OAuth through the bundled CLI. Browser authorization is the only required manual step.
 
-After login, dida-todo derives a human-visible topic name from the exact IM route when available, then falls back to the tmux session or cwd basename. It reuses the unique normalized same-topic project or creates a TASK/list project, persists the project ID plus topic, exact tmux, and cwd aliases, and activates the current OMP session. The topic name is discovery metadata; the project ID remains the permanent identity. An empty project reports **“Dida Todo is ready”**; duplicate normalized topic names fail safely instead of being guessed, merged, or deleted.
+After login, dida-todo derives a human-visible topic name from the exact IM route when available, then falls back to the stable cwd basename and only uses the tmux session when cwd cannot provide a name. It reuses the unique normalized same-topic project or creates a TASK/list project, persists the project ID plus topic, exact tmux, and cwd aliases, and activates the current OMP session. The topic name is discovery metadata; the project ID remains the permanent identity. An empty project reports **“Dida Todo is ready”**; duplicate normalized topic names fail safely instead of being guessed, merged, or deleted.
 
 The login session is ready immediately. For upgrades, wait until both OMP and any old Pi process are idle, stop the old Pi runtime, install the pinned plugin ref, start OMP, run `/todos`, then validate exact `检查todo` with a low-risk task. Pi and OMP must never poll the same Dida project concurrently; the first OMP remote mutation requires a reverse data migration before rollback to Pi. GitHub is the only release channel; this project is not published to npm.
 

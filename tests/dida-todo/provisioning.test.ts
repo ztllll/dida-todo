@@ -33,8 +33,8 @@ describe("零配置项目清单 provisioning", () => {
     expect(topicProjectName("fallback", { hostName: "server-a", imRoute: { routeName: "tmuxbot admin", channel: "feishu" } })).toBe("tmuxbot admin");
   });
 
-  it("IM route 不可用时依次使用 tmux session 或 cwd 名称，不猜通道", () => {
-    expect(deriveBindingIdentity("/workspace/demo", "my-project:2.1", { hostName: "server-a" }).projectName).toBe("my-project");
+  it("IM route 不可用时优先使用稳定 cwd 名称，不猜通道", () => {
+    expect(deriveBindingIdentity("/workspace/demo", "my-project:2.1", { hostName: "server-a" }).projectName).toBe("demo");
     expect(deriveBindingIdentity("/workspace/demo", undefined, { hostName: "server-a" }).projectName).toBe("demo");
     expect(findImRouteIdentity({ routes: [
       { name: "one", channel: "telegram", tmux_target: "same:0.0" },
