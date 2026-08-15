@@ -43,10 +43,11 @@ import { formatWorkQueueForAgent, isExecutableWork } from "./work-queue.js";
 import { isWorkReadyForFinalization } from "./work-type.js";
 import { registerDidaTodoWorkTool } from "./work-tool.js";
 import { startTodoPoller } from "./poller.js";
-import { ensureProjectBinding, isDidaAuthenticationError } from "./provisioning.js";
+import { deriveBindingIdentity, ensureExistingBindingAliases, ensureProjectBinding, isDidaAuthenticationError } from "./provisioning.js";
 import { registerDidaSetupTool } from "./setup-tool.js";
 import { classifyTodoTrackingReasons } from "./tracking-policy.js";
 import { detectProvisioningNamespace } from "./tmuxbot-route.js";
+import type { ProvisioningNamespace } from "./provisioning-identity.js";
 import { JsonWorkStateStore } from "./state-store.js";
 
 const DIDA_TOOL_NAMES = ["dida_todo", "dida_todo_work", "dida_todo_setup"] as const;
@@ -78,7 +79,7 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
   const repository = new DidaTodoRepository(gateway, stateStore);
   const acceptanceResultUpdater = new AcceptanceResultUpdater(gateway, stateStore);
   const stopPollers = new Map<string, () => void>();
-  const setupContexts = new Map<string, { cwd: string; tmuxTarget?: string }>();
+  const setupContexts = new Map<string, { cwd: string; tmuxTarget?: string; namespace?: ProvisioningNamespace }>();
   const interactiveSessions = new Set<string>();
   const overlay = new DidaTodoOverlay(
     getActiveTasks,
@@ -170,11 +171,16 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     interactiveSessions.add(sessionId);
     await pi.setActiveTools([...new Set([...pi.getActiveTools(), ...DIDA_TOOL_NAMES])]);
     const tmuxTarget = await detectTmuxTarget(pi, process.env.TMUX_PANE);
-    setupContexts.set(sessionId, { cwd: ctx.cwd, ...(tmuxTarget ? { tmuxTarget } : {}) });
-    let binding = resolveBinding(config, ctx.cwd, tmuxTarget);
-    if (!binding && config.autoProvisionProject !== false) {
+    const namespace = await detectProvisioningNamespace(pi, tmuxTarget);
+    const identity = deriveBindingIdentity(ctx.cwd, tmuxTarget, namespace);
+    setupContexts.set(sessionId, { cwd: ctx.cwd, ...(tmuxTarget ? { tmuxTarget } : {}), namespace });
+    let binding = resolveBinding(config, ctx.cwd, tmuxTarget, identity.projectName);
+    if (binding) {
+      const persisted = await ensureExistingBindingAliases({ binding, cwd: ctx.cwd, tmuxTarget, namespace, configPath });
+      binding = persisted.binding;
+      config.bindings = persisted.config.bindings;
+    } else if (config.autoProvisionProject !== false) {
       try {
-        const namespace = await detectProvisioningNamespace(pi, tmuxTarget);
         const provisioned = await ensureProjectBinding({ gateway, cwd: ctx.cwd, tmuxTarget, namespace, signal: extensionIoSignal() });
         binding = provisioned.binding;
         config.bindings = provisioned.config.bindings;

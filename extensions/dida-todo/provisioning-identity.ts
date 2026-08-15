@@ -23,6 +23,21 @@ function cleanPart(value: string | undefined): string | undefined {
   const cleaned = value?.trim().replace(/[\[\]\u0000-\u001f]/g, "").slice(0, 48);
   return cleaned || undefined;
 }
+function cleanTopicPart(value: string | undefined): string | undefined {
+  const cleaned = value?.trim().replace(/[\u0000-\u001f]/g, "").replace(/\s+/g, " ").slice(0, 120);
+  return cleaned || undefined;
+}
+
+export function normalizeTopicName(value: string): string {
+  return cleanTopicPart(value)?.normalize("NFKC").toLocaleLowerCase("en-US") ?? "";
+}
+
+export function topicBindingKey(value: string): string {
+  const normalized = normalizeTopicName(value);
+  if (!normalized) throw new Error("无法从当前话题推导滴答清单绑定键");
+  return `topic:${normalized}`;
+}
+
 
 export function localHostName(): string {
   return cleanPart(hostname()) ?? "unknown-host";
@@ -49,18 +64,11 @@ export function findImRouteIdentity(value: unknown, tmuxTarget: string): ImRoute
   if (matches.length !== 1) return undefined;
   const route = matches[0]!;
   if (typeof route.name !== "string" || typeof route.channel !== "string") return undefined;
-  const routeName = cleanPart(route.name);
+  const routeName = cleanTopicPart(route.name);
   const channel = cleanPart(route.channel.toLowerCase());
   return routeName && channel ? { routeName, channel } : undefined;
 }
 
-export function namespacedProjectName(baseName: string, namespace: ProvisioningNamespace): string {
-  const hostName = cleanPart(namespace.hostName);
-  const channel = cleanPart(namespace.imRoute?.channel);
-  const routeName = cleanPart(namespace.imRoute?.routeName);
-  const base = cleanPart(routeName ?? baseName) ?? "Pi Todo";
-  const prefix = [hostName ? `[${hostName}]` : "", channel ? `[${channel}]` : ""].join("");
-  const available = Math.max(1, 120 - prefix.length - 1);
-  const visibleBase = base.length <= available ? base : base.slice(-available);
-  return `${prefix} ${visibleBase}`.trim();
+export function topicProjectName(baseName: string, namespace: ProvisioningNamespace): string {
+  return cleanTopicPart(namespace.imRoute?.routeName ?? baseName) ?? "Dida Todo";
 }

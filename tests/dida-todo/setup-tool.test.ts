@@ -38,7 +38,7 @@ describe("LLM setup tool", () => {
       pi,
       gateway as never,
       config,
-      () => ({ cwd: "/workspace/demo", tmuxTarget: "demo:0.0" }),
+      () => ({ cwd: "/workspace/demo", tmuxTarget: "demo:0.0", namespace: { hostName: "server-a", imRoute: { routeName: "产品话题", channel: "telegram" } } }),
       async (_ctx, binding) => { activated = binding.projectId; },
       configPath,
       () => true,
@@ -52,10 +52,11 @@ describe("LLM setup tool", () => {
 
     expect(gateway.loginCalls).toBe(1);
     expect(activated).toBe("created");
+    expect(gateway.projects).toEqual([{ id: "created", name: "产品话题" }]);
     expect(result.content[0].text).toContain("滴答登录完成");
     expect(result.content[0].text).toContain("立即生效");
     expect(result.content[0].text).toContain("无需 /reload");
     expect(result.details.ready).toBe(true);
-    expect(config.bindings).toHaveLength(2);
+    expect(config.bindings).toHaveLength(3);
   });
 });

@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { isAbsolute, normalize, resolve } from "node:path";
 import type { DidaTodoConfig, ProjectBinding } from "./domain.js";
 import { migrateLegacyLocalFile } from "./local-file-migration.js";
+import { topicBindingKey } from "./provisioning-identity.js";
 
 export const DEFAULT_CONFIG_PATH = resolve(homedir(), ".config", "omp-dida-todo", "config.json");
 export const LEGACY_CONFIG_PATH = resolve(homedir(), ".config", "pi-dida-todo", "config.json");
@@ -68,18 +69,32 @@ export function bindingKeyFor(cwd: string, tmuxTarget?: string): string {
   return tmuxTarget ? `tmux:${tmuxTarget}` : `cwd:${normalizeCwd(cwd)}`;
 }
 
-export function resolveBinding(config: DidaTodoConfig, cwd: string, tmuxTarget?: string): ProjectBinding | undefined {
+export function resolveBinding(
+  config: DidaTodoConfig,
+  cwd: string,
+  tmuxTarget?: string,
+  topicName?: string,
+): ProjectBinding | undefined {
   const normalizedCwd = normalizeCwd(cwd);
+  const topicKey = topicName ? topicBindingKey(topicName) : undefined;
+  const canonicalize = (binding: ProjectBinding | undefined): ProjectBinding | undefined => {
+    if (!binding || !topicKey) return binding;
+    return config.bindings.find((candidate) => candidate.key === topicKey && candidate.projectId === binding.projectId) ?? binding;
+  };
   if (tmuxTarget) {
     const tmuxKey = `tmux:${tmuxTarget}`;
     const match = config.bindings.find((binding) => binding.key === tmuxKey);
     if (match) {
       if (match.cwd && normalizeCwd(match.cwd) !== normalizedCwd) return undefined;
-      return match;
+      return canonicalize(match);
     }
   }
+  if (topicKey) {
+    const match = config.bindings.find((binding) => binding.key === topicKey);
+    if (match) return match;
+  }
   const cwdKey = `cwd:${normalizedCwd}`;
-  return config.bindings.find((binding) => binding.key === cwdKey);
+  return canonicalize(config.bindings.find((binding) => binding.key === cwdKey));
 }
 
 export function resolvePollIntervalMinutes(config: DidaTodoConfig): number {

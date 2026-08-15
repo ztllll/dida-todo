@@ -62,7 +62,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 
 ### 4. 多工作任务与调度
 
-- 一个项目或 tmux 工作目标固定绑定一个滴答清单。
+- 一个话题固定绑定一个滴答清单；tmux target、cwd 和 IM route 只是进入该清单的本地别名。
 - 顶层 Task 表示一次完整用户请求批次。一条消息中的多个相关要求，以及同一目标的后续追加，归入同一个顶层工作并统一验收。
 - 用户在滴答创建的 Direct Work 被领取后，LLM 必须先生成至少一个 `subject`，Repository 会原地提升为 Checklist；顶层标题、描述和正文继续承载完整目标与用户原始语义。
 - Agent 新建 Direct Work 使用 LLM 整理后的简洁任务名和内部 Execution Steps；Agent 新建 Checklist Work 使用整组目标摘要 `workTitle`，具体 Item 使用 `subject`，二者不得相同。
@@ -169,10 +169,10 @@ omp plugin install github:ztllll/dida-todo#v0.7.0
 
 登录成功后，扩展自动完成：
 
-1. 首次自动 provisioning 生成跨环境名称：tmuxbot route 可精确识别时使用 `[hostname][channel] route-name`；否则使用 `[hostname] tmux-session-or-cwd`，不猜 IM 通道；
-2. route/channel 只通过 tmuxbot canonical Admin inventory 按精确 tmux target 读取；不把 credential、chat_id、thread_id 或 token 写入滴答；
-3. 唯一同名清单存在则复用，不存在则创建 TASK/list 清单；
-4. 自动持久化精确 tmux target；cwd alias 仅在未被另一 route 占用或指向同一 project 时写入，避免共享 cwd 的 Telegram/飞书 route 相互覆盖；
+1. 首次自动 provisioning 统一使用话题名称：tmuxbot route 可精确识别时使用 `route-name`，否则依次使用 tmux session 和 cwd 目录名；hostname 与 channel 不再进入人类可见清单名；
+2. route 只通过 tmuxbot canonical Admin inventory 按精确 tmux target 读取；不把 credential、chat_id、thread_id、token、hostname 或 channel 写入滴答清单名；
+3. 按规范化话题名称查找清单：唯一匹配时复用，不存在时创建 TASK/list 清单，多个匹配时拒绝猜测并要求按 projectId 显式绑定；
+4. projectId 是永久身份；扩展同时持久化话题名称、精确 tmux target 和 cwd alias。入口或 tmux target 改变后，仍通过话题 alias 回到同一 projectId；cwd alias 仅在未被另一话题占用或指向同一 project 时写入；
 5. 当前 OMP 会话立即同步并启用，无需填写 projectId；
 6. 空清单明确显示“滴答 Todo 已就绪”，直接口述第一项任务即可；首个 Todo 自动建立顶层工作与 Checklist。
 
@@ -209,6 +209,11 @@ omp plugin install github:ztllll/dida-todo#v0.7.0
   "autoProvisionProject": true,
   "bindings": [
     {
+      "key": "topic:my-project",
+      "projectId": "DIDA_PROJECT_ID",
+      "label": "my-project"
+    },
+    {
       "key": "tmux:my-project:0.0",
       "cwd": "/absolute/path/to/project",
       "projectId": "DIDA_PROJECT_ID",
@@ -223,7 +228,7 @@ omp plugin install github:ztllll/dida-todo#v0.7.0
 }
 ```
 
-默认自动创建/复用和绑定；手工 `bindings` 仅用于覆盖默认行为。绑定优先级：精确 tmux target → 精确 cwd。多个同名清单时不会猜测。
+默认按话题名称自动创建、复用和绑定；手工 `bindings` 仅用于覆盖默认行为。绑定优先级：精确 tmux target → 规范化话题名称 → 精确 cwd。名称只负责首次发现，持久绑定始终以 projectId 为准；多个规范化同名清单时不会猜测，也不会自动合并或删除历史清单。
 
 `pollIntervalMinutes` 默认是 **10 分钟**，可设置为 `1–1440`。Poller 仅在 OMP Interactive/TUI 空闲且没有 pending message 时同步，timer 由 OMP 会话拥有；priority>0 的工作还必须通过任务 `timeZone`、日期和时间门，未来、过期或尚未到点的 occurrence 静默跳过，无日期任务按优先级执行。完整输入 `检查todo` 可立即触发同样的队列检查。`didaCommand` 是可选高级覆盖；默认解析本项目依赖中的 `@suibiji/dida-cli`。
 
@@ -289,7 +294,7 @@ omp plugin install github:ztllll/dida-todo#v0.7.0
 7. 将“完成后必须创建验收 Todo”下沉为 Repository 不变量。
 8. 精简用户界面，只保留 `/todos`，其余通过自然语言和内部工具完成。
 
-当前 `v0.7.0` 已通过 40 个测试文件、188 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、OMP Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
+当前 `v0.7.0` 已通过 40 个测试文件、192 项默认自动测试（另有 1 项 opt-in 真实 Dida 验收），以及 TypeScript、OMP Extension Loader、包内容与凭据扫描。真实门已验证两次 reminders、评论 userId 身份门、本人评论自动返工、最终回复回填及每日重复实例推进；跨宿主仍不承诺强一致，因为公开 Dida 接口尚未确认 CAS/ETag 或幂等创建 key。
 
 ## 开发成员
 
@@ -350,7 +355,7 @@ Capture ideas, bugs, and feature requests in Dida365 from your phone or browser.
 ## Model
 
 ```text
-One fixed Dida365 project per local project / tmux target
+One fixed Dida365 project per topic
 ├── Top-level work task
 │   └── Checklist items (Dida execution steps)
 └── Human acceptance task (report + reminder + feedback entry point)
@@ -372,7 +377,7 @@ Log in to Dida365
 
 The plugin installs `@suibiji/dida-cli`; no global `dida` command is required. The internal `dida_todo_setup login` tool opens browser OAuth through the bundled CLI. Browser authorization is the only required manual step.
 
-After login, dida-todo derives a project name from the tmux session or cwd basename, safely reuses a unique same-name project or creates a TASK/list project, persists exact tmux and cwd bindings, and activates the current OMP session. An empty project reports **“Dida Todo is ready”**; the first Todo creates its top-level work task and Checklist. Duplicate names fail safely instead of being guessed.
+After login, dida-todo derives a human-visible topic name from the exact IM route when available, then falls back to the tmux session or cwd basename. It reuses the unique normalized same-topic project or creates a TASK/list project, persists the project ID plus topic, exact tmux, and cwd aliases, and activates the current OMP session. The topic name is discovery metadata; the project ID remains the permanent identity. An empty project reports **“Dida Todo is ready”**; duplicate normalized topic names fail safely instead of being guessed, merged, or deleted.
 
 The login session is ready immediately. For upgrades, wait until both OMP and any old Pi process are idle, stop the old Pi runtime, install the pinned plugin ref, start OMP, run `/todos`, then validate exact `检查todo` with a low-risk task. Pi and OMP must never poll the same Dida project concurrently; the first OMP remote mutation requires a reverse data migration before rollback to Pi. GitHub is the only release channel; this project is not published to npm.
 
@@ -390,6 +395,11 @@ Create `~/.config/omp-dida-todo/config.json`:
   "autoProvisionProject": true,
   "bindings": [
     {
+      "key": "topic:my-project",
+      "projectId": "DIDA_PROJECT_ID",
+      "label": "my-project"
+    },
+    {
       "key": "tmux:my-project:0.0",
       "cwd": "/absolute/path/to/project",
       "projectId": "DIDA_PROJECT_ID",
@@ -404,7 +414,7 @@ Create `~/.config/omp-dida-todo/config.json`:
 }
 ```
 
-Exact tmux target matching takes precedence over exact cwd matching. By default, an unbound session reuses the unique same-name project or creates one; it never guesses between duplicate names. Set `autoProvisionProject: false` for fully explicit bindings. `pollIntervalMinutes` defaults to 10 and accepts 1–1440. Automatic and exact `检查todo` execution both respect priority and task-local date/time scheduling. Priority 0 is a user draft; Agent-created work is always 1/3/5, and historical Agent priority-0 work is migrated to low.
+Exact tmux target matching takes precedence, followed by the normalized topic alias and exact cwd. By default, an unbound session reuses the unique normalized same-topic project or creates one. The visible topic name is used for discovery while the persisted project ID is the permanent identity; duplicate topic names are never guessed, merged, or deleted. Set `autoProvisionProject: false` for fully explicit bindings. `pollIntervalMinutes` defaults to 10 and accepts 1–1440. Automatic and exact `检查todo` execution both respect priority and task-local date/time scheduling. Priority 0 is a user draft; Agent-created work is always 1/3/5, and historical Agent priority-0 work is migrated to low.
 
 ## Usage
 

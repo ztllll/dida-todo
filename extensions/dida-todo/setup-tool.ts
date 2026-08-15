@@ -2,12 +2,14 @@ import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import type { DidaTodoConfig } from "./domain.js";
 import type { DidaCliGateway } from "./gateway.js";
 import { bindExistingProject, ensureProjectBinding, isDidaAuthenticationError } from "./provisioning.js";
+import type { ProvisioningNamespace } from "./provisioning-identity.js";
 
 const ACTIONS = ["login", "auto", "bind"] as const;
 
 interface SetupContext {
   cwd: string;
   tmuxTarget?: string;
+  namespace?: ProvisioningNamespace;
 }
 
 export function registerDidaSetupTool(
@@ -43,7 +45,7 @@ export function registerDidaSetupTool(
       try {
         if (params.action === "login") {
           await gateway.login(signal);
-          const result = await ensureProjectBinding({ gateway, cwd: current.cwd, tmuxTarget: current.tmuxTarget, configPath, signal });
+          const result = await ensureProjectBinding({ gateway, cwd: current.cwd, tmuxTarget: current.tmuxTarget, namespace: current.namespace, configPath, signal });
           config.bindings = result.config.bindings;
           await activate(ctx, result.binding);
           return {
@@ -56,12 +58,13 @@ export function registerDidaSetupTool(
             gateway,
             cwd: current.cwd,
             tmuxTarget: current.tmuxTarget,
+            namespace: current.namespace,
             projectId: params.projectId,
             projectName: params.projectName,
             configPath,
             signal,
           })
-          : await ensureProjectBinding({ gateway, cwd: current.cwd, tmuxTarget: current.tmuxTarget, configPath, signal });
+          : await ensureProjectBinding({ gateway, cwd: current.cwd, tmuxTarget: current.tmuxTarget, namespace: current.namespace, configPath, signal });
         config.bindings = result.config.bindings;
         await activate(ctx, result.binding);
         return {

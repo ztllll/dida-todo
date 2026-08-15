@@ -4,6 +4,10 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+### Changed
+
+- Use the human topic name as the default Dida project name and discovery alias. Persisted project IDs remain authoritative, while topic, exact tmux target, and cwd aliases converge changed entry points onto the same project without guessing, merging, or deleting duplicate projects.
+
 ### Fixed
 
 - Register Interactive/TUI sessions before activating their Dida binding, so a freshly installed plugin can load `/todos`, the Overlay, and Dida tools instead of rejecting its own `session_start` as inactive.

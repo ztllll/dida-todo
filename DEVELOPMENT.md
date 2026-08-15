@@ -9,6 +9,7 @@
 - Initialization, provisioning, polling, rendering, and setup are gated to an Interactive/TUI session with `ctx.hasUI`. No host or child-agent identity is inferred from prompts, paths, or session text.
 - All new work writes `WorkMetadata v3` and `dida-todo-*` tags. v1/v2 metadata and `pi-todo-*` tags are read-only migration inputs; synchronization rewrites them to the v3/local-state form.
 - New Dida creation text is Chinese by default. Set `allowNonChinese: true` only when the user explicitly requests non-Chinese content.
+- Provisioning uses one human-visible Dida project name per topic: exact IM route name, then tmux session, then cwd basename. Host/channel stay out of the visible name. Normalized topic aliases discover a project, but persisted `projectId` remains the permanent identity; exact tmux and cwd are local aliases only.
 
 ## Local workflow
 

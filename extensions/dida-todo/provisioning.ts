@@ -3,7 +3,7 @@ import { basename, dirname, resolve } from "node:path";
 import { withHostLock } from "./host-lock.js";
 import { migrateDefaultConfigFile, normalizeCwd, resolveConfigPath } from "./config.js";
 import type { DidaProject, DidaTodoConfig, ProjectBinding } from "./domain.js";
-import { namespacedProjectName, type ProvisioningNamespace } from "./provisioning-identity.js";
+import { normalizeTopicName, topicBindingKey, topicProjectName, type ProvisioningNamespace } from "./provisioning-identity.js";
 
 export interface ProjectProvisioningGateway {
   listProjects(signal?: AbortSignal): Promise<DidaProject[]>;
@@ -14,6 +14,7 @@ export interface BindingIdentity {
   projectName: string;
   bindingKey: string;
   cwdKey: string;
+  topicKey: string;
   label: string;
 }
 
@@ -52,9 +53,10 @@ export function deriveBindingIdentity(
   const normalizedCwd = normalizeCwd(cwd);
   const tmuxSession = tmuxTarget?.split(":", 1)[0]?.trim();
   const baseName = cleanName(tmuxSession || basename(normalizedCwd) || "Dida Todo");
-  const projectName = cleanName(namespacedProjectName(baseName, namespace));
+  const projectName = cleanName(topicProjectName(baseName, namespace));
   return {
     projectName,
+    topicKey: topicBindingKey(projectName),
     bindingKey: tmuxTarget ? `tmux:${tmuxTarget}` : `cwd:${normalizedCwd}`,
     cwdKey: `cwd:${normalizedCwd}`,
     label: projectName,
@@ -76,9 +78,16 @@ async function readConfig(path: string): Promise<DidaTodoConfig> {
   }
 }
 
+function sameBinding(left: ProjectBinding, right: ProjectBinding): boolean {
+  return left.key === right.key && left.projectId === right.projectId && left.cwd === right.cwd && left.label === right.label;
+}
+
 function upsertBinding(bindings: ProjectBinding[], binding: ProjectBinding): ProjectBinding[] {
-  const next = bindings.filter((candidate) => candidate.key !== binding.key);
-  next.push(binding);
+  const index = bindings.findIndex((candidate) => candidate.key === binding.key);
+  if (index < 0) return [...bindings, binding];
+  if (sameBinding(bindings[index]!, binding)) return bindings;
+  const next = [...bindings];
+  next[index] = binding;
   return next;
 }
 
@@ -93,13 +102,19 @@ async function persistBinding(
   return withHostLock(`config:${path}`, async () => {
     const latest = await readConfig(path);
     const normalizedCwd = normalizeCwd(cwd);
+    const topicBinding: ProjectBinding = {
+      key: identity.topicKey,
+      projectId: project.id,
+      label: identity.label,
+    };
     const primary: ProjectBinding = {
       key: identity.bindingKey,
       projectId: project.id,
       cwd: normalizedCwd,
       label: identity.label,
     };
-    let bindings = upsertBinding(latest.bindings, primary);
+    let bindings = upsertBinding(latest.bindings, topicBinding);
+    bindings = upsertBinding(bindings, primary);
     if (tmuxTarget) {
       const existingCwd = bindings.find((candidate) => candidate.key === identity.cwdKey);
       if (!existingCwd || existingCwd.projectId === project.id) {
@@ -112,14 +127,17 @@ async function persistBinding(
       }
     }
     const next: DidaTodoConfig = { ...config, ...latest, bindings };
-    const dir = dirname(path);
-    await mkdir(dir, { recursive: true });
-    const temporary = resolve(dir, `.config-${process.pid}-${Date.now()}.tmp`);
-    await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
-    await chmod(temporary, 0o600);
-    await rename(temporary, path);
-    await chmod(path, 0o600);
-    return { config: next, binding: primary };
+    const unchanged = JSON.stringify(next) === JSON.stringify(latest);
+    if (!unchanged) {
+      const dir = dirname(path);
+      await mkdir(dir, { recursive: true });
+      const temporary = resolve(dir, `.config-${process.pid}-${Date.now()}.tmp`);
+      await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+      await chmod(temporary, 0o600);
+      await rename(temporary, path);
+      await chmod(path, 0o600);
+    }
+    return { config: next, binding: topicBinding };
   });
 }
 
@@ -131,10 +149,10 @@ export async function ensureProjectBinding(input: ProvisioningInput): Promise<Pr
   const configPath = input.configPath ?? resolveConfigPath();
   if (input.configPath === undefined && !process.env.OMP_DIDA_TODO_CONFIG_PATH?.trim()) await migrateDefaultConfigFile();
   const identity = deriveBindingIdentity(input.cwd, input.tmuxTarget, input.namespace);
-  return withHostLock(`provision:${configPath}:${identity.projectName}`, async () => {
+  return withHostLock(`provision:${configPath}:${identity.topicKey}`, async () => {
     const config = await readConfig(configPath);
     const projects = openProjects(await input.gateway.listProjects(input.signal));
-    const matches = projects.filter((project) => project.name.trim() === identity.projectName);
+    const matches = projects.filter((project) => normalizeTopicName(project.name) === normalizeTopicName(identity.projectName));
     if (matches.length > 1) {
       throw new Error(`存在 ${matches.length} 个同名清单“${identity.projectName}”，为避免误绑定，请让 LLM 按 projectId 显式绑定`);
     }
@@ -154,7 +172,7 @@ export async function bindExistingProject(input: ExplicitBindingInput): Promise<
   let project: DidaProject | undefined;
   if (input.projectId) project = projects.find((candidate) => candidate.id === input.projectId);
   else {
-    const matches = projects.filter((candidate) => candidate.name.trim() === input.projectName?.trim());
+    const matches = projects.filter((candidate) => normalizeTopicName(candidate.name) === normalizeTopicName(input.projectName ?? ""));
     if (matches.length > 1) throw new Error(`存在 ${matches.length} 个同名清单“${input.projectName}”，请改用 projectId`);
     project = matches[0];
   }
@@ -162,4 +180,21 @@ export async function bindExistingProject(input: ExplicitBindingInput): Promise<
   const identity = { ...deriveBindingIdentity(input.cwd, input.tmuxTarget, input.namespace), projectName: project.name, label: project.name };
   const persisted = await persistBinding(configPath, config, identity, project, input.cwd, input.tmuxTarget);
   return { ...persisted, project, createdProject: false };
+}
+
+export async function ensureExistingBindingAliases(
+  input: Omit<ProvisioningInput, "gateway" | "signal"> & { binding: ProjectBinding },
+): Promise<{ binding: ProjectBinding; config: DidaTodoConfig }> {
+  const configPath = input.configPath ?? resolveConfigPath();
+  if (input.configPath === undefined && !process.env.OMP_DIDA_TODO_CONFIG_PATH?.trim()) await migrateDefaultConfigFile();
+  const config = await readConfig(configPath);
+  const identity = deriveBindingIdentity(input.cwd, input.tmuxTarget, input.namespace);
+  return persistBinding(
+    configPath,
+    config,
+    identity,
+    { id: input.binding.projectId, name: identity.projectName },
+    input.cwd,
+    input.tmuxTarget,
+  );
 }
