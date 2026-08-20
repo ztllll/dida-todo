@@ -4,6 +4,12 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.32] - 2026-08-20
+
+### Changed
+
+- Remove all automatic Dida project-name derivation and automatic project creation paths. An unbound Interactive/TUI session now prompts for a group name; it binds one unique exact match or creates only that exact user-entered name. Cancelled input creates nothing, and duplicate names require an explicit project ID.
+
 ## [0.6.31] - 2026-08-16
 
 ### Fixed

@@ -30,11 +30,6 @@ export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<DidaTodoCo
   const value = raw as Partial<DidaTodoConfig>;
   if (!Array.isArray(value.bindings)) throw new Error(`滴答 Todo 配置缺少 bindings 数组: ${path}`);
   if (
-    value.autoProvisionProject !== undefined && typeof value.autoProvisionProject !== "boolean"
-  ) {
-    throw new Error("autoProvisionProject 必须是布尔值");
-  }
-  if (
     value.pollIntervalMinutes !== undefined &&
     (!Number.isInteger(value.pollIntervalMinutes) || value.pollIntervalMinutes < 1 || value.pollIntervalMinutes > 1440)
   ) {
@@ -79,10 +74,6 @@ export function resolveBinding(
 
 export function resolvePollIntervalMinutes(config: DidaTodoConfig): number {
   return config.pollIntervalMinutes ?? DEFAULT_POLL_INTERVAL_MINUTES;
-}
-
-export function shouldAutoProvisionProject(config: DidaTodoConfig): boolean {
-  return config.autoProvisionProject === true;
 }
 
 export function resolveDidaCommand(config: DidaTodoConfig): string {

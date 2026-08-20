@@ -3,9 +3,9 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import type { DidaTodoConfig } from "./domain.js";
 import type { DidaCliGateway } from "./gateway.js";
-import { bindExistingProject, ensureProjectBinding, isDidaAuthenticationError } from "./provisioning.js";
+import { bindExistingProject, isDidaAuthenticationError, provisionPromptedProject } from "./provisioning.js";
 
-const ACTIONS = ["login", "auto", "bind"] as const;
+const ACTIONS = ["login", "bind"] as const;
 
 interface SetupContext {
   cwd: string;
@@ -23,11 +23,11 @@ export function registerDidaSetupTool(
   pi.registerTool({
     name: "dida_todo_setup",
     label: "Dida Todo Setup",
-    description: "Log in with the bundled Dida CLI, auto-provision this cwd/tmux target, or bind an existing project by ID/exact name.",
-    promptSnippet: "Auto-provision or rebind the Dida project for this Pi target",
+    description: "Log in with the bundled Dida CLI, then prompt for a Dida project name to bind or create; bind an existing project by ID/exact name when explicitly requested.",
+    promptSnippet: "Bind or create the user-named Dida project for this Pi target",
     promptGuidelines: [
-      "If dida-todo reports that Dida CLI is not logged in, call this tool with action login. Login automatically provisions, persists, and activates the current project; do not ask the user to find the package directory or run a second setup command.",
-      "Use bind only when the user explicitly asks to change the project or duplicate names require a projectId.",
+      "If dida-todo reports that Dida CLI is not logged in, call dida_todo_setup with action login. After login, dida_todo_setup must prompt the user for a Dida project name; it may bind a unique matching project or create only the exact name the user enters.",
+      "Use dida_todo_setup bind only when the user explicitly asks to change the project or duplicate names require a projectId.",
     ],
     parameters: Type.Object({
       action: StringEnum(ACTIONS),
@@ -41,30 +41,38 @@ export function registerDidaSetupTool(
       try {
         if (params.action === "login") {
           await gateway.login(signal);
-          const result = await ensureProjectBinding({ gateway, cwd: current.cwd, tmuxTarget: current.tmuxTarget, configPath, signal });
-          config.bindings = result.config.bindings;
-          await activate(ctx, result.binding);
-          return {
-            content: [{ type: "text", text: `滴答登录完成，清单“${result.project.name}”已${result.createdProject ? "创建并" : ""}绑定且立即生效。现在可直接口述任务或创建 Todo，无需 /reload 或再次配置。` }],
-            details: { action: params.action, project: result.project, binding: result.binding, createdProject: result.createdProject, ready: true },
-          };
-        }
-        const result = params.action === "bind"
-          ? await bindExistingProject({
+          const result = await provisionPromptedProject({
             gateway,
             cwd: current.cwd,
             tmuxTarget: current.tmuxTarget,
-            projectId: params.projectId,
-            projectName: params.projectName,
             configPath,
             signal,
-          })
-          : await ensureProjectBinding({ gateway, cwd: current.cwd, tmuxTarget: current.tmuxTarget, configPath, signal });
+            prompt: () => ctx.ui.input("绑定滴答分组", "请输入分组名称：同名分组会绑定，不存在则按此名称创建；留空则跳过。"),
+          });
+          if (!result) {
+            return { content: [{ type: "text", text: "滴答登录完成，但尚未绑定分组；下次启动或再次登录时输入分组名称即可绑定或创建。" }], details: { action: params.action, ready: false } };
+          }
+          config.bindings = result.config.bindings;
+          await activate(ctx, result.binding);
+          return {
+            content: [{ type: "text", text: `滴答登录完成，清单“${result.project.name}”已${result.createdProject ? "创建并" : ""}绑定且立即生效。` }],
+            details: { action: params.action, project: result.project, binding: result.binding, createdProject: result.createdProject, ready: true },
+          };
+        }
+        const result = await bindExistingProject({
+          gateway,
+          cwd: current.cwd,
+          tmuxTarget: current.tmuxTarget,
+          projectId: params.projectId,
+          projectName: params.projectName,
+          configPath,
+          signal,
+        });
         config.bindings = result.config.bindings;
         await activate(ctx, result.binding);
         return {
-          content: [{ type: "text", text: `${result.createdProject ? "Created and bound" : "Bound"} Dida project: ${result.project.name} (${result.project.id}). The binding is active immediately.` }],
-          details: { action: params.action, project: result.project, binding: result.binding, createdProject: result.createdProject },
+          content: [{ type: "text", text: `已绑定滴答清单：${result.project.name}` }],
+          details: { action: params.action, project: result.project, binding: result.binding, createdProject: false },
         };
       } catch (error) {
         if (isDidaAuthenticationError(error)) {

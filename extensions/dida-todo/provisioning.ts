@@ -1,10 +1,9 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { basename, dirname, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { withHostLock } from "./host-lock.js";
 import { DEFAULT_CONFIG_PATH, normalizeCwd, resolveBinding } from "./config.js";
 import type { DidaProject, DidaTodoConfig, ProjectBinding } from "./domain.js";
-import { namespacedProjectName, type ProvisioningNamespace } from "./provisioning-identity.js";
 
 export interface ProjectProvisioningGateway {
   listProjects(signal?: AbortSignal): Promise<DidaProject[]>;
@@ -31,7 +30,6 @@ interface ProvisioningInput {
   tmuxTarget?: string;
   configPath?: string;
   signal?: AbortSignal;
-  namespace?: ProvisioningNamespace;
 }
 
 interface ExplicitBindingInput extends ProvisioningInput {
@@ -51,24 +49,22 @@ export interface AvailableBindingResult {
 
 function cleanName(value: string): string {
   const cleaned = value.trim().replace(/[\u0000-\u001f]/g, "").slice(0, 120);
-  if (!cleaned) throw new Error("无法从当前项目推导滴答清单名称");
+  if (!cleaned) throw new Error("滴答分组名称不能为空");
   return cleaned;
 }
 
 export function deriveBindingIdentity(
   cwd: string,
+  projectName: string,
   tmuxTarget?: string,
-  namespace: ProvisioningNamespace = {},
 ): BindingIdentity {
   const normalizedCwd = normalizeCwd(cwd);
-  const tmuxSession = tmuxTarget?.split(":", 1)[0]?.trim();
-  const baseName = cleanName(tmuxSession || basename(normalizedCwd) || "Pi Todo");
-  const projectName = cleanName(namespacedProjectName(baseName, namespace));
+  const cleanProjectName = cleanName(projectName);
   return {
-    projectName,
+    projectName: cleanProjectName,
     bindingKey: tmuxTarget ? `tmux:${tmuxTarget}` : `cwd:${normalizedCwd}`,
     cwdKey: `cwd:${normalizedCwd}`,
-    label: projectName,
+    label: cleanProjectName,
   };
 }
 
@@ -154,29 +150,11 @@ export async function resolveAvailableProjectBinding(input: AvailableBindingInpu
   const project = projects.find((candidate) => candidate.id === binding.projectId);
   if (!project) return { config: input.config, repaired: false };
   const identity = {
-    ...deriveBindingIdentity(input.cwd, input.tmuxTarget, input.namespace),
-    projectName: project.name,
+    ...deriveBindingIdentity(input.cwd, project.name, input.tmuxTarget),
     label: binding.label ?? project.name,
   };
   const persisted = await persistBinding(configPath, input.config, identity, project, input.cwd, input.tmuxTarget);
   return { ...persisted, repaired: true };
-}
-
-export async function ensureProjectBinding(input: ProvisioningInput): Promise<ProvisioningResult> {
-  const configPath = input.configPath ?? DEFAULT_CONFIG_PATH;
-  const identity = deriveBindingIdentity(input.cwd, input.tmuxTarget, input.namespace);
-  return withHostLock(`provision:${configPath}:${identity.projectName}`, async () => {
-    const config = await readConfig(configPath);
-    const projects = openProjects(await input.gateway.listProjects(input.signal));
-    const matches = projects.filter((project) => project.name.trim() === identity.projectName);
-    if (matches.length > 1) {
-      throw new Error(`存在 ${matches.length} 个同名清单“${identity.projectName}”，为避免误绑定，请让 LLM 按 projectId 显式绑定`);
-    }
-    const createdProject = matches.length === 0;
-    const project = matches[0] ?? await input.gateway.createProject(identity.projectName, input.signal);
-    const persisted = await persistBinding(configPath, config, identity, project, input.cwd, input.tmuxTarget);
-    return { ...persisted, project, createdProject };
-  });
 }
 
 export async function bindExistingProject(input: ExplicitBindingInput): Promise<ProvisioningResult> {
@@ -192,7 +170,29 @@ export async function bindExistingProject(input: ExplicitBindingInput): Promise<
     project = matches[0];
   }
   if (!project) throw new Error("未找到要绑定的滴答清单");
-  const identity = { ...deriveBindingIdentity(input.cwd, input.tmuxTarget, input.namespace), projectName: project.name, label: project.name };
+  const identity = deriveBindingIdentity(input.cwd, project.name, input.tmuxTarget);
   const persisted = await persistBinding(configPath, config, identity, project, input.cwd, input.tmuxTarget);
   return { ...persisted, project, createdProject: false };
+}
+
+export async function provisionPromptedProject(
+  input: ProvisioningInput & { prompt: () => Promise<string | undefined> },
+): Promise<ProvisioningResult | undefined> {
+  const rawProjectName = (await input.prompt())?.trim();
+  if (!rawProjectName) return undefined;
+  const projectName = cleanName(rawProjectName);
+  const configPath = input.configPath ?? DEFAULT_CONFIG_PATH;
+  return withHostLock(`provision:${configPath}:prompt:${projectName}`, async () => {
+    const config = await readConfig(configPath);
+    const projects = openProjects(await input.gateway.listProjects(input.signal));
+    const matches = projects.filter((project) => project.name.trim() === projectName);
+    if (matches.length > 1) {
+      throw new Error(`存在 ${matches.length} 个同名清单“${projectName}”，请改用 projectId 绑定`);
+    }
+    const createdProject = matches.length === 0;
+    const project = matches[0] ?? await input.gateway.createProject(projectName, input.signal);
+    const identity = deriveBindingIdentity(input.cwd, projectName, input.tmuxTarget);
+    const persisted = await persistBinding(configPath, config, identity, project, input.cwd, input.tmuxTarget);
+    return { ...persisted, project, createdProject };
+  });
 }

@@ -137,7 +137,6 @@ export interface DidaTodoConfig {
   maxWidgetLines?: number;
   collapseKey?: string;
   autoResumeSingle?: boolean;
-  autoProvisionProject?: boolean;
   pollIntervalMinutes?: number;
 }
 

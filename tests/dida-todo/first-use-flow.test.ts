@@ -90,7 +90,7 @@ describe("安装登录后的完整首次使用", () => {
     };
     registerDidaSetupTool(pi, gateway as never, config, () => ({ cwd, tmuxTarget }), activate, configPath);
     registerTodoTool(pi, repository, () => {});
-    const ctx = { cwd, hasUI: true, sessionManager: { getSessionId: () => sessionId } };
+    const ctx = { cwd, hasUI: true, ui: { input: async () => "首次测试分组" }, sessionManager: { getSessionId: () => sessionId } };
 
     const login = await setupTool.execute("login", { action: "login" }, undefined, undefined, ctx);
     setAllowedTrackingReasons(sessionId, ["multi_step_implementation", "current_work_step"]);
@@ -105,7 +105,7 @@ describe("安装登录后的完整首次使用", () => {
 
     expect(login.details.ready).toBe(true);
     expect(created.content[0].text).toContain("Created #1");
-    expect(gateway.projects).toEqual([{ id: "project", name: "demo" }]);
+    expect(gateway.projects).toEqual([{ id: "project", name: "首次测试分组" }]);
     expect(gateway.tasks).toHaveLength(1);
     expect(gateway.tasks[0]?.title).toBe("修复登录流程");
     expect(gateway.tasks[0]?.items).toEqual([expect.objectContaining({ title: "修复登录流程首个阶段", status: 0 })]);
@@ -135,7 +135,7 @@ describe("安装登录后的完整首次使用", () => {
     };
     registerDidaSetupTool(pi, gateway as never, config, () => ({ cwd, tmuxTarget }), activate, configPath);
     registerTodoTool(pi, repository, () => {});
-    const ctx = { cwd, hasUI: true, sessionManager: { getSessionId: () => sessionId } };
+    const ctx = { cwd, hasUI: true, ui: { input: async () => "跨阶段测试分组" }, sessionManager: { getSessionId: () => sessionId } };
 
     await setupTool.execute("login", { action: "login" }, undefined, undefined, ctx);
     setAllowedTrackingReasons(sessionId, ["user_requested_tracking", "current_work_step"]);

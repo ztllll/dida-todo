@@ -6,7 +6,6 @@ import {
   resolveBinding,
   resolveDidaCommand,
   resolvePollIntervalMinutes,
-  shouldAutoProvisionProject,
 } from "./config.js";
 import { registerCommands } from "./commands.js";
 import { DidaCliGateway } from "./gateway.js";
@@ -41,11 +40,10 @@ import { shouldAcceptAutomaticPollInput, shouldCheckTodoInput } from "./input-sy
 import { formatWorkQueueForAgent, isExecutableWork } from "./work-queue.js";
 import { registerTodoWorkTool } from "./work-tool.js";
 import { startTodoPoller } from "./poller.js";
-import { ensureProjectBinding, isDidaAuthenticationError, resolveAvailableProjectBinding } from "./provisioning.js";
+import { isDidaAuthenticationError, provisionPromptedProject, resolveAvailableProjectBinding } from "./provisioning.js";
 import { registerDidaSetupTool } from "./setup-tool.js";
 import { finalizeWorkAtSettlement } from "./settled-finalization.js";
 import { classifyTodoTrackingReasons } from "./tracking-policy.js";
-import { canAutoProvisionNamespace, detectProvisioningNamespace } from "./tmuxbot-route.js";
 import { JsonWorkStateStore } from "./state-store.js";
 
 async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Promise<string | undefined> {
@@ -167,27 +165,28 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       if (available.repaired && binding && ctx.hasUI) {
         ctx.ui.notify(`检测到已删除清单的失效 tmux 绑定，已自动恢复到当前 cwd 清单：${binding.label ?? binding.projectId}`, "warning");
       }
-      if (!binding && shouldAutoProvisionProject(config)) {
-        const namespace = await detectProvisioningNamespace(pi, tmuxTarget);
-        if (!canAutoProvisionNamespace(namespace)) {
-          if (ctx.hasUI) ctx.ui.notify("当前 tmux 目标未能唯一识别 IM channel，已拒绝自动创建滴答清单；请使用 dida_todo_setup auto 或 bind 显式配置。", "warning");
-          return;
-        }
-        const provisioned = await ensureProjectBinding({ gateway, cwd: ctx.cwd, tmuxTarget, namespace, signal: ctx.signal });
-        binding = provisioned.binding;
-        config.bindings = provisioned.config.bindings;
-        if (ctx.hasUI) {
-          ctx.ui.notify(
-            provisioned.createdProject
-              ? `已自动创建并绑定滴答清单：${provisioned.project.name}`
-              : `已自动绑定现有滴答清单：${provisioned.project.name}`,
-            "info",
-          );
+      if (!binding) {
+        const bound = await provisionPromptedProject({
+          gateway,
+          cwd: ctx.cwd,
+          tmuxTarget,
+          signal: ctx.signal,
+          prompt: () => ctx.ui.input(
+            "绑定滴答分组",
+            "当前目录尚未绑定滴答分组。请输入分组名称：同名分组会绑定，不存在则按此名称创建；留空则跳过。",
+          ),
+        });
+        if (bound) {
+          binding = bound.binding;
+          config.bindings = bound.config.bindings;
+          ctx.ui.notify(`${bound.createdProject ? "已创建并绑定" : "已绑定"}滴答清单：${bound.project.name}`, "info");
+        } else {
+          ctx.ui.notify("当前目录未绑定滴答分组；下次启动时输入分组名称即可绑定或创建。", "info");
         }
       }
     } catch (error) {
       if (ctx.hasUI && isDidaAuthenticationError(error)) {
-        ctx.ui.notify("dida-todo 已安装，但内置 Dida CLI 尚未登录。直接告诉 LLM“登录滴答”即可打开浏览器授权；也可在 dida-todo 安装目录运行 ./node_modules/.bin/dida auth login。登录后会自动创建并绑定当前项目清单。", "warning");
+        ctx.ui.notify("dida-todo 已安装，但内置 Dida CLI 尚未登录。直接告诉 LLM“登录滴答”即可打开浏览器授权；登录后输入分组名称即可绑定已有分组或创建同名新分组。", "warning");
         return;
       }
       throw error;

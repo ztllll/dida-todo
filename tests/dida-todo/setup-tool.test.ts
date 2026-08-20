@@ -18,15 +18,14 @@ class Gateway {
 }
 
 describe("LLM setup tool", () => {
-  it("登录动作完成 OAuth 后自动 provisioning 并立即激活", async () => {
+  it("登录后按用户输入的分组名称创建并立即激活", async () => {
     const configPath = join(await mkdtemp(join(tmpdir(), "dida-setup-tool-")), "config.json");
     let tool: any;
-    const pi = { registerTool(value: any) { tool = value; } } as never;
     const gateway = new Gateway();
     const config: DidaTodoConfig = { bindings: [] };
     let activated = "";
     registerDidaSetupTool(
-      pi,
+      { registerTool(value: any) { tool = value; } } as never,
       gateway as never,
       config,
       () => ({ cwd: "/workspace/demo", tmuxTarget: "demo:0.0" }),
@@ -37,22 +36,45 @@ describe("LLM setup tool", () => {
     const result = await tool.execute("id", { action: "login" }, undefined, undefined, {
       cwd: "/workspace/demo",
       hasUI: true,
+      ui: { input: async () => "用户指定分组" },
       sessionManager: { getSessionId: () => "session" },
     });
 
     expect(gateway.loginCalls).toBe(1);
+    expect(gateway.projects).toEqual([{ id: "created", name: "用户指定分组" }]);
     expect(activated).toBe("created");
-    expect(result.content[0].text).toContain("滴答登录完成");
-    expect(result.content[0].text).toContain("立即生效");
-    expect(result.content[0].text).toContain("无需 /reload");
     expect(result.details.ready).toBe(true);
     expect(config.bindings).toHaveLength(2);
   });
 
-  it("Print/RPC 显式 setup 只使用其被动 cwd 上下文，不继承 Interactive tmux pane", async () => {
+  it("登录后取消分组输入时不创建也不绑定", async () => {
+    let tool: any;
+    const gateway = new Gateway();
+    registerDidaSetupTool(
+      { registerTool(value: any) { tool = value; } } as never,
+      gateway as never,
+      { bindings: [] },
+      () => ({ cwd: "/workspace/demo" }),
+      async () => {},
+      join(await mkdtemp(join(tmpdir(), "dida-setup-cancel-")), "config.json"),
+    );
+
+    const result = await tool.execute("id", { action: "login" }, undefined, undefined, {
+      cwd: "/workspace/demo",
+      hasUI: true,
+      ui: { input: async () => undefined },
+      sessionManager: { getSessionId: () => "session" },
+    });
+
+    expect(result.details.ready).toBe(false);
+    expect(gateway.projects).toEqual([]);
+  });
+
+  it("显式 bind 只使用其被动 cwd 上下文，不继承 Interactive tmux pane", async () => {
     const configPath = join(await mkdtemp(join(tmpdir(), "dida-setup-print-")), "config.json");
     let tool: any;
     const gateway = new Gateway();
+    gateway.projects.push({ id: "existing", name: "已有分组" });
     registerDidaSetupTool(
       { registerTool(value: any) { tool = value; } } as never,
       gateway as never,
@@ -62,12 +84,12 @@ describe("LLM setup tool", () => {
       configPath,
     );
 
-    await tool.execute("id", { action: "auto" }, undefined, undefined, {
+    await tool.execute("id", { action: "bind", projectName: "已有分组" }, undefined, undefined, {
       cwd: "/workspace/print",
       hasUI: false,
       sessionManager: { getSessionId: () => "print-session" },
     });
     const saved = JSON.parse(await readFile(configPath, "utf8"));
-    expect(saved.bindings).toEqual([expect.objectContaining({ key: "cwd:/workspace/print" })]);
+    expect(saved.bindings).toEqual([expect.objectContaining({ key: "cwd:/workspace/print", projectId: "existing" })]);
   });
 });

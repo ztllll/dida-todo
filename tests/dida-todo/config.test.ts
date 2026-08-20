@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUNDLED_DIDA_COMMAND, resolveBinding, resolveDidaCommand, shouldAutoProvisionProject } from "../../extensions/dida-todo/config.js";
+import { BUNDLED_DIDA_COMMAND, resolveBinding, resolveDidaCommand } from "../../extensions/dida-todo/config.js";
 import type { DidaTodoConfig } from "../../extensions/dida-todo/domain.js";
 
 const config: DidaTodoConfig = {
@@ -22,13 +22,6 @@ describe("项目绑定解析 seam", () => {
   it("tmux 绑定指向已删除清单时回退到仍存在的 cwd 绑定", () => {
     expect(resolveBinding(config, "/workspace/example-project", "example:0.0", new Set(["project-cwd"]))?.projectId).toBe("project-cwd");
     expect(resolveBinding(config, "/workspace/example-project", "example:0.0", new Set())).toBeUndefined();
-  });
-
-  it("默认不自动创建清单，只有显式启用才允许 provisioning", () => {
-    const defaults: DidaTodoConfig = { bindings: [] };
-    const enabled: DidaTodoConfig = { bindings: [], autoProvisionProject: true };
-    expect(shouldAutoProvisionProject(defaults)).toBe(false);
-    expect(shouldAutoProvisionProject(enabled)).toBe(true);
   });
 
   it("默认使用包内安装的 dida CLI，仍允许显式覆盖", () => {
