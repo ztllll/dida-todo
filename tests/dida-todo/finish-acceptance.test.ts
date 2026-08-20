@@ -119,6 +119,35 @@ describe("完成工作强制人类验收", () => {
     expect(gateway.completed).toEqual(["work"]);
   });
 
+  it("Pi 创建的 Checklist 所有子项完成后自动完成顶层任务", async () => {
+    const remote = completedWork();
+    remote.content = encodeManagedContent("需求说明", {
+      schemaVersion: 2,
+      kind: "pi-todo-work",
+      bindingKey: scope.bindingKey,
+      origin: "pi",
+      lifecycle: "claimed",
+      workType: "checklist",
+      execution: { claimedAt: "2026-08-15T00:00:00.000Z" },
+      nextId: 3,
+      tasks: [
+        { id: 1, subject: "实现功能", status: "completed", itemId: "one" },
+        { id: 2, subject: "运行测试", status: "pending", itemId: "two" },
+      ],
+    });
+    remote.items = [
+      { id: "one", title: "实现功能", status: 1 },
+      { id: "two", title: "运行测试", status: 0 },
+    ];
+    const gateway = new FinishGateway([remote]);
+    const repository = new DidaTodoRepository(gateway);
+
+    await repository.updateTask(scope, "work", 2, { status: "completed" });
+
+    expect(gateway.completed).toEqual(["work"]);
+    expect(gateway.tasks.find((task) => task.id === "work")?.status).toBe(2);
+  });
+
   it("仍有未完成 Checklist 时不提前创建验收或完成顶层任务", async () => {
     const remote = completedWork();
     remote.content = encodeManagedContent("需求说明", {

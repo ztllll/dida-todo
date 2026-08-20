@@ -261,19 +261,19 @@ describe("滴答 Todo Repository seam", () => {
     expect(work.metadata.schemaVersion === 2 && work.metadata.keepOpen).toBeUndefined();
   });
 
-  it("Checklist 已 ready 后追加同一请求的新 Item 会撤销收口状态", async () => {
+  it("Checklist 未全部完成前可追加同一请求的新 Item，完成后自动收口", async () => {
     const gateway = new FakeGateway();
     const repo = new DidaTodoRepository(gateway);
     let work = await repo.createWork(scope, "统一用户请求", undefined, "checklist", "", "", 3);
     work = await repo.createTask(scope, work.remote.id, { subject: "第一项" });
-    work = await repo.updateTask(scope, work.remote.id, 1, { status: "completed" });
-    work = await repo.markWorkReadyForAcceptance(scope, work.remote.id);
-    expect(work.metadata).toMatchObject({ lifecycle: "ready_for_acceptance" });
-
     work = await repo.createTask(scope, work.remote.id, { subject: "第二项" });
+    work = await repo.updateTask(scope, work.remote.id, 1, { status: "completed" });
 
-    expect(work.metadata).toMatchObject({ lifecycle: "claimed" });
     expect(work.tasks.map((task) => task.subject)).toEqual(["第一项", "第二项"]);
+    expect((await gateway.getTask(scope.binding.projectId, work.remote.id)).status).toBe(0);
+
+    await repo.updateTask(scope, work.remote.id, 2, { status: "completed" });
+    expect((await gateway.getTask(scope.binding.projectId, work.remote.id)).status).toBe(2);
   });
 
   it("同会话重复 bootstrap 相同标题时复用既有 Pi 工作", async () => {
@@ -304,8 +304,6 @@ describe("滴答 Todo Repository seam", () => {
     expect(completed.tasks[0]?.status).toBe("completed");
     expect(completed.metadata.activeTaskId).toBeUndefined();
 
-    await repo.markWorkReadyForAcceptance(scope, work.remote.id);
-    await repo.finishWork(scope, work.remote.id);
     expect((await gateway.getTask(scope.binding.projectId, work.remote.id)).status).toBe(2);
   });
 

@@ -32,8 +32,8 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
       "Never execute or mention priority-0 Dida work during automatic checks; it is a draft until the user assigns low, medium, or high priority.",
       "Respect Dida priority and time range when ordering work. High priority is 5, medium 3, low 1; none 0 is not executable.",
       "Pending acceptances are handled by repository identity rules: comments from the same userId as the system acceptance comment automatically become a new rework; comments from any other or missing userId are ignored and must not be surfaced or executed.",
-      "Pi-origin direct work may finalize after all internal execution steps complete. Dida-origin claimed work is promoted to checklist when its first LLM step is created. For checklist work, completed Items are progress only: call finish_current exactly once only after the entire top-level objective is genuinely complete and verified.",
-      "finish_current marks a checklist top-level work ready for acceptance, then atomically creates/reuses acceptance and completes the source. Do not call it at a phase boundary or merely because all currently known Items are complete.",
+      "Pi-origin direct work and Checklist work both complete their top-level source automatically once every visible execution step is completed or intentionally skipped, unless keepOpen is explicitly set. Dida-origin claimed work is promoted to checklist when its first LLM step is created.",
+      "finish_current remains available to explicitly close the active work, but do not leave an all-settled Checklist open: it must be finalized automatically.",
     ],
     parameters: Type.Object({
       action: StringEnum(TODO_WORK_ACTIONS),

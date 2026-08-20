@@ -1,7 +1,6 @@
 import type { DidaTask, TodoScope, WorkTask } from "./domain.js";
 import { ACCEPTANCE_COMMENT, acceptanceMatchesSource, buildAcceptanceSummary, buildAcceptanceTaskInput } from "./acceptance.js";
 import { canFinalizeWork, migrateWorkMetadata } from "./work-lifecycle.js";
-import { isWorkReadyForFinalization } from "./work-type.js";
 import { originalHumanDescription } from "./human-task-surface.js";
 
 export interface FinalizerGateway {
@@ -32,7 +31,6 @@ export class WorkFinalizer {
       && !keepOpen
       && visible.length > 0
       && visible.every((task) => task.status === "completed" || task.status === "skipped")
-      && isWorkReadyForFinalization(work)
       && (canFinalizeWork(work) || isLegacyPiWork(work));
   }
 
@@ -60,8 +58,6 @@ export class WorkFinalizer {
     if (!visible.length) throw new Error("工作任务没有可验收的 Checklist");
     const unfinished = visible.filter((task) => task.status === "pending" || task.status === "in_progress");
     if (unfinished.length) throw new Error(`工作任务仍有 ${unfinished.length} 个未完成步骤`);
-    if (!isWorkReadyForFinalization(work)) throw new Error("Checklist 大任务尚未显式声明整体完成；完成 Item 只表示进度，不代表顶层工作结束");
-
     const acceptance = storedAcceptance
       ?? data.tasks.find((task) => acceptanceMatchesSource(task, work.remote))
       ?? await this.createAcceptance(work, signal);

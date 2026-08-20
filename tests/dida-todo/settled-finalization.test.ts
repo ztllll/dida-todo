@@ -78,7 +78,7 @@ describe("Agent settled 收口边界", () => {
     expect(finishCalls).toBe(0);
   });
 
-  it("Pi 长期 Checklist 大任务即使当前 Items 全完成，settled 也不自动结束顶层", async () => {
+  it("Checklist 的全部 Items 完成后，settled 自动完成顶层任务", async () => {
     const current = work(["completed", "completed"], "checklist");
     let finishCalls = 0;
     const repository = {
@@ -88,9 +88,9 @@ describe("Agent settled 收口边界", () => {
 
     const result = await finalizeWorkAtSettlement(repository, scope, "work");
 
-    expect(result.state).toBe("not-ready");
-    expect(result.work.remote.status).toBe(0);
-    expect(finishCalls).toBe(0);
+    expect(result.state).toBe("finalized");
+    expect(result.work.remote.status).toBe(2);
+    expect(finishCalls).toBe(1);
   });
 
   it("如果同一 turn 后续追加 pending 步骤，则 settled 不创建验收", async () => {

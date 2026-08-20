@@ -89,8 +89,8 @@ list / switch / next / refresh / finish_current
 Repository 固化并自动触发以下不变量：
 
 ```text
-Pi 自建 Direct Work 全部 Execution Steps 完成，或 Checklist Work 通过 finish_current 明确整体完成
-→ 等待 Agent settled 并重新确认仍无未完成步骤及对应顶层完成信号
+Direct Work 或 Checklist Work 的全部可见步骤完成或按要求 skipped
+→ 自动完成顶层任务（用户明确 keepOpen 的任务除外）并等待 Agent settled 重新确认
 → 根据原任务描述/正文、Checklist 与 metadata.resolution 生成安全占位报告
 → 幂等创建或复用待验收 Todo
 → 设置完成后 +3/+6 分钟两次提醒

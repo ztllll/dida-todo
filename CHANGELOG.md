@@ -4,6 +4,12 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.30] - 2026-08-16
+
+### Fixed
+
+- Automatically complete the top-level Dida task once every visible Direct Work or Checklist step is completed or intentionally skipped. The same rule now applies during mutation, synchronization, and Agent settlement, preventing completed work from being claimed repeatedly by the Poller. `keepOpen` remains the explicit opt-out when the user requires the top-level task to stay open.
+
 ## [0.6.29] - 2026-08-15
 
 ### Fixed

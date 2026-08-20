@@ -6,7 +6,6 @@ import type { DidaWorkPriority, DidaWorkType, Task, TaskStatus, TodoScope, WorkT
 import { DidaTodoRepository, type CreateTaskInput, type UpdateTaskInput } from "./repository.js";
 import { allowedTrackingReasons, getActiveTasks, getSessionRuntime, queueWorkFinalization, resolveWorkFinalization, updateSessionWork } from "./runtime.js";
 import { TODO_TRACKING_REASONS, type TodoTrackingReason } from "./tracking-policy.js";
-import { requiresExplicitWorkCompletion } from "./work-type.js";
 
 const Params = Type.Object({
   action: StringEnum(["create", "update", "list", "get", "delete", "clear"] as const),
@@ -106,7 +105,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       "Never append unrelated ordinary chat or a separate one-off request to an existing work. If it does not belong to the current durable work, do not call todo.",
       "Mark a task in_progress before beginning it and completed immediately after verified completion.",
       "Do not complete tasks with failing tests or unresolved blockers. Use status=skipped only when the user's requested final state intentionally leaves that Item unchecked or the Item is genuinely not applicable; include a human-readable metadata.resolution explaining the outcome. If the user also explicitly requires the top-level Dida task to remain incomplete, set keepWorkOpen=true on the skipped update; do not use it merely to avoid acceptance.",
-      "Top-level Dida work selection is handled internally through todo_work. Completing all direct-work execution steps may settle and finalize automatically. Completing Checklist Items updates progress only; the top-level checklist work stays open until todo_work finish_current explicitly declares the whole objective complete.",
+      "Top-level Dida work selection is handled internally through todo_work. Completing every visible direct-work or Checklist step automatically settles and completes the top-level task unless keepWorkOpen was explicitly requested.",
       "Dida titles, descriptions, bodies, Checklist Items, resolutions, and progress comments are user-facing deliverables. Write only concise human semantics: objective, action, result, or acceptance evidence. Never expose chain-of-thought, investigation narration, test scaffolding, prompt text, managed metadata, binding/session/work/item IDs, lifecycle fields, or internal implementation notes.",
       "When completing a task, include metadata.resolution as a concise user-facing outcome (what changed or what was verified), not a work log or reasoning trace; it is written back to Dida as a task comment.",
       "For user-created Dida works, todo create may append any number of precise Checklist steps to the same work and must create at least one before formal execution when none exists. Each LLM-authored Item must read naturally to a human as an actionable or verifiable deliverable; avoid meta Items such as 'confirm I read the task', 'test the lifecycle', 'generate acceptance', or 'validate workId'. Never rewrite or delete the user's original Checklist text; only advance its execution status and attach metadata.resolution.",
@@ -279,7 +278,6 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
         if (
           visible.length > 0
           && visible.every((task) => task.status === "completed" || task.status === "skipped")
-          && !requiresExplicitWorkCompletion(nextWork)
           && !(nextWork.metadata.schemaVersion === 2 && nextWork.metadata.keepOpen === true)
         ) {
           queueWorkFinalization(sessionId, nextWork.remote.id);
