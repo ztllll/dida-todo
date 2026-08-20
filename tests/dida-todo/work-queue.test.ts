@@ -42,6 +42,7 @@ describe("多工作任务执行队列", () => {
     expect(text).toContain('"origin":"dida"');
     expect(text).toContain('"executionSteps":[]');
     expect(text).toContain('"mustCreateVisibleChecklistStep":true');
+    expect(text).toContain('"directTaskExecution":"Create exactly one visible step that directly completes the top-level objective, then complete it immediately when the objective is clear. Do not investigate, diagnose, split the task, or create test work."');
     expect(text).not.toContain('"checklist":[]');
     expect(text).toContain("正式执行前必须先用 todo create 生成至少一个可勾选步骤");
     expect(text).toContain("必须结合标题、描述和正文理解整体目标");

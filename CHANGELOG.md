@@ -4,6 +4,12 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.34] - 2026-08-20
+
+### Fixed
+
+- Make clear Dida direct tasks without Checklist take a single-step completion path: create one visible step that directly carries out the top-level objective, complete it immediately, and automatically close the source task. The queue contract now forbids unnecessary investigation, diagnosis, task splitting, or test-work creation for these direct actions.
+
 ## [0.6.33] - 2026-08-20
 
 ### Fixed
