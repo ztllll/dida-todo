@@ -130,13 +130,13 @@ GitHub 安装会自动安装包依赖 `@suibiji/dida-cli`。用户在 Pi 中直�
 
 内部 `dida_todo_setup login` 会调用包内 CLI 打开浏览器 OAuth；也可手工运行 `./node_modules/.bin/dida auth login`。登录成功后立即 provisioning：
 
-- 首次自动 provisioning 使用 `[hostname][channel] route-name`；channel/route 通过 tmuxbot canonical Admin inventory 按精确 tmux target 探测；
-- 无 tmuxbot route、inventory 失败或结果歧义时 fail closed 为 `[hostname] tmux-session-or-cwd`，绝不猜 IM 通道；
+- 自动 provisioning 仅在显式启用且 tmuxbot bindings 文件能按精确 tmux target 唯一识别 `[hostname][channel] route-name` 时运行；
+- 无 tmuxbot route、bindings 无法读取或结果歧义时拒绝自动创建，绝不猜 IM 通道；需要时使用 `dida_todo_setup auto` 或 `bind` 显式配置。
 - credential、chat_id、thread_id 和 token 均不进入清单名或配置 label；
 - 唯一同名清单自动复用，无同名清单自动创建；
 - 自动保存精确 tmux target 绑定到 `~/.config/pi-dida-todo/config.json`，权限 `0600`；cwd alias 只在未被另一 route 占用或指向同一 project 时写入；
 - 多个同名清单时拒绝猜测，用户可口述要求 LLM 按 projectId 改绑；
-- `autoProvisionProject: false` 可关闭自动创建，回到完全显式绑定模式。
+- 默认不自动创建滴答清单；设置 `autoProvisionProject: true` 才允许启动时为未绑定 cwd/tmux 目标自动创建。也可随时通过 `dida_todo_setup auto` 显式创建并绑定当前目标。
 - 完成“登录滴答”的当前会话会立即激活，无需 `/reload` 或第二次配置；空清单的 `/todos` 与 `todo list` 会明确显示“滴答 Todo 已就绪”，首个 Todo 自动建立顶层工作。
 - 仅当包是在某个 Pi 进程已经运行后从外部安装或升级时，该存量进程受 Pi Loader 生命周期限制需要一次 `/reload`；新启动 Pi 自动加载。
 - 不得在使用 dida-todo 的 Pi 进程正执行工作时覆盖共享 Git Package checkout。安装会 reset/clean 安装目录并重装依赖，但存量进程仍保留旧 Runtime，可能形成旧内存代码与新磁盘 CLI/依赖混用。必须先等待相关 pane idle，再安装固定版本，随后 `/reload` 或启动新进程。

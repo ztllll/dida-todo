@@ -155,7 +155,7 @@ Pi 自建 Direct Work 的全部 Execution Steps 完成，或 Checklist Work 明�
 ### 最简流程：全局安装 + 登录
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.28
+pi install git:github.com/ztllll/dida-todo@v0.6.31
 ```
 
 新开任意 Pi 会话，直接告诉 LLM：
@@ -168,23 +168,23 @@ GitHub 安装会自动安装运行依赖 `@suibiji/dida-cli`；用户不需要�
 
 登录成功后，扩展自动完成：
 
-1. 首次自动 provisioning 生成跨环境名称：tmuxbot route 可精确识别时使用 `[hostname][channel] route-name`；否则使用 `[hostname] tmux-session-or-cwd`，不猜 IM 通道；
-2. route/channel 只通过 tmuxbot canonical Admin inventory 按精确 tmux target 读取；不把 credential、chat_id、thread_id 或 token 写入滴答；
+1. 为当前会话显式创建或复用一个绑定清单；
+2. route/channel 仅从 tmuxbot bindings 文件按精确 tmux target 读取；不把 credential、chat_id、thread_id 或 token 写入滴答；
 3. 唯一同名清单存在则复用，不存在则创建 TASK/list 清单；
-4. 自动持久化精确 tmux target；cwd alias 仅在未被另一 route 占用或指向同一 project 时写入，避免共享 cwd 的 Telegram/飞书 route 相互覆盖；
+4. 持久化精确 tmux target；cwd alias 仅在未被另一 route 占用或指向同一 project 时写入，避免共享 cwd 的 Telegram/飞书 route 相互覆盖；
 5. 当前会话立即同步并启用，无需填写 projectId；
 6. 空清单明确显示“滴答 Todo 已就绪”，直接口述第一项任务即可；首个 Todo 自动建立顶层工作与 Checklist。
 
 完成“登录滴答”的当前会话无需 `/reload` 或第二次配置。新启动的 Pi Interactive/TUI 会话会自动加载并复用登录状态。Print/RPC 子会话启动时只建立被动 cwd Runtime，不同步滴答、不执行自动 provisioning、不继承父 TUI 的 tmux pane，也不启动 Poller；精确输入 `检查todo` 或显式 setup 仍可按需同步。因此从 TUI 内运行 `pi -p` smoke 不会覆盖生产 tmux binding。只有当某个 Pi 进程已经运行、用户再从外部安装或升级包时，该存量进程受 Pi Loader 生命周期限制需要执行一次 `/reload`；尚未加载的扩展无法自行让旧进程热更新。
 
-存在多个同名清单时扩展拒绝猜测。用户可直接口述“把当前项目绑定到清单 X / projectId Y”，由内部 setup 工具改绑。设置 `autoProvisionProject: false` 可关闭默认自动 provisioning。启动时还会校验绑定的 projectId 是否仍存在：失效 tmux binding 会优先回退到同 cwd 的有效清单并持久修复；若没有任何有效绑定，再进入自动 provisioning。
+存在多个同名清单时扩展拒绝猜测。用户可直接口述“把当前项目绑定到清单 X / projectId Y”，由内部 setup 工具改绑。默认不自动 provisioning；只有显式设置 `autoProvisionProject: true` 才会在启动时为未绑定目标创建清单，且必须从 tmuxbot bindings 文件唯一识别 IM route/channel。启动时还会校验绑定的 projectId 是否仍存在：失效 tmux binding 会优先回退到同 cwd 的有效清单并持久修复；没有有效绑定时保持未绑定，不创建清单。
 
 手工登录回退：进入 dida-todo Git 安装目录运行 `./node_modules/.bin/dida auth login`。
 
 升级：
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.6.28
+pi install git:github.com/ztllll/dida-todo@v0.6.31
 # 或安装 main：pi install git:github.com/ztllll/dida-todo
 ```
 
@@ -235,7 +235,7 @@ Pi Loader 会把重复注册的工具显示为扩展诊断；使用前仍必须�
 }
 ```
 
-默认自动创建/复用和绑定；手工 `bindings` 仅用于覆盖默认行为。绑定优先级：精确 tmux target → 精确 cwd。多个同名清单时不会猜测。
+默认仅复用已有绑定；未绑定目标需要显式 `dida_todo_setup auto` / `bind`。如设置 `autoProvisionProject: true`，仅当 tmuxbot bindings 文件能唯一识别 IM channel 与 route 时才自动创建。绑定优先级：精确 tmux target → 精确 cwd。多个同名清单时不会猜测。
 
 `pollIntervalMinutes` 默认是 **10 分钟**，可设置为 `1–1440`。Poller 仅在 Pi 空闲且没有 pending message 时同步；priority>0 的工作还必须通过任务 `timeZone`、日期和时间门，未来、过期或尚未到点的 occurrence 静默跳过，无日期任务按优先级执行。完整输入 `检查todo` 可立即触发同样的队列检查。`didaCommand` 是可选高级覆盖；默认解析本项目依赖中的 `@suibiji/dida-cli`。
 

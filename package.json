@@ -1,6 +1,6 @@
 {
   "name": "dida-todo",
-  "version": "0.6.30",
+  "version": "0.6.31",
   "private": true,
   "type": "module",
   "description": "Pi 扩展：以滴答清单为 Todo 真源，支持自然语言执行、双向同步、提醒和强制人类验收闭环。",
@@ -48,7 +48,8 @@
     ]
   },
   "dependencies": {
-    "@suibiji/dida-cli": "^0.1.12"
+    "@suibiji/dida-cli": "^0.1.12",
+    "yaml": "^2.9.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

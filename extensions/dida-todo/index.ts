@@ -6,6 +6,7 @@ import {
   resolveBinding,
   resolveDidaCommand,
   resolvePollIntervalMinutes,
+  shouldAutoProvisionProject,
 } from "./config.js";
 import { registerCommands } from "./commands.js";
 import { DidaCliGateway } from "./gateway.js";
@@ -44,7 +45,7 @@ import { ensureProjectBinding, isDidaAuthenticationError, resolveAvailableProjec
 import { registerDidaSetupTool } from "./setup-tool.js";
 import { finalizeWorkAtSettlement } from "./settled-finalization.js";
 import { classifyTodoTrackingReasons } from "./tracking-policy.js";
-import { detectProvisioningNamespace } from "./tmuxbot-route.js";
+import { canAutoProvisionNamespace, detectProvisioningNamespace } from "./tmuxbot-route.js";
 import { JsonWorkStateStore } from "./state-store.js";
 
 async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Promise<string | undefined> {
@@ -166,8 +167,12 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       if (available.repaired && binding && ctx.hasUI) {
         ctx.ui.notify(`检测到已删除清单的失效 tmux 绑定，已自动恢复到当前 cwd 清单：${binding.label ?? binding.projectId}`, "warning");
       }
-      if (!binding && config.autoProvisionProject !== false) {
+      if (!binding && shouldAutoProvisionProject(config)) {
         const namespace = await detectProvisioningNamespace(pi, tmuxTarget);
+        if (!canAutoProvisionNamespace(namespace)) {
+          if (ctx.hasUI) ctx.ui.notify("当前 tmux 目标未能唯一识别 IM channel，已拒绝自动创建滴答清单；请使用 dida_todo_setup auto 或 bind 显式配置。", "warning");
+          return;
+        }
         const provisioned = await ensureProjectBinding({ gateway, cwd: ctx.cwd, tmuxTarget, namespace, signal: ctx.signal });
         binding = provisioned.binding;
         config.bindings = provisioned.config.bindings;

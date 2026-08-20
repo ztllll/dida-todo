@@ -4,6 +4,13 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.31] - 2026-08-16
+
+### Fixed
+
+- Stop automatic Dida project creation by default. Unbound cwd and tmux targets now remain unbound until the user explicitly provisions or binds them, preventing temporary directories and extra panes from creating unrelated lists.
+- When explicitly enabled, automatic provisioning requires one unique tmuxbot binding and derives the project identity from hostname, IM channel, and route name. Bindings are read from the standard tmuxbot YAML file, so Telegram and Feishu routes named alike cannot share a Dida list or create guessed duplicates.
+
 ## [0.6.30] - 2026-08-16
 
 ### Fixed

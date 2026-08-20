@@ -32,7 +32,9 @@ export function inventoryRoutes(value: unknown): InventoryRoute[] {
   if (Array.isArray(value)) return value as InventoryRoute[];
   if (!value || typeof value !== "object") return [];
   const routes = (value as { routes?: unknown }).routes;
-  return Array.isArray(routes) ? routes as InventoryRoute[] : [];
+  if (Array.isArray(routes)) return routes as InventoryRoute[];
+  const bindings = (value as { bindings?: unknown }).bindings;
+  return Array.isArray(bindings) ? bindings as InventoryRoute[] : [];
 }
 
 export function routeTarget(route: InventoryRoute): string | undefined {

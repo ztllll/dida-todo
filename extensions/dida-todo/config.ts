@@ -81,6 +81,10 @@ export function resolvePollIntervalMinutes(config: DidaTodoConfig): number {
   return config.pollIntervalMinutes ?? DEFAULT_POLL_INTERVAL_MINUTES;
 }
 
+export function shouldAutoProvisionProject(config: DidaTodoConfig): boolean {
+  return config.autoProvisionProject === true;
+}
+
 export function resolveDidaCommand(config: DidaTodoConfig): string {
   const command = config.didaCommand?.trim();
   if (!command) return BUNDLED_DIDA_COMMAND;
