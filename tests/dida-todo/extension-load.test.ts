@@ -25,6 +25,40 @@ describe("dida-todo Extension 生命周期", () => {
     }
   });
 
+  it("Interactive 未登录时提示授权，不把未初始化 Runtime 暴露为 Todo 队列错误", async () => {
+    const handlers = new Map<string, (event: unknown, ctx: any) => unknown>();
+    let authCalls = 0;
+    await didaTodo({
+      registerTool() {},
+      registerCommand() {},
+      registerShortcut() {},
+      on(event: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers.set(event, handler); },
+      async exec(command: string, args: string[]) {
+        if (command === "tmux") return { code: 0, stdout: "pi-unbound:0.0\n", stderr: "", killed: false };
+        if (args.join(" ") === "project list --json") return { code: 1, stdout: "", stderr: "未找到 access token", killed: false };
+        if (args.join(" ") === "auth login") { authCalls += 1; return { code: 0, stdout: "", stderr: "", killed: false };
+        }
+        return { code: 1, stdout: "", stderr: "unexpected", killed: false };
+      },
+    } as never);
+    const sessionStart = handlers.get("session_start")!;
+    const notifications: string[] = [];
+    await sessionStart({ type: "session_start", reason: "startup" }, {
+      cwd: "/workspace/unbound",
+      hasUI: true,
+      signal: undefined,
+      sessionManager: { getSessionId: () => "unbound-login" },
+      ui: {
+        confirm: async () => false,
+        notify: (message: string) => notifications.push(message),
+      },
+    });
+
+    expect(authCalls).toBe(0);
+    expect(notifications.join("\n")).toContain("滴答未登录");
+    removeSessionRuntime("unbound-login");
+  });
+
   it("Print/RPC session_start 不访问 tmux、滴答或 provisioning", async () => {
     const handlers = new Map<string, (event: unknown, ctx: unknown) => unknown>();
     let execCalls = 0;

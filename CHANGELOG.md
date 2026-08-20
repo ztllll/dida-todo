@@ -4,6 +4,12 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.33] - 2026-08-20
+
+### Fixed
+
+- Prompt Interactive/TUI users to start Dida OAuth when no login is available, then immediately continue to the required user-named group bind/create flow. Login failure now reports an authorization error instead of exposing an uninitialized Todo runtime as a queue failure.
+
 ## [0.6.32] - 2026-08-20
 
 ### Changed

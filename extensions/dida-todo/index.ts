@@ -186,8 +186,35 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       }
     } catch (error) {
       if (ctx.hasUI && isDidaAuthenticationError(error)) {
-        ctx.ui.notify("dida-todo 已安装，但内置 Dida CLI 尚未登录。直接告诉 LLM“登录滴答”即可打开浏览器授权；登录后输入分组名称即可绑定已有分组或创建同名新分组。", "warning");
-        return;
+        const loginNow = await ctx.ui.confirm("滴答未登录", "是否现在打开浏览器完成滴答授权？");
+        if (!loginNow) {
+          ctx.ui.notify("滴答未登录；需要时重新启动会话并选择授权。", "warning");
+          return;
+        }
+        try {
+          await gateway.login(ctx.signal);
+          const bound = await provisionPromptedProject({
+            gateway,
+            cwd: ctx.cwd,
+            tmuxTarget,
+            signal: ctx.signal,
+            prompt: () => ctx.ui.input(
+              "绑定滴答分组",
+              "请输入分组名称：同名分组会绑定，不存在则按此名称创建；留空则跳过。",
+            ),
+          });
+          if (!bound) {
+            ctx.ui.notify("滴答登录完成，但尚未绑定分组。", "info");
+            return;
+          }
+          config.bindings = bound.config.bindings;
+          await activateBinding(ctx, bound.binding);
+          ctx.ui.notify(`${bound.createdProject ? "已创建并绑定" : "已绑定"}滴答清单：${bound.project.name}`, "info");
+          return;
+        } catch (loginError) {
+          ctx.ui.notify(`滴答授权失败：${loginError instanceof Error ? loginError.message : String(loginError)}`, "error");
+          return;
+        }
       }
       throw error;
     }
