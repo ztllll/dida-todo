@@ -1,8 +1,36 @@
 import { describe, expect, it } from "vitest";
 import type { DidaTodoRepository } from "../../extensions/dida-todo/repository.js";
-import { registerCommands } from "../../extensions/dida-todo/commands.js";
+import { registerCommands, registerDidaBindCommand } from "../../extensions/dida-todo/commands.js";
 import { removeSessionRuntime, setSessionRuntime } from "../../extensions/dida-todo/runtime.js";
 import type { TodoScope, WorkTask } from "../../extensions/dida-todo/domain.js";
+
+describe("/dida-bind 显式绑定", () => {
+  it("仅在用户执行命令后按输入分组名创建并激活", async () => {
+    let command: any;
+    let activated = "";
+    const gateway = {
+      async listProjects() { return []; },
+      async createProject(name: string) { return { id: "created", name }; },
+    };
+    registerDidaBindCommand(
+      { registerCommand(name: string, value: any) { if (name === "dida-bind") command = value; } } as never,
+      gateway as never,
+      { bindings: [] },
+      () => ({ cwd: "/workspace/unbound", tmuxTarget: "pi-unbound:0.0" }),
+      async (_ctx, binding) => { activated = binding.projectId; },
+    );
+    const notifications: string[] = [];
+
+    await command.handler("老板指定分组", {
+      cwd: "/workspace/unbound",
+      sessionManager: { getSessionId: () => "bind-command" },
+      ui: { input: async () => { throw new Error("命令参数应避免输入框"); }, notify: (message: string) => notifications.push(message) },
+    });
+
+    expect(activated).toBe("created");
+    expect(notifications.join("\n")).toContain("已创建并绑定滴答清单：老板指定分组");
+  });
+});
 
 describe("/todos 空清单状态", () => {
   it("已绑定且同步成功时明确显示可直接使用", async () => {

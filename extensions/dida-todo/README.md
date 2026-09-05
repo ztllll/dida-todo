@@ -82,7 +82,7 @@ list / switch / next / refresh / finish_current
 6. 读取待验收报告及评论；
 7. Overlay 与滴答状态同步。
 
-`pollIntervalMinutes` 默认 10 分钟，可配置为 1–1440。Poller 只在 Interactive/TUI 主会话中注册；Print/RPC 子会话启动时只建立被动 cwd Runtime，不同步滴答、不自动 provisioning、不继承父 TUI 的 tmux pane，也不启动 Poller，精确 `检查todo` 或显式 setup 仍可按需同步。Interactive 启动前会校验 binding 的 projectId 仍存在；失效 tmux binding 会回退并持久修复到同 cwd 的有效清单。Poller 仅在 Pi 空闲且没有 pending message 时同步；只有优先级大于 0、未完成并满足 `timeZone` 日期/时间门的工作才发送 follow-up 并签发本轮队列授权。同步可以发现未来循环 occurrence，但 priority 不会绕过时间门：非全天任务必须是计划当天且当前时间不早于 `startDate`（缺失时回退 `dueDate`），全天任务只判断计划日期。提前轮询不会预约单项 timer；到点后的下一次轮询自动领取，也可完整输入 `检查todo` 立即触发。过期 occurrence 不自动补跑。
+`pollIntervalMinutes` 默认 10 分钟，可配置为 1–1440。只有已绑定的 Interactive/TUI 主会话才在启动后异步同步滴答、注册 Overlay 和 Poller；同步失败仅显示非阻塞 warning，绝不阻断 Pi 启动。未绑定目录及所有 Web/RPC/Print 会话均保持被动模式：不访问滴答 CLI、不弹绑定框、不创建分组、不启动 Poller。用户执行 `/dida-bind [分组名称]` 后才登录、绑定或按输入名称创建分组并立即激活当前会话。Poller 仅在 Pi 空闲且没有 pending message 时同步；只有优先级大于 0、未完成并满足 `timeZone` 日期/时间门的工作才发送 follow-up 并签发本轮队列授权。同步可以发现未来循环 occurrence，但 priority 不会绕过时间门：非全天任务必须是计划当天且当前时间不早于 `startDate`（缺失时回退 `dueDate`），全天任务只判断计划日期。提前轮询不会预约单项 timer；到点后的下一次轮询自动领取，也可完整输入 `检查todo` 立即触发。过期 occurrence 不自动补跑。
 
 ## 强制人类验收闭环
 
@@ -128,17 +128,17 @@ GitHub 安装会自动安装包依赖 `@suibiji/dida-cli`。用户在 Pi 中直�
 登录滴答
 ```
 
-内部 `dida_todo_setup login` 会调用包内 CLI 打开浏览器 OAuth；也可手工运行 `./node_modules/.bin/dida auth login`。登录成功或未绑定会话启动时，扩展会提示输入滴答分组名称：
+内部 `dida_todo_setup login` 会调用包内 CLI 打开浏览器 OAuth；也可手工运行 `./node_modules/.bin/dida auth login`。未绑定会话启动时保持被动模式：不访问滴答、不弹窗、不创建分组、不启动 Poller。需要 Todo 时用户显式执行 `/dida-bind`；登录成功后同样通过 `/dida-bind` 输入滴答分组名称：
 
 - 唯一同名分组会立即绑定；不存在时只按用户输入的准确名称创建并绑定；
 - 用户取消或留空时不创建任何分组；多个同名分组时拒绝猜测，要求用户按 projectId 显式 `bind`；
 - credential、chat_id、thread_id、token、cwd、tmux target、主机名和 IM route 均不进入清单名或配置 label；
 - 自动保存精确 tmux target 绑定到 `~/.config/pi-dida-todo/config.json`，权限 `0600`；cwd alias 只在未被另一 route 占用或指向同一 project 时写入；
-- 完成分组选择后的当前会话会立即激活，无需 `/reload` 或第二次配置；空清单的 `/todos` 与 `todo list` 会明确显示“滴答 Todo 已就绪”，首个 Todo 自动建立顶层工作。
+- 完成分组选择后的当前会话会立即激活，无需 `/reload` 或第二次配置；已绑定目录的同步、Overlay、Poller 与 Todo 工作流保持不变；空清单的 `/todos` 与 `todo list` 会明确显示“滴答 Todo 已就绪”，首个 Todo 自动建立顶层工作。
 - 仅当包是在某个 Pi 进程已经运行后从外部安装或升级时，该存量进程受 Pi Loader 生命周期限制需要一次 `/reload`；新启动 Pi 自动加载。
 - 不得在使用 dida-todo 的 Pi 进程正执行工作时覆盖共享 Git Package checkout。安装会 reset/clean 安装目录并重装依赖，但存量进程仍保留旧 Runtime，可能形成旧内存代码与新磁盘 CLI/依赖混用。必须先等待相关 pane idle，再安装固定版本，随后 `/reload` 或启动新进程。
 
-内部 `dida_todo_setup` 工具支持 `login` 和 `bind`，用户无需直接调用。
+内部 `dida_todo_setup` 工具支持 `login` 和 `bind`；用户也可显式执行 `/dida-bind [分组名称]`。
 
 ## 验证
 

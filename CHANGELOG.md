@@ -4,6 +4,16 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.6.35] - 2026-08-20
+
+### Fixed
+
+- Make Dida optional at session startup. Unbound directories and every Web/RPC/Print session now enter passive mode without Dida CLI calls, binding dialogs, project creation, or Poller startup. Bound TUI sessions continue to synchronize asynchronously; Dida failures only show a warning and never block Pi startup.
+
+### Added
+
+- Add `/dida-bind [分组名称]` as the explicit binding entrypoint. It prompts for a name when omitted, binds one unique exact match, or creates only the exact user-entered name after login.
+
 ## [0.6.34] - 2026-08-20
 
 ### Fixed

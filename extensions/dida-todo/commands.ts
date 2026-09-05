@@ -1,10 +1,12 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { Task, TodoScope, WorkTask } from "./domain.js";
+import type { DidaTodoConfig, ProjectBinding, Task, TodoScope, WorkTask } from "./domain.js";
+import { DidaCliGateway } from "./gateway.js";
+import { isDidaAuthenticationError, provisionPromptedProject } from "./provisioning.js";
 import { DidaTodoRepository } from "./repository.js";
 import { getSessionRuntime, pendingWorkFinalizations, updateSessionWork, updateSessionWorks } from "./runtime.js";
 import { isExecutableWork } from "./work-queue.js";
 
-export const PUBLIC_DIDA_TODO_COMMANDS = ["todos"] as const;
+export const PUBLIC_DIDA_TODO_COMMANDS = ["todos", "dida-bind"] as const;
 
 function taskLine(task: Task, glyph: string): string {
   return [
@@ -38,6 +40,59 @@ function runtimeFor(ctx: ExtensionCommandContext): { scope: TodoScope; work?: Wo
   const runtime = getSessionRuntime(ctx.sessionManager.getSessionId());
   if (!runtime) throw new Error("当前会话没有匹配的滴答项目绑定");
   return runtime;
+}
+
+export function registerDidaBindCommand(
+  pi: ExtensionAPI,
+  gateway: DidaCliGateway,
+  config: DidaTodoConfig,
+  getContext: (sessionId: string) => { cwd: string; tmuxTarget?: string } | undefined,
+  activate: (ctx: ExtensionCommandContext, binding: ProjectBinding) => Promise<void>,
+): void {
+  pi.registerCommand("dida-bind", {
+    description: "输入滴答分组名称后绑定；不存在时按该名称创建",
+    handler: async (args, ctx) => {
+      const sessionId = ctx.sessionManager.getSessionId();
+      const current = getContext(sessionId) ?? { cwd: ctx.cwd };
+      const prompt = async () => args.trim() || await ctx.ui.input(
+        "绑定滴答分组",
+        "请输入分组名称：同名分组会绑定，不存在则按此名称创建；留空取消。",
+      );
+      try {
+        const result = await provisionPromptedProject({
+          gateway,
+          cwd: current.cwd,
+          tmuxTarget: current.tmuxTarget,
+          signal: ctx.signal,
+          prompt,
+        });
+        if (!result) {
+          ctx.ui.notify("未输入滴答分组名称，未创建或绑定分组。", "info");
+          return;
+        }
+        config.bindings = result.config.bindings;
+        await activate(ctx, result.binding);
+        ctx.ui.notify(`${result.createdProject ? "已创建并绑定" : "已绑定"}滴答清单：${result.project.name}`, "info");
+      } catch (error) {
+        if (!isDidaAuthenticationError(error)) throw error;
+        const login = await ctx.ui.confirm("滴答未登录", "是否现在打开浏览器完成滴答授权？");
+        if (!login) {
+          ctx.ui.notify("滴答未登录；未创建或绑定分组。", "warning");
+          return;
+        }
+        await gateway.login(ctx.signal);
+        const result = await provisionPromptedProject({ gateway, cwd: current.cwd, tmuxTarget: current.tmuxTarget, signal: ctx.signal, prompt });
+        if (!result) {
+          ctx.ui.notify("滴答登录完成，但未输入分组名称。", "info");
+          return;
+        }
+        config.bindings = result.config.bindings;
+        await activate(ctx, result.binding);
+        ctx.ui.notify(`${result.createdProject ? "已创建并绑定" : "已绑定"}滴答清单：${result.project.name}`, "info");
+      }
+    },
+  });
+
 }
 
 export function registerCommands(pi: ExtensionAPI, repository: DidaTodoRepository, onWorkChanged: () => void): void {

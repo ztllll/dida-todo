@@ -7,7 +7,7 @@ import {
   resolveDidaCommand,
   resolvePollIntervalMinutes,
 } from "./config.js";
-import { registerCommands } from "./commands.js";
+import { registerCommands, registerDidaBindCommand } from "./commands.js";
 import { DidaCliGateway } from "./gateway.js";
 import { TodoOverlay } from "./overlay.js";
 import { AcceptanceResultUpdater, extractFinalAssistantResponse } from "./acceptance-result.js";
@@ -40,7 +40,7 @@ import { shouldAcceptAutomaticPollInput, shouldCheckTodoInput } from "./input-sy
 import { formatWorkQueueForAgent, isExecutableWork } from "./work-queue.js";
 import { registerTodoWorkTool } from "./work-tool.js";
 import { startTodoPoller } from "./poller.js";
-import { isDidaAuthenticationError, provisionPromptedProject, resolveAvailableProjectBinding } from "./provisioning.js";
+import { isDidaAuthenticationError } from "./provisioning.js";
 import { registerDidaSetupTool } from "./setup-tool.js";
 import { finalizeWorkAtSettlement } from "./settled-finalization.js";
 import { classifyTodoTrackingReasons } from "./tracking-policy.js";
@@ -147,100 +147,56 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     (sessionId) => setupContexts.get(sessionId),
     async (ctx, binding) => { await activateBinding(ctx, binding); },
   );
+  registerDidaBindCommand(
+    pi,
+    gateway,
+    config,
+    (sessionId) => setupContexts.get(sessionId),
+    async (ctx, binding) => { await activateBinding(ctx, binding); },
+  );
 
   pi.on("session_start", async (_event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
-    if (!ctx.hasUI) {
+    // Web/RPC/Print starts must never require Dida, tmux, or interactive input.
+    if (!ctx.hasUI || ctx.mode !== "tui") {
       setupContexts.set(sessionId, { cwd: ctx.cwd });
       initializePassiveSession(config, ctx.cwd, sessionId);
       return;
     }
-    const tmuxTarget = await detectTmuxTarget(pi, process.env.TMUX_PANE);
+    const tmuxTarget = await detectTmuxTarget(pi, process.env.TMUX_PANE).catch(() => undefined);
     setupContexts.set(sessionId, { cwd: ctx.cwd, ...(tmuxTarget ? { tmuxTarget } : {}) });
-    let binding: import("./domain.js").ProjectBinding | undefined;
-    try {
-      const available = await resolveAvailableProjectBinding({ gateway, cwd: ctx.cwd, tmuxTarget, config, signal: ctx.signal });
-      binding = available.binding;
-      config.bindings = available.config.bindings;
-      if (available.repaired && binding && ctx.hasUI) {
-        ctx.ui.notify(`检测到已删除清单的失效 tmux 绑定，已自动恢复到当前 cwd 清单：${binding.label ?? binding.projectId}`, "warning");
-      }
-      if (!binding) {
-        const bound = await provisionPromptedProject({
-          gateway,
-          cwd: ctx.cwd,
-          tmuxTarget,
-          signal: ctx.signal,
-          prompt: () => ctx.ui.input(
-            "绑定滴答分组",
-            "当前目录尚未绑定滴答分组。请输入分组名称：同名分组会绑定，不存在则按此名称创建；留空则跳过。",
-          ),
-        });
-        if (bound) {
-          binding = bound.binding;
-          config.bindings = bound.config.bindings;
-          ctx.ui.notify(`${bound.createdProject ? "已创建并绑定" : "已绑定"}滴答清单：${bound.project.name}`, "info");
-        } else {
-          ctx.ui.notify("当前目录未绑定滴答分组；下次启动时输入分组名称即可绑定或创建。", "info");
-        }
-      }
-    } catch (error) {
-      if (ctx.hasUI && isDidaAuthenticationError(error)) {
-        const loginNow = await ctx.ui.confirm("滴答未登录", "是否现在打开浏览器完成滴答授权？");
-        if (!loginNow) {
-          ctx.ui.notify("滴答未登录；需要时重新启动会话并选择授权。", "warning");
-          return;
-        }
-        try {
-          await gateway.login(ctx.signal);
-          const bound = await provisionPromptedProject({
-            gateway,
-            cwd: ctx.cwd,
-            tmuxTarget,
-            signal: ctx.signal,
-            prompt: () => ctx.ui.input(
-              "绑定滴答分组",
-              "请输入分组名称：同名分组会绑定，不存在则按此名称创建；留空则跳过。",
-            ),
-          });
-          if (!bound) {
-            ctx.ui.notify("滴答登录完成，但尚未绑定分组。", "info");
-            return;
-          }
-          config.bindings = bound.config.bindings;
-          await activateBinding(ctx, bound.binding);
-          ctx.ui.notify(`${bound.createdProject ? "已创建并绑定" : "已绑定"}滴答清单：${bound.project.name}`, "info");
-          return;
-        } catch (loginError) {
-          ctx.ui.notify(`滴答授权失败：${loginError instanceof Error ? loginError.message : String(loginError)}`, "error");
-          return;
-        }
-      }
-      throw error;
+    const binding = resolveBinding(config, ctx.cwd, tmuxTarget);
+    if (!binding) {
+      ctx.ui.notify("当前目录未绑定滴答分组；Pi 已以被动模式启动。需要 Todo 时执行 /dida-bind。", "warning");
+      return;
     }
-    if (!binding) return;
-    const sync = await activateBinding(ctx, binding);
-    const runtime = getSessionRuntime(sessionId);
-    if (ctx.hasUI && runtime) {
-      if (runtime.works.length === 0) {
+    // Dida sync is background work: Pi session startup must not wait for it.
+    void activateBinding(ctx, binding).then((sync) => {
+      const runtime = getSessionRuntime(sessionId);
+      if (runtime?.works.length === 0) {
         ctx.ui.notify("滴答 Todo 已就绪：当前清单为空，可直接口述任务；首个 Todo 会自动建立顶层工作。", "info");
-      } else if (!runtime.work && runtime.works.every((candidate) => !isExecutableWork(candidate))) {
+      } else if (runtime && !runtime.work && runtime.works.every((candidate) => !isExecutableWork(candidate))) {
         ctx.ui.notify(`滴答 Todo 已就绪：已同步 ${runtime.works.length} 个顶层任务；当前没有满足优先级和时间条件的可执行工作。`, "info");
       }
-    }
-    const executableWorks = runtime?.works.filter(isExecutableWork) ?? [];
-    if (ctx.hasUI && sync.finalizationFailures.length) {
-      ctx.ui.notify(
-        [
-          "以下工作已完成全部 Checklist，但自动创建验收 Todo 失败；源任务仍保持未完成：",
-          ...sync.finalizationFailures.map((failure) => `- ${failure.title}：${failure.error}`),
-        ].join("\n"),
-        "error",
-      );
-    }
-    if (ctx.hasUI && !runtime?.work && executableWorks.length > 1) {
-      ctx.ui.notify(`当前项目有 ${executableWorks.length} 个已设置优先级的未完成工作任务；空闲 Poller 会自动领取，也可完整输入“检查todo”立即执行`, "info");
-    }
+      if (sync.finalizationFailures.length) {
+        ctx.ui.notify(
+          [
+            "以下工作已完成全部 Checklist，但自动创建验收 Todo 失败；源任务仍保持未完成：",
+            ...sync.finalizationFailures.map((failure) => `- ${failure.title}：${failure.error}`),
+          ].join("\n"),
+          "error",
+        );
+      }
+      const executableWorks = runtime?.works.filter(isExecutableWork) ?? [];
+      if (!runtime?.work && executableWorks.length > 1) {
+        ctx.ui.notify(`当前项目有 ${executableWorks.length} 个已设置优先级的未完成工作任务；空闲 Poller 会自动领取，也可完整输入“检查todo”立即执行`, "info");
+      }
+    }).catch((error) => {
+      const message = isDidaAuthenticationError(error)
+        ? "滴答未登录或登录已过期；Pi 已正常启动。需要 Todo 时执行 /dida-bind。"
+        : `滴答同步不可用；Pi 已正常启动。需要 Todo 时执行 /dida-bind。原因：${error instanceof Error ? error.message : String(error)}`;
+      ctx.ui.notify(message, "warning");
+    });
   });
 
   pi.on("input", async (event, ctx) => {
