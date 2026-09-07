@@ -55,6 +55,7 @@ Ctrl+Shift+T  # 折叠/展开 Overlay
 ### 3. 双向状态同步
 
 - `todo create/update/delete` 会写入滴答 Checklist。
+- 一次 `todo create` 即可建立完整多层级 Checklist 工作：`workType=checklist` + `workTitle`（顶层任务）+ `subject`（首个 Item）+ `items[]`（其余 Item，按顺序）。LLM 不需要多次调用逐步搭建层级；后续单步追加才使用 `current_work_step`。
 - 多个 Checklist Item 可以使用相同标题；即使滴答在更新后重写所有 Item ID，Repository 也会按顺序一对一匹配、保存最终服务器 ID，并在同步时净化旧版本造成的重复本机状态，不会把一个已完成 Item 投射到所有同名步骤。
 - Checklist 连续创建、开始、完成或跳过时，顶层描述中的用户原始说明与正文始终各保留一份；旧版本已经堆叠出的尾部重复正文会在下一次 mutation 自动净化。
 - 滴答侧的标题修改和完成状态会同步回 Pi。

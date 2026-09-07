@@ -2,7 +2,11 @@
 
 All notable user-visible changes are recorded here. The project is released through pinned GitHub tags and does not publish to npm.
 
-## [Unreleased]
+## [0.6.36] - 2026-09-07
+
+### Added
+
+- `todo create` 新增 `items[]` 参数：一次调用即可建立完整多层级 Checklist 工作（`workTitle` 顶层 + `subject`/`items[]` 按顺序成为可勾选 Item），LLM 不再需要多次调用逐步搭建层级；schema 描述同步明确 `workType`/`workPriority`/`workTitle` 的必填性，promptGuidelines 新增正向创建示例。
 
 ## [0.6.35] - 2026-08-20
 

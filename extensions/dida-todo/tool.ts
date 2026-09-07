@@ -9,12 +9,13 @@ import { TODO_TRACKING_REASONS, type TodoTrackingReason } from "./tracking-polic
 
 const Params = Type.Object({
   action: StringEnum(["create", "update", "list", "get", "delete", "clear"] as const),
-  subject: Type.Optional(Type.String({ description: "Required for create. For direct work, use an LLM-organized concise task name. For checklist work, use one concrete Item that is distinct from the aggregate workTitle." })),
-  workTitle: Type.Optional(Type.String({ description: "LLM-generated concise aggregate title for checklist work only. It must summarize the whole objective and must not duplicate the first concrete subject." })),
+  subject: Type.Optional(Type.String({ description: "Required for create. For direct work, use an LLM-organized concise task name. For checklist work, use one concrete Item that is distinct from the aggregate workTitle; it becomes the first Checklist Item, and items supply the rest." })),
+  items: Type.Optional(Type.Array(Type.String(), { description: "Additional Checklist Item subjects for one-call multi-level creation. With workType=checklist, a single create with subject + items builds the whole hierarchy: workTitle is the top-level task, subject is Item 1, items are Items 2..N in order. Never spread one hierarchy across multiple create calls." })),
+  workTitle: Type.Optional(Type.String({ description: "Required for checklist work; omitting will be rejected. LLM-generated concise aggregate title that summarizes the whole objective and must not duplicate the first concrete subject." })),
   workDescription: Type.Optional(Type.String({ description: "Top-level Dida task description, distinct from the Checklist step description." })),
   workContent: Type.Optional(Type.String({ description: "Top-level Dida task body/details, distinct from Checklist Items." })),
-  workType: Type.Optional(StringEnum(["direct", "checklist"] as const, { description: "Required when create starts a new work. direct keeps execution steps in managed metadata; checklist writes visible Dida Checklist Items and requires explicit top-level completion." })),
-  workPriority: Type.Optional(StringEnum(["low", "medium", "high"] as const, { description: "Required when create starts a new top-level work. Choose actual urgency/impact: low=1, medium=3, high=5. Priority 0 is reserved for user drafts." })),
+  workType: Type.Optional(StringEnum(["direct", "checklist"] as const, { description: "Required when create starts a new work; omitting will be rejected. direct keeps execution steps in managed metadata; checklist writes visible Dida Checklist Items and requires explicit top-level completion." })),
+  workPriority: Type.Optional(StringEnum(["low", "medium", "high"] as const, { description: "Required when create starts a new top-level work; omitting will be rejected. Choose actual urgency/impact: low=1, medium=3, high=5. Priority 0 is reserved for user drafts." })),
   trackingReason: Type.Optional(StringEnum(TODO_TRACKING_REASONS, {
     description: "Required for every create. Use current_work_step only for a genuine additional step of the active Dida work; otherwise use one durable top-level tracking reason. Ordinary chat, Q&A, one-off research, read-only inspection, translation, summarization, or merely using multiple tools are not valid reasons.",
   })),
@@ -34,6 +35,7 @@ const Params = Type.Object({
 export interface TodoParams {
   action: "create" | "update" | "list" | "get" | "delete" | "clear";
   subject?: string;
+  items?: string[];
   workTitle?: string;
   workDescription?: string;
   workContent?: string;
@@ -100,6 +102,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       "Only when the user's trimmed input is exactly `检查todo`, execute the Dida-synchronized queue injected into the prompt. Near matches, add/append/update requests, and ordinary Todo mentions must not scan or switch top-level work.",
       "Use todo only for durable user work that needs persistent progress: the user explicitly requested tracking, a multi-step implementation changes code/config/services, the work must survive across turns/sessions, or background work needs later acceptance. Keep exactly one task in_progress.",
       "Do not use todo for ordinary chat, simple Q&A, one-off web research, read-only inspection, a short command, diagnosis that does not become implementation, translation, rewriting, or summarization. The number of internal tool calls is never by itself a reason to create Todo.",
+      "One todo create call builds a complete multi-level checklist work: set workType=checklist, workTitle=<aggregate objective>, workPriority, trackingReason, subject=<first Item>, and items=[<Item 2>, <Item 3>, ...]. Example: {action:'create', workType:'checklist', workTitle:'升级数据库', workPriority:'medium', trackingReason:'multi_step_implementation', subject:'备份现有数据', items:['执行迁移脚本','回归验证','更新文档']} creates the top-level work plus all 3 Checklist Items at once. Never spread one hierarchy across multiple create calls, and never put Item text into workTitle; later single-step appends use trackingReason=current_work_step.",
       "Every todo create requires trackingReason. Starting a top-level work also requires workType and workPriority. Choose low/medium/high from actual urgency and impact (1/3/5); priority 0 is reserved for user drafts and must never be used for Pi-created work. For checklist work, generate a concise aggregate workTitle that summarizes the whole objective and differs from the first concrete subject. For direct work, omit workTitle: subject is the LLM-organized task name and description/workContent carry detailed requirements. current_work_step is valid only for a genuine additional step of the active Dida work.",
       "Pi-created direct work may keep one concise task name with internal execution steps. Any user-created Dida work that the LLM formally executes must expose at least one visible Checklist Item, even for a one-step plan; creating the first step promotes a Dida-origin direct task in place. Use checklist work for durable objectives whose visible Items are concrete progress stages across turns or sessions.",
       "Never append unrelated ordinary chat or a separate one-off request to an existing work. If it does not belong to the current durable work, do not call todo.",
@@ -116,6 +119,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       const sessionId = ctx.sessionManager.getSessionId();
       const initialized = requireInitializedRuntime(sessionId);
       const scope = initialized.scope;
+      const extraItems = (params.items ?? []).map((item) => item.trim());
       let work = initialized.work;
       let startedNewWork = false;
       if (params.action === "create") {
@@ -123,6 +127,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
         if (!params.trackingReason || !allowed.includes(params.trackingReason)) {
           throw new Error(`Todo 创建未获当前用户请求授权：trackingReason=${params.trackingReason ?? "missing"}；允许值=${allowed.join(",") || "none"}`);
         }
+        if (extraItems.some((item) => !item)) throw new Error("items entries must be non-empty Checklist Item subjects");
       }
       if (!work) {
         const readyText = initialized.works.length
@@ -218,8 +223,21 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
           };
           nextWork = await repository.createTask(scope, work.remote.id, input, signal);
           resolveWorkFinalization(sessionId, work.remote.id);
+          for (const item of extraItems) {
+            nextWork = await repository.createTask(
+              scope,
+              work.remote.id,
+              {
+                subject: item,
+                ...(params.trackingReason ? { metadata: { trackingReason: params.trackingReason } } : {}),
+              },
+              signal,
+            );
+          }
           const created = nextWork.tasks.at(-1);
-          text = `Created #${created?.id}: ${created?.subject} (pending)`;
+          text = extraItems.length && created
+            ? `Created #${created.id - extraItems.length}–#${created.id} (${extraItems.length + 1} items, all pending)`
+            : `Created #${created?.id}: ${created?.subject} (pending)`;
           break;
         }
         case "update": {

@@ -112,6 +112,90 @@ describe("安装登录后的完整首次使用", () => {
     removeSessionRuntime(sessionId);
   });
 
+  it("一次 create 建立 workTitle + subject + items 的完整多层级 Checklist", async () => {
+    const sessionId = "items-one-call-session";
+    const cwd = "/workspace/demo";
+    const tmuxTarget = "demo:0.0";
+    const configPath = join(await mkdtemp(join(tmpdir(), "dida-items-one-call-")), "config.json");
+    const config: DidaTodoConfig = { bindings: [] };
+    const gateway = new FirstUseGateway();
+    const repository = new DidaTodoRepository(gateway);
+    let setupTool: any;
+    let todoTool: any;
+    const pi = {
+      registerTool(value: any) {
+        if (value.name === "dida_todo_setup") setupTool = value;
+        if (value.name === "todo") todoTool = value;
+      },
+    } as never;
+    const activate = async (_ctx: unknown, binding: ProjectBinding) => {
+      const scope: TodoScope = { binding, bindingKey: binding.key, cwd, tmuxTarget, sessionId };
+      const sync = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
+      setSessionRuntime(sessionId, { scope, works: sync.works });
+    };
+    registerDidaSetupTool(pi, gateway as never, config, () => ({ cwd, tmuxTarget }), activate, configPath);
+    registerTodoTool(pi, repository, () => {});
+    const ctx = { cwd, hasUI: true, ui: { input: async () => "一次建层测试分组" }, sessionManager: { getSessionId: () => sessionId } };
+
+    await setupTool.execute("login", { action: "login" }, undefined, undefined, ctx);
+    setAllowedTrackingReasons(sessionId, ["multi_step_implementation", "current_work_step"]);
+    const created = await todoTool.execute("todo", {
+      action: "create",
+      workType: "checklist",
+      workTitle: "升级数据库",
+      workPriority: "medium",
+      trackingReason: "multi_step_implementation",
+      subject: "备份现有数据",
+      items: ["执行迁移脚本", "回归验证", "更新文档"],
+    }, undefined, undefined, ctx);
+
+    expect(created.content[0].text).toContain("Created #1–#4 (4 items");
+    expect(gateway.tasks).toHaveLength(1);
+    expect(gateway.tasks[0]?.title).toBe("升级数据库");
+    expect(gateway.tasks[0]?.items?.map((item) => item.title)).toEqual(["备份现有数据", "执行迁移脚本", "回归验证", "更新文档"]);
+    removeSessionRuntime(sessionId);
+  });
+
+  it("items 含空串时在创建任何任务前报错", async () => {
+    const sessionId = "items-empty-entry-session";
+    const cwd = "/workspace/demo";
+    const tmuxTarget = "demo:0.0";
+    const configPath = join(await mkdtemp(join(tmpdir(), "dida-items-empty-")), "config.json");
+    const config: DidaTodoConfig = { bindings: [] };
+    const gateway = new FirstUseGateway();
+    const repository = new DidaTodoRepository(gateway);
+    let setupTool: any;
+    let todoTool: any;
+    const pi = {
+      registerTool(value: any) {
+        if (value.name === "dida_todo_setup") setupTool = value;
+        if (value.name === "todo") todoTool = value;
+      },
+    } as never;
+    const activate = async (_ctx: unknown, binding: ProjectBinding) => {
+      const scope: TodoScope = { binding, bindingKey: binding.key, cwd, tmuxTarget, sessionId };
+      const sync = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
+      setSessionRuntime(sessionId, { scope, works: sync.works });
+    };
+    registerDidaSetupTool(pi, gateway as never, config, () => ({ cwd, tmuxTarget }), activate, configPath);
+    registerTodoTool(pi, repository, () => {});
+    const ctx = { cwd, hasUI: true, ui: { input: async () => "空项测试分组" }, sessionManager: { getSessionId: () => sessionId } };
+
+    await setupTool.execute("login", { action: "login" }, undefined, undefined, ctx);
+    setAllowedTrackingReasons(sessionId, ["multi_step_implementation"]);
+    await expect(todoTool.execute("todo", {
+      action: "create",
+      workType: "checklist",
+      workTitle: "带空项的工作",
+      workPriority: "low",
+      trackingReason: "multi_step_implementation",
+      subject: "第一个步骤",
+      items: ["  "],
+    }, undefined, undefined, ctx)).rejects.toThrow("items entries must be non-empty");
+    expect(gateway.tasks).toHaveLength(0);
+    removeSessionRuntime(sessionId);
+  });
+
   it("同一 Agent turn 完成唯一步骤后继续 todo create 时追加到原工作，不提前创建验收", async () => {
     const sessionId = "next-work-session";
     const cwd = "/workspace/demo";
