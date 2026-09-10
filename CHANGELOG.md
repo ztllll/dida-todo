@@ -2,6 +2,12 @@
 
 All notable user-visible changes are recorded here. The project is released through pinned GitHub tags and does not publish to npm.
 
+## [0.6.38] - 2026-09-10
+
+### Added
+
+- `/reload` 不再失忆：会话启动（含 reload）在没有 previousSessionFile 时从当前会话文件重放最后一条 Todo 快照，面板与选中工作跨 reload 保留。
+
 ## [0.6.37] - 2026-09-10
 
 ### Added

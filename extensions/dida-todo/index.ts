@@ -195,7 +195,8 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       ...(tmuxTarget ? { tmuxTarget } : {}),
       sessionId,
     };
-    const replayed = event.previousSessionFile ? replayTodoWork(event.previousSessionFile, scope) : undefined;
+    const sessionFile = event.previousSessionFile ?? (ctx.sessionManager?.getSessionFile?.() ?? undefined);
+    const replayed = sessionFile ? replayTodoWork(sessionFile, scope) : undefined;
     setSessionRuntime(sessionId, { scope, works: replayed ? [replayed] : [], ...(replayed ? { work: replayed } : {}) });
     void activateBinding(ctx, binding).then((sync) => {
       const runtime = getSessionRuntime(sessionId);

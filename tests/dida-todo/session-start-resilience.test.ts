@@ -32,7 +32,7 @@ function tuiCtx(sessionId: string) {
       signal: undefined,
       isIdle: () => false,
       hasPendingMessages: () => false,
-      sessionManager: { getSessionId: () => sessionId },
+      sessionManager: { getSessionId: () => sessionId, getSessionFile: (): string | undefined => undefined },
       ui: { notify: (message: string, level: string) => { notifications.push({ message, level }); }, setWidget() {} },
     },
     notifications,
@@ -64,6 +64,30 @@ describe("session_start 韧性：面板挂载与临时 Runtime 不依赖同步�
     expect(runtime?.work?.tasks).toEqual([{ id: 1, subject: "步骤一", status: "pending" }]);
     expect(getActiveRuntime()).toBe(runtime);
     removeSessionRuntime("replay-session");
+  });
+
+  it("reload 会话从当前会话文件重放快照，面板与工作状态不失忆", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "dida-session-reload-"));
+    const sessionFile = join(dir, "current.jsonl");
+    await writeFile(sessionFile, [
+      JSON.stringify({ message: { role: "toolCall", name: "todo", arguments: { action: "create", workTitle: "续屏工作", workType: "checklist" } } }),
+      JSON.stringify({ message: { role: "toolResult", toolName: "todo", content: [], details: { didaWorkTaskId: "work-9", didaProjectId: BOUND_PROJECT, nextId: 2, tasks: [{ id: 1, subject: "步骤", status: "in_progress" }] } } }),
+    ].join("\n") + "\n");
+
+    const { ready, handlers } = fakePi((command) => {
+      if (command === "tmux") return Promise.resolve({ code: 0, stdout: "pi-didatodo:0.0\n", stderr: "", killed: false });
+      return new Promise<never>(() => {});
+    });
+    await ready;
+    const { ctx } = tuiCtx("reload-session");
+    ctx.sessionManager.getSessionFile = () => sessionFile;
+
+    await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
+
+    const runtime = getSessionRuntime("reload-session");
+    expect(runtime?.work?.remote.id).toBe("work-9");
+    expect(runtime?.work?.tasks).toEqual([{ id: 1, subject: "步骤", status: "in_progress" }]);
+    removeSessionRuntime("reload-session");
   });
 
   it("同步失败时 Runtime 与面板保持可用，Poller 仍启动自愈", async () => {
