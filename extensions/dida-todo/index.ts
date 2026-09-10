@@ -28,7 +28,6 @@ import {
   resolveWorkFinalization,
   runtimeForInput,
   setActiveSession,
-  setAllowedTrackingReasons,
   setQueueCheckPermission,
   setLatestFinalResponse,
   setSessionRuntime,
@@ -43,7 +42,7 @@ import { startTodoPoller } from "./poller.js";
 import { isDidaAuthenticationError } from "./provisioning.js";
 import { registerDidaSetupTool } from "./setup-tool.js";
 import { finalizeWorkAtSettlement } from "./settled-finalization.js";
-import { classifyTodoTrackingReasons } from "./tracking-policy.js";
+import { replayTodoWork } from "./replay.js";
 import { JsonWorkStateStore } from "./state-store.js";
 
 async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Promise<string | undefined> {
@@ -73,7 +72,6 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
   const stateStore = new JsonWorkStateStore();
   const repository = new DidaTodoRepository(gateway, stateStore);
   const acceptanceResultUpdater = new AcceptanceResultUpdater(gateway, stateStore);
-  let activeUI = false;
   const stopPollers = new Map<string, () => void>();
   const setupContexts = new Map<string, { cwd: string; tmuxTarget?: string }>();
 
@@ -124,20 +122,29 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       throw error;
     }
     const works = sync.works;
+    const previous = getSessionRuntime(sessionId);
+    const previousWork = previous?.work;
+    const kept = previousWork ? works.find((work) => work.remote.id === previousWork.remote.id) : undefined;
     const executableWorks = works.filter(isExecutableWork);
-    const work = executableWorks.length === 1 && config.autoResumeSingle !== false ? executableWorks[0] : undefined;
-    setSessionRuntime(sessionId, { scope, works, lastSyncAt: new Date().toISOString(), ...(work ? { work } : {}) });
-    if (ctx.hasUI && !activeUI) {
-      activeUI = true;
-      setActiveSession(sessionId, ctx.ui);
-      overlay.setUI(ctx.ui);
-    }
-    if (ctx.hasUI) {
-      overlay.update(true);
-      stopPollers.get(sessionId)?.();
-      stopPollers.set(sessionId, startTodoPoller(pi, ctx, repository, resolvePollIntervalMinutes(config), () => overlay.update(true)));
-    }
+    const work = kept
+      ?? (executableWorks.length === 1 && config.autoResumeSingle !== false ? executableWorks[0] : undefined);
+    setSessionRuntime(sessionId, {
+      scope,
+      works,
+      lastSyncAt: new Date().toISOString(),
+      ...(work ? { work } : {}),
+      ...(previous?.pendingFinalizationWorkIds ? { pendingFinalizationWorkIds: previous.pendingFinalizationWorkIds } : {}),
+      ...(previous?.pendingAcceptanceResultSources ? { pendingAcceptanceResultSources: previous.pendingAcceptanceResultSources } : {}),
+      ...(previous?.latestFinalResponse ? { latestFinalResponse: previous.latestFinalResponse } : {}),
+    });
     return sync;
+  };
+
+  const bindUiAndPoller = (ctx: ExtensionContext, sessionId: string): void => {
+    if (!ctx.hasUI) return;
+    overlay.update(true);
+    stopPollers.get(sessionId)?.();
+    stopPollers.set(sessionId, startTodoPoller(pi, ctx, repository, resolvePollIntervalMinutes(config), () => overlay.update(true)));
   };
 
   registerDidaSetupTool(
@@ -145,17 +152,23 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     gateway,
     config,
     (sessionId) => setupContexts.get(sessionId),
-    async (ctx, binding) => { await activateBinding(ctx, binding); },
+    async (ctx, binding) => {
+      await activateBinding(ctx, binding);
+      bindUiAndPoller(ctx, ctx.sessionManager.getSessionId());
+    },
   );
   registerDidaBindCommand(
     pi,
     gateway,
     config,
     (sessionId) => setupContexts.get(sessionId),
-    async (ctx, binding) => { await activateBinding(ctx, binding); },
+    async (ctx, binding) => {
+      await activateBinding(ctx, binding);
+      bindUiAndPoller(ctx, ctx.sessionManager.getSessionId());
+    },
   );
 
-  pi.on("session_start", async (_event, ctx) => {
+  pi.on("session_start", async (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     // Web/RPC/Print starts must never require Dida, tmux, or interactive input.
     if (!ctx.hasUI || ctx.mode !== "tui") {
@@ -166,11 +179,24 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     const tmuxTarget = await detectTmuxTarget(pi, process.env.TMUX_PANE).catch(() => undefined);
     setupContexts.set(sessionId, { cwd: ctx.cwd, ...(tmuxTarget ? { tmuxTarget } : {}) });
     const binding = resolveBinding(config, ctx.cwd, tmuxTarget);
+    // 挂载 Overlay 不依赖 Dida 同步成败：先挂面板，任务内容随后重放/同步。
+    setActiveSession(sessionId, ctx.ui);
+    overlay.setUI(ctx.ui);
     if (!binding) {
       ctx.ui.notify("当前目录未绑定滴答分组；Pi 已以被动模式启动。需要 Todo 时执行 /dida-bind。", "warning");
       return;
     }
     // Dida sync is background work: Pi session startup must not wait for it.
+    // 先建临时 Runtime（从上一个会话重放最后快照，或空清单），工具与面板立即可用。
+    const scope: import("./domain.js").TodoScope = {
+      binding,
+      bindingKey: binding.key,
+      cwd: ctx.cwd,
+      ...(tmuxTarget ? { tmuxTarget } : {}),
+      sessionId,
+    };
+    const replayed = event.previousSessionFile ? replayTodoWork(event.previousSessionFile, scope) : undefined;
+    setSessionRuntime(sessionId, { scope, works: replayed ? [replayed] : [], ...(replayed ? { work: replayed } : {}) });
     void activateBinding(ctx, binding).then((sync) => {
       const runtime = getSessionRuntime(sessionId);
       if (runtime?.works.length === 0) {
@@ -191,11 +217,13 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       if (!runtime?.work && executableWorks.length > 1) {
         ctx.ui.notify(`当前项目有 ${executableWorks.length} 个已设置优先级的未完成工作任务；空闲 Poller 会自动领取，也可完整输入“检查todo”立即执行`, "info");
       }
+      bindUiAndPoller(ctx, sessionId);
     }).catch((error) => {
       const message = isDidaAuthenticationError(error)
-        ? "滴答未登录或登录已过期；Pi 已正常启动。需要 Todo 时执行 /dida-bind。"
-        : `滴答同步不可用；Pi 已正常启动。需要 Todo 时执行 /dida-bind。原因：${error instanceof Error ? error.message : String(error)}`;
+        ? "滴答未登录或登录已过期；Pi 已正常启动。需要 Todo 时执行 /dida-bind 重新授权。"
+        : `滴答同步不可用；面板先显示本地状态，Poller 会自动重试同步。原因：${error instanceof Error ? error.message : String(error)}`;
       ctx.ui.notify(message, "warning");
+      bindUiAndPoller(ctx, sessionId);
     });
   });
 
@@ -207,7 +235,6 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       event.source,
       getSessionRuntime(sessionId) !== undefined && hasQueueCheckPermission(sessionId),
     );
-    if (!automaticQueueCheck) setAllowedTrackingReasons(sessionId, classifyTodoTrackingReasons(event.text));
     const checkQueue = manualQueueCheck || automaticQueueCheck;
     setQueueCheckPermission(sessionId, checkQueue);
     if (!checkQueue || automaticQueueCheck) return { action: "continue" };
@@ -294,7 +321,6 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     if (wasActive) {
       overlay.dispose();
       clearActiveSession(sessionId);
-      activeUI = false;
     }
   });
 

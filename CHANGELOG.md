@@ -2,6 +2,16 @@
 
 All notable user-visible changes are recorded here. The project is released through pinned GitHub tags and does not publish to npm.
 
+## [0.6.37] - 2026-09-10
+
+### Added
+
+- 会话启动韧性：TUI 会话无条件挂载 Todo 面板（不再依赖滴答同步成败）；绑定会话在首次同步前先从上一个会话 JSONL 重放最后一条 Todo 快照，面板和工具立即可用；首次同步失败时面板显示本地状态、Poller 继续周期重试自愈，选中工作在重同步后保留。
+
+### Changed
+
+- 绑定会话内 LLM 对 `todo` 工具拥有完全调用权限：撤销逐轮 `trackingReason` 正则授权门（此前合法请求会被“允许值=none”拒绝）；仅凭 `subject` 即可创建新工作，默认 `workType=checklist`、`workPriority=medium(3)`；`workTitle` 缺省时以 `subject` 兼作汇总标题；`trackingReason` 降级为可选审计 metadata。未绑定会话拒绝并引导 `/dida-bind`。队列扫描门不变：精确口令 `检查todo` 与可信 Poller 依旧唯一授权整队列，优先级策略原样保留。
+
 ## [0.6.36] - 2026-09-07
 
 ### Added

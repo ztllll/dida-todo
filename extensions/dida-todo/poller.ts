@@ -5,7 +5,6 @@ import { TODO_AUTO_POLL_PREFIX } from "./input-sync.js";
 import {
   getSessionRuntime,
   pendingWorkFinalizations,
-  setAllowedTrackingReasons,
   setQueueCheckPermission,
   updateSessionWork,
   updateSessionWorks,
@@ -69,7 +68,6 @@ export function startTodoPoller(
 
       const selected = selectPolledWork(executableWorks);
       if (selected) updateSessionWork(sessionId, selected);
-      setAllowedTrackingReasons(sessionId, ["current_work_step"]);
       setQueueCheckPermission(sessionId, true);
       onWorkChanged();
       pi.sendUserMessage(

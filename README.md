@@ -31,7 +31,7 @@
 
 ### 2. 自然语言优先
 
-Todo 只用于需要持久追踪的用户工作，不是 LLM 的通用思考清单。普通聊天、简单问答、一次性联网查询、只读检查、短命令、翻译、润色和总结均不得创建 Todo；内部调用多个工具也不构成建表理由。允许建立顶层工作仅限：用户明确要求记录/追踪、多步骤代码/配置/服务实施、跨轮或跨会话恢复、后台执行后验收。每次 `todo create` 都必须携带由当前用户请求授权的 `trackingReason`；追加当前工作必须使用 `current_work_step`，并把理由写入步骤 metadata 供审计。
+Todo 只用于需要持久追踪的用户工作，不是 LLM 的通用思考清单。普通聊天、简单问答、一次性联网查询、只读检查、短命令、翻译、润色和总结均不得创建 Todo；内部调用多个工具也不构成建表理由。**已绑定会话内 LLM 对 Todo 工具拥有完全调用权限**：仅凭 `subject` 即可创建新工作（默认 checklist、优先级 medium，Poller 可领取；`workType`/`workTitle`/`workPriority` 均可选覆盖），有活动工作时 `create` 默认追加为当前工作的新步骤；未绑定会话拒绝调用并引导用户执行 `/dida-bind`。`trackingReason` 降级为可选审计字段（新工作默认 `user_requested_tracking`，追加默认 `current_work_step`）。队列扫描门不变：仍只有精确口令和可信 Poller 能授权整队列。
 
 用户公开界面只保留原 Todo 体验：
 
