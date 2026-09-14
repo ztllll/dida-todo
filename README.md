@@ -31,7 +31,7 @@
 
 ### 2. 自然语言优先
 
-Todo 只用于需要持久追踪的用户工作，不是 LLM 的通用思考清单。普通聊天、简单问答、一次性联网查询、只读检查、短命令、翻译、润色和总结均不得创建 Todo；内部调用多个工具也不构成建表理由。**已绑定会话内 LLM 对 Todo 工具拥有完全调用权限**：仅凭 `subject` 即可创建新工作（默认 checklist、优先级 medium，Poller 可领取；`workType`/`workTitle`/`workPriority` 均可选覆盖），有活动工作时 `create` 默认追加为当前工作的新步骤；未绑定会话拒绝调用并引导用户执行 `/dida-bind`。`trackingReason` 降级为可选审计字段（新工作默认 `user_requested_tracking`，追加默认 `current_work_step`）。队列扫描门不变：仍只有精确口令和可信 Poller 能授权整队列。
+Todo 只用于需要持久追踪的用户工作，不是 LLM 的通用思考清单。判定标准是**工作必须存活到本次对话之外**：用户明确要求追踪/记录、实施将跨轮或跨会话进行、或后台执行需要事后验收，才建 Todo。普通聊天、简单问答、一次性联网查询、只读检查、短命令、翻译、润色和总结均不得创建 Todo；内部调用多个工具也不构成建表理由。几分钟内可完成并验证的轻量任务——安装 skill/依赖、跑命令、单文件小修、快速配置调整——直接执行并在回复中报告，禁止建 todo。**已绑定会话内 LLM 对 Todo 工具拥有完全调用权限**：仅凭 `subject` 即可创建新工作（默认 checklist、优先级 medium，Poller 可领取；`workType`/`workTitle`/`workPriority` 均可选覆盖），有活动工作时 `create` 默认追加为当前工作的新步骤；未绑定会话拒绝调用并引导用户执行 `/dida-bind`。`trackingReason` 降级为可选审计字段（新工作默认 `user_requested_tracking`，追加默认 `current_work_step`）。队列扫描门不变：仍只有精确口令和可信 Poller 能授权整队列。完成步骤时必须携带 `metadata.resolution`（改了什么、关键文件、如何验证），结果随步骤评论写入滴答，收口时另附逐步骤汇总评论，手机端不开终端即可阅读。
 
 用户公开界面只保留原 Todo 体验：
 

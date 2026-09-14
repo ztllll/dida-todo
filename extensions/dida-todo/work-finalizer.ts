@@ -65,9 +65,36 @@ export class WorkFinalizer {
     if (!comments.some((comment) => comment.title === ACCEPTANCE_COMMENT)) {
       await this.gateway.addTaskComment(scope.binding.projectId, acceptance.id, ACCEPTANCE_COMMENT, signal);
     }
+    await this.postResultSummary(scope, work, signal);
     await this.completeRemoteItems(scope, work, signal);
     await this.gateway.completeTask(scope.binding.projectId, work.remote.id, signal);
     return acceptance;
+  }
+
+  private async postResultSummary(scope: TodoScope, work: WorkTask, signal?: AbortSignal): Promise<void> {
+    if (!this.gateway.addTaskComment || !this.gateway.getTaskComments) return;
+    try {
+      const existing = await this.gateway.getTaskComments(scope.binding.projectId, work.remote.id, signal);
+      if (existing.some((comment) => comment.title.startsWith("任务完成："))) return;
+    } catch {
+      // 查询失败不阻断汇总。
+    }
+    const lines = visibleTasks(work).map((task) => {
+      const resolution = typeof task.metadata?.resolution === "string" && task.metadata.resolution.trim()
+        ? task.metadata.resolution.trim()
+        : "无备注";
+      return `- ${task.status === "skipped" ? "跳过" : "完成"}：${task.subject} —— ${resolution}`;
+    });
+    try {
+      await this.gateway.addTaskComment(
+        scope.binding.projectId,
+        work.remote.id,
+        `任务完成：${work.remote.title}\n${lines.join("\n")}`,
+        signal,
+      );
+    } catch {
+      // 结果汇总是 best-effort；Checklist 状态与验收收口仍是权威结果。
+    }
   }
 
   private async completeRemoteItems(scope: TodoScope, source: WorkTask, signal?: AbortSignal): Promise<void> {

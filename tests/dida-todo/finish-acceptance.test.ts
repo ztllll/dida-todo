@@ -199,7 +199,7 @@ describe("完成工作强制人类验收", () => {
     expect(gateway.created[0]?.content).toContain("8 项测试通过");
     expect(gateway.completed).toEqual(["work"]);
     expect(result.acceptanceTask.id).toBe("created-1");
-    expect(gateway.comments).toEqual([{ taskId: "created-1", title: ACCEPTANCE_COMMENT }]);
+    expect(gateway.comments).toEqual([{ taskId: "created-1", title: ACCEPTANCE_COMMENT }, { taskId: "work", title: "任务完成：实现搜索\n- 完成：实现功能 —— 实现搜索接口\n- 完成：运行测试 —— 8 项测试通过" }]);
   });
 
   it("历史组合描述生成验收时正文只出现一次且不带旧进展块", async () => {
@@ -295,7 +295,7 @@ describe("完成工作强制人类验收", () => {
     expect(gateway.created).toHaveLength(0);
     expect(result.acceptanceTask.id).toBe("acceptance");
     expect(gateway.completed).toEqual(["work"]);
-    expect(gateway.comments).toEqual([{ taskId: "acceptance", title: ACCEPTANCE_COMMENT }]);
+    expect(gateway.comments).toEqual([{ taskId: "acceptance", title: ACCEPTANCE_COMMENT }, { taskId: "work", title: "任务完成：实现搜索\n- 完成：实现功能 —— 实现搜索接口\n- 完成：运行测试 —— 8 项测试通过" }]);
   });
 
   it("验收已创建但引导评论失败时源任务保持未完成，下次重试复用验收并补评论", async () => {
@@ -311,7 +311,7 @@ describe("完成工作强制人类验收", () => {
     const retried = await new DidaTodoRepository(retryGateway, stateStore).finishWork(scope, "work");
     expect(retried.acceptanceTask.id).toBe("created-1");
     expect(retryGateway.created).toHaveLength(0);
-    expect(retryGateway.comments).toEqual([{ taskId: "created-1", title: ACCEPTANCE_COMMENT }]);
+    expect(retryGateway.comments).toEqual([{ taskId: "created-1", title: ACCEPTANCE_COMMENT }, { taskId: "work", title: "任务完成：实现搜索\n- 完成：实现功能 —— 实现搜索接口\n- 完成：运行测试 —— 8 项测试通过" }]);
     expect(retryGateway.completed).toEqual(["work"]);
   });
 

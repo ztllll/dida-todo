@@ -2,6 +2,16 @@
 
 All notable user-visible changes are recorded here. The project is released through pinned GitHub tags and does not publish to npm.
 
+## [0.6.39] - 2026-09-10
+
+### Changed
+
+- 收紧 Todo 判定标准：只有工作需要存活到本次对话之外（明确要求追踪、跨轮/跨会话实施、后台执行后验收）才建 Todo；安装 skill/依赖、跑命令、单文件小修等几分钟内可完成并验证的轻量任务，直接执行并报告，禁止建 todo。
+
+### Added
+
+- 结果上清单：完成步骤时 `metadata.resolution`（改了什么、关键文件、如何验证）作为步骤评论写入滴答；工作收口时自动追加一条逐步骤汇总评论（完成/跳过 + 结果），手机端不开终端即可阅读全部交付结果。
+
 ## [0.6.38] - 2026-09-10
 
 ### Added
