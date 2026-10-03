@@ -1,3 +1,6 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createExtensionRuntime, loadExtensions } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js";
 import didaTodo, { initializePassiveSession } from "../../extensions/dida-todo/index.js";
@@ -141,5 +144,42 @@ describe("dida-todo Extension 生命周期", () => {
       sessionManager: { getSessionId: () => "print-session" },
     });
     expect(execCalls).toBe(0);
+  });
+
+  it("已绑定的 Web/RPC session_start 挂载 Todo 面板，使 pi-web 能渲染 Checklist", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "dida-rpc-overlay-"));
+    const previousFile = join(dir, "previous.jsonl");
+    await writeFile(previousFile, [
+      JSON.stringify({ message: { role: "toolCall", name: "todo", arguments: { action: "create", workTitle: "面板工作", workType: "checklist" } } }),
+      JSON.stringify({ message: { role: "toolResult", toolName: "todo", content: [], details: { didaWorkTaskId: "work-rpc", didaProjectId: "6a799f4de4b050c704b321b2", nextId: 2, tasks: [{ id: 1, subject: "步骤", status: "pending" }] } } }),
+    ].join("\n") + "\n");
+
+    const handlers = new Map<string, (event: unknown, ctx: any) => unknown>();
+    const widgets: Array<{ key: string; value: unknown }> = [];
+    await didaTodo({
+      registerTool() {},
+      registerCommand() {},
+      registerShortcut() {},
+      on(event: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers.set(event, handler); },
+      async exec() { return { code: 1, stdout: "", stderr: "no dida cli in test", killed: false }; },
+    } as never);
+
+    await handlers.get("session_start")?.({ type: "session_start", reason: "resume", previousSessionFile: previousFile }, {
+      cwd: "/home/pyadmin/dida-todo",
+      hasUI: true,
+      mode: "rpc",
+      signal: undefined,
+      isIdle: () => true,
+      hasPendingMessages: () => false,
+      sessionManager: { getSessionId: () => "bound-rpc-overlay", getSessionFile: (): string | undefined => undefined },
+      ui: {
+        notify() {},
+        setWidget(key: string, value: unknown) { widgets.push({ key, value }); },
+      },
+    });
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    expect(widgets.some((call) => call.key === "dida-todos")).toBe(true);
+    removeSessionRuntime("bound-rpc-overlay");
   });
 });

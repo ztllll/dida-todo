@@ -2,6 +2,27 @@
 
 All notable user-visible changes are recorded here. The project is released through pinned GitHub tags and does not publish to npm.
 
+## [0.6.40] - 2026-10-03
+
+### Fixed
+
+- Web/RPC 宿主恢复挂载 Todo 面板：`session_start` 此前在 `mode !== "tui"` 时无条件走被动分支，导致 pi-web 等 RPC 宿主完全不渲染 Checklist。现在 TUI 与 Web/RPC 都会挂载 Overlay 并同步滴答；Print/JSON（`hasUI=false`）保持被动，未绑定目录仍不访问滴答，RPC 也不再解析 tmux binding。
+
+### Changed
+
+- 自动轮询仍只在 TUI 会话启动。RPC 宿主没有真实空闲信号（Pi 在 RPC 下 `ctx.isIdle()` 恒为 true），在那里启动会让每个浏览器会话周期性自动领取并执行队列。
+
+### Verification
+
+- 新增回归测试覆盖已绑定 Web/RPC 启动必须调用 `setWidget`；撤掉修复后该测试失败、其余 6 项通过，确认可红。
+- 224 项测试通过（223 passed + 1 opt-in real-Dida gate skipped）；typecheck、包结构、dry-run 打包、凭据扫描均通过。
+
+### Notes
+
+- 宿主：Pi（TUI 与 RPC/Web）；在 Pi 1.0.1 + `@agegr/pi-web` 0.8.9 上验证。
+- 已知降级：Pi 自带 `--mode rpc` 的 CLI 客户端会忽略组件工厂（只接受 `string[]`），这些宿主仍看不到面板；pi-web 自行实现了工厂渲染，不受影响。
+- 升级后需重启会话或 `/reload` 才会挂载面板。
+
 ## [0.6.39] - 2026-09-10
 
 ### Changed

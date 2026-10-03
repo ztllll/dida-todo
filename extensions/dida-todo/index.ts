@@ -143,6 +143,9 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
   const bindUiAndPoller = (ctx: ExtensionContext, sessionId: string): void => {
     if (!ctx.hasUI) return;
     overlay.update(true);
+    // Web/RPC 会话没有真实空闲信号（Pi 在 RPC 下把 isIdle 恒定为 true），
+    // 在那里启动 Poller 会让每个浏览器会话周期性自动领取队列；自动执行仍只在 TUI 内生效。
+    if (ctx.mode !== "tui") return;
     stopPollers.get(sessionId)?.();
     stopPollers.set(sessionId, startTodoPoller(pi, ctx, repository, resolvePollIntervalMinutes(config), () => overlay.update(true)));
   };
@@ -170,20 +173,25 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
 
   pi.on("session_start", async (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
-    // Web/RPC/Print starts must never require Dida, tmux, or interactive input.
-    if (!ctx.hasUI || ctx.mode !== "tui") {
-      setupContexts.set(sessionId, { cwd: ctx.cwd });
+    // tmux 只对 TUI 会话有意义；Web/RPC 解析 cwd binding，避免继承 tmux binding。
+    const tmuxTarget = ctx.mode === "tui"
+      ? await detectTmuxTarget(pi, process.env.TMUX_PANE).catch(() => undefined)
+      : undefined;
+    setupContexts.set(sessionId, { cwd: ctx.cwd, ...(tmuxTarget ? { tmuxTarget } : {}) });
+    // Print/JSON 没有可渲染的 UI 表面：保持被动，启动过程不依赖滴答、tmux 或交互输入。
+    if (!ctx.hasUI) {
       initializePassiveSession(config, ctx.cwd, sessionId);
       return;
     }
-    const tmuxTarget = await detectTmuxTarget(pi, process.env.TMUX_PANE).catch(() => undefined);
-    setupContexts.set(sessionId, { cwd: ctx.cwd, ...(tmuxTarget ? { tmuxTarget } : {}) });
     const binding = resolveBinding(config, ctx.cwd, tmuxTarget);
-    // 挂载 Overlay 不依赖 Dida 同步成败：先挂面板，任务内容随后重放/同步。
+    // 挂载 Overlay 不依赖 Dida 同步成败：TUI 与 Web/RPC 都先挂面板，任务内容随后重放/同步。
     setActiveSession(sessionId, ctx.ui);
     overlay.setUI(ctx.ui);
     if (!binding) {
-      ctx.ui.notify("当前目录未绑定滴答分组；Pi 已以被动模式启动。需要 Todo 时执行 /dida-bind。", "warning");
+      initializePassiveSession(config, ctx.cwd, sessionId);
+      if (ctx.mode === "tui") {
+        ctx.ui.notify("当前目录未绑定滴答分组；Pi 已以被动模式启动。需要 Todo 时执行 /dida-bind。", "warning");
+      }
       return;
     }
     // Dida sync is background work: Pi session startup must not wait for it.
