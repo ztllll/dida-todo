@@ -1,4 +1,4 @@
-# dida-todo-dsh
+# dida-todo（dsh 插件）
 
 DeepSeek Harness（dsh）插件：**滴答清单 Todo + 会话中断自动续跑**。源码与 Pi 版本见 [ztllll/dida-todo](https://github.com/ztllll/dida-todo)。
 
@@ -15,13 +15,13 @@ DeepSeek Harness（dsh）插件：**滴答清单 Todo + 会话中断自动续跑
 在 dsh 侧栏 **插件 → 添加插件**，填：
 
 ```text
-github:ztllll/dida-todo#path:dsh-plugin&v0.9.0
+github:ztllll/dida-todo#v0.9.1
 ```
 
 或命令行：
 
 ```sh
-dsh plugin --profile web add "github:ztllll/dida-todo#path:dsh-plugin&v0.9.0"
+dsh plugin --profile web add "github:ztllll/dida-todo#v0.9.1"
 ```
 
 安装后在插件页启用（默认启用），刷新页面即生效。不需要构建脚本授权。
@@ -56,7 +56,7 @@ dsh plugin --profile web add "github:ztllll/dida-todo#path:dsh-plugin&v0.9.0"
 插件页卸载，或：
 
 ```sh
-dsh plugin --profile web remove dida-todo-dsh
+dsh plugin --profile web remove dida-todo
 ```
 
 卸载移除整层配置，dsh 自带的 `todo_write` 与任务面板照常工作。滴答上的历史任务不会被删除；`~/.config/pi-dida-todo` 与 `~/.local/state/pi-dida-todo` 若不再需要可手动删除（Pi 版也在用时请保留）。

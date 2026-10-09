@@ -8,7 +8,7 @@ dida-todo 让滴答清单（Dida365）作为人与 Agent 共享的任务真源�
 npm ci
 npm run check        # 结构/凭据扫描 + typecheck + vitest + dsh 打包 + pack dry-run
 npm run build:dsh    # 生成 dsh-plugin/index.mjs（dsh 组合包入口，不含任何 Pi 依赖）
-npm run pack:dsh     # 打成 dist/dida-todo-dsh-<ver>.tgz，可 `dsh plugin add` 本地验证
+npm run pack:dsh     # 打成 dist/dida-todo-<ver>.tgz，可 `dsh plugin add` 本地验证
 git diff --check
 ```
 
@@ -30,7 +30,7 @@ git diff --check
 ```text
 extensions/dida-todo/   宿主无关核心 + Pi 入口（index.ts、overlay.ts、commands.ts、setup-tool.ts、poller.ts 的 Pi 定时器）
 extensions/dsh/         dsh 入口源码：把 dsh 生命周期映射到同一核心，并实现中断自动续跑
-dsh-plugin/             dsh 组合包 dida-todo-dsh（package.json 声明 dsh.bundle；index.mjs 为构建产物，需提交）
+dsh-plugin/             dsh 组合包资源：index.mjs（构建产物，需提交）、cordis.patch.yml、locale/；根 package.json 的 dsh.bundle 指向这里
 ```
 
 - 核心模块不得静态 import `@earendil-works/*` 运行时（只允许 `import type`）；Pi 专属能力（TUI `Text`、`ExtensionAPI`）由 Pi 入口注入。`npm run build:dsh` 产物里出现 `earendil` 即为违规。
@@ -89,4 +89,4 @@ dsh-plugin/             dsh 组合包 dida-todo-dsh（package.json 声明 dsh.bu
 2. 用户可见行为变化同步 README；调度、Poller、安装生命周期变化同步 README 的“调度”和“升级”两节。
 3. 更新 `package.json` 版本、`tests/dida-todo/package.test.ts` 版本断言与 `CHANGELOG.md`；`npm run check` 通过后提交，打 tag `vX.Y.Z` 推送。只走 GitHub，不发 npm。
 4. 安装：等使用 dida-todo 的 Pi 进程空闲 → `pi install git:github.com/ztllll/dida-todo@vX.Y.Z` → 对每个已运行进程 `/reload`。
-5. dsh：`dsh-plugin/package.json` 版本与主包一致（测试强制）；`dsh-plugin/cordis.patch.yml` 只允许 `insert`，不得覆盖或禁用 dsh 自带行（测试强制），保证卸载即恢复原样。用户安装：`dsh plugin --profile web add "github:ztllll/dida-todo#path:dsh-plugin&vX.Y.Z"`；DSH Hub 收录同一仓库子目录。
+5. dsh：仓库根 `package.json` 同时是 Pi 包（`pi.extensions`）与 dsh 组合包（`dsh.bundle`，DSH Hub 只认根清单）；`dsh-plugin/cordis.patch.yml` 只允许 `insert`，不得覆盖或禁用 dsh 自带行（测试强制），保证卸载即恢复原样。用户安装：`dsh plugin --profile web add "github:ztllll/dida-todo#vX.Y.Z"`；仓库带 `dsh-plugin` topic，DSH Hub 自动收录。

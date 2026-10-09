@@ -4,6 +4,13 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-09
+
+### Changed
+
+- 为上架 DSH Hub（只校验仓库根 `package.json` 的 `dsh.bundle`），仓库根清单同时声明 dsh 组合包；删除 `dsh-plugin/package.json`，dsh 包名改为 `dida-todo`，安装地址简化为 `github:ztllll/dida-todo#v0.9.1`。Pi 安装方式与行为不变。
+- GitHub 仓库新增 `dsh-plugin`、`dsh`、`deepseek-harness` topic，供 DSH Hub 自动收录。
+
 ## [0.9.0] - 2026-10-09
 
 ### Changed
@@ -380,7 +387,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/ztllll/dida-todo/tree/v0.9.1
 [0.9.0]: https://github.com/ztllll/dida-todo/tree/v0.9.0
 [0.8.1]: https://github.com/ztllll/dida-todo/tree/v0.8.1
 [0.8.0]: https://github.com/ztllll/dida-todo/tree/v0.8.0

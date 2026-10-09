@@ -1,8 +1,15 @@
 {
   "name": "dida-todo",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "type": "module",
+  "main": "./dsh-plugin/index.mjs",
+  "exports": {
+    ".": "./dsh-plugin/index.mjs",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./dsh-plugin/locale/*.json",
+    "./cordis.patch.yml": "./dsh-plugin/cordis.patch.yml"
+  },
   "description": "Pi / dsh 扩展：以滴答清单为 Todo 真源，支持自然语言执行、双向同步、提醒、强制人类验收闭环，以及 dsh 会话中断自动续跑。",
   "license": "MIT",
   "author": "Ztllll",
@@ -23,7 +30,8 @@
     "task-management",
     "human-in-the-loop",
     "dsh",
-    "deepseek-harness"
+    "deepseek-harness",
+    "dsh-plugin"
   ],
   "files": [
     "extensions/dida-todo",
@@ -41,7 +49,7 @@
     "test": "vitest run",
     "pack:check": "npm pack --dry-run --json >/tmp/dida-todo-pack.json",
     "build:dsh": "node scripts/build-dsh.mjs",
-    "pack:dsh": "npm run build:dsh && mkdir -p dist && cd dsh-plugin && npm pack --pack-destination ../dist >/dev/null && ls ../dist/dida-todo-dsh-*.tgz"
+    "pack:dsh": "npm run build:dsh && mkdir -p dist && npm pack --pack-destination dist >/dev/null && ls dist/dida-todo-*.tgz"
   },
   "pi": {
     "extensions": [
@@ -70,5 +78,24 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./dsh-plugin/cordis.patch.yml"
+    }
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
   }
 }

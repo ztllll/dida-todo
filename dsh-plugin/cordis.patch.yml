@@ -2,7 +2,7 @@
 # 卸载本包时这一层整体移除，dsh 恢复原样。
 - insert:
     - id: dida-todo
-      name: dida-todo-dsh
+      name: dida-todo
       config:
         # 中断后自动续跑的最大连续次数，0 关闭续跑。
         maxAutoContinue: 5

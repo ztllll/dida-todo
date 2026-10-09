@@ -1,4 +1,4 @@
-// 把 dsh 插件打包为单文件 ESM：dsh-plugin/index.mjs（dsh 组合包 dida-todo-dsh 的入口）。
+// 把 dsh 插件打包为单文件 ESM：dsh-plugin/index.mjs（仓库根 dsh 组合包 dida-todo 的入口）。
 // 运行时依赖只有 @suibiji/dida-cli（子进程调用），由 createRequire 从插件所在目录解析。
 import { build } from "esbuild";
 
