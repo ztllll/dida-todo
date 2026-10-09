@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Dida Todo · Auto-continue",
+    "description": "Syncs the agent's multi-step work to a Dida365 list (visible on your phone, with acceptance reminders when done), and automatically resumes sessions that stop on content_filter, 429, Overloaded or a crash, reminding you in Dida after repeated failures. Keeps the built-in todo_write; uninstalling restores dsh as it was."
+  }
+}

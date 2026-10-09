@@ -4,6 +4,22 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-09
+
+### Changed
+
+- dsh 版改为标准组合包 `dida-todo-dsh`（仓库 `dsh-plugin/` 目录，`package.json` 声明 `dsh.bundle`），用 `dsh plugin add` 或插件页「添加插件」安装，出现在插件页「已安装」中，可停用、可卸载。配置层只 `insert` 一行插件，不覆盖或禁用 dsh 自带的 `todo_write`、goal、任务面板；卸载后整层移除，dsh 恢复原样。dida CLI 作为组合包自身依赖安装，不再需要软链 Pi 的安装目录。
+- 依赖 `@suibiji/dida-cli` 升级到 ^0.1.14。
+
+### Fixed
+
+- dsh 重启或崩溃后恢复会话时，dsh 在插件监听之前补写 `turn/end: interrupted`，插件收不到；现在接管会话时检查最后一个回合，30 分钟内中断且仍有未完成工作的会续跑。
+
+### Verification
+
+- 隔离 profile 中 `dsh plugin add` 本地 tarball：bundle 列表新增 `dida-todo-dsh`，`--dump-config` 出现 `dida-todo` 行；`dsh plugin remove` 后该行消失，`tool-todo`（dsh 自带 todo_write）始终保留。
+- hbhy 生产 web profile 用 `dsh plugin add` 安装，替换此前手工 `~/.dsh/cordis.patch.yml` 挂载；重启后插件加载并绑定会话。
+
 ## [0.8.1] - 2026-10-09
 
 ### Added
@@ -364,7 +380,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/ztllll/dida-todo/tree/v0.9.0
 [0.8.1]: https://github.com/ztllll/dida-todo/tree/v0.8.1
 [0.8.0]: https://github.com/ztllll/dida-todo/tree/v0.8.0
 [0.7.0]: https://github.com/ztllll/dida-todo/tree/v0.7.0

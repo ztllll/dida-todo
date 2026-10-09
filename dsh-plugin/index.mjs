@@ -6799,9 +6799,34 @@ async function apply(ctx, pluginConfig = {}) {
   });
   ctx.tools.register(wrap(createTodoToolDefinition(repository, noop)));
   ctx.tools.register(wrap(createTodoWorkToolDefinition(repository, noop)));
+  const recoveredChecked = /* @__PURE__ */ new Set();
+  function resumeInterruptedOnAttach(agent) {
+    const sessionId = agent.session.id;
+    if (recoveredChecked.has(sessionId)) return;
+    recoveredChecked.add(sessionId);
+    let events;
+    try {
+      events = agent.session.ownEvents?.() ?? [];
+    } catch {
+      return;
+    }
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+      const event = events[i];
+      if (event.type === "todo/write" && Array.isArray(event.data?.todos) && !lastTodos.has(sessionId)) lastTodos.set(sessionId, event.data.todos);
+    }
+    const lastEnd = [...events].reverse().find((event) => event.type === "turn/end");
+    const lastStart = [...events].reverse().find((event) => event.type === "turn/start");
+    if (!lastEnd || (lastStart?.time ?? 0) > (lastEnd.time ?? 0)) return;
+    const reason = lastEnd.data?.reason;
+    if (reason?.kind !== "interrupted" && reason?.kind !== "error") return;
+    if (Date.now() - (lastEnd.time ?? 0) > 30 * 6e4) return;
+    log.info(`\u4F1A\u8BDD ${sessionId.slice(0, 16)} \u6062\u590D\u65F6\u53D1\u73B0\u4E0A\u4E00\u56DE\u5408\u4E2D\u65AD\uFF08${reason.kind}\uFF09\uFF0C\u5B89\u6392\u81EA\u52A8\u7EED\u8DD1`);
+    scheduleContinuation(agent, { kind: reason.kind, ...reason.error?.message ? { message: reason.error.message } : {} });
+  }
   async function attach(agent) {
     const sessionId = agent.session.id;
     if ((agent.session.header.delegationDepth ?? 0) > 0) return;
+    resumeInterruptedOnAttach(agent);
     const cwd = agent.session.header.cwd;
     if (!cwd || getSessionRuntime(sessionId) || syncing.has(sessionId)) return;
     const binding = resolveBinding(config, cwd);
@@ -6955,6 +6980,7 @@ ${todos.map((todo) => `- ${todo}`).join("\n")}`);
     continueAttempts.delete(sessionId);
     touchedWork.delete(sessionId);
     lastTodos.delete(sessionId);
+    recoveredChecked.delete(sessionId);
     lastPolled.delete(sessionId);
     removeSessionRuntime(sessionId);
   });

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "滴答 Todo · 中断续跑",
+    "description": "把 Agent 的多步任务同步到滴答清单（手机可看、完成后自动验收提醒）；会话因 content_filter、429、Overloaded 或崩溃中断时自动继续，连续失败后在滴答提醒你。不替换自带 todo_write，卸载即恢复原样。"
+  }
+}

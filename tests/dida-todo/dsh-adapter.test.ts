@@ -126,6 +126,36 @@ describe("dsh 宿主插件", () => {
     expect(h.sent).toHaveLength(0);
   });
 
+  it("dsh 重启后恢复的会话：上一回合 interrupted 且有未完成 todo_write，接管时自动续跑", async () => {
+    const h = harness();
+    const now = Date.now();
+    (h.agent.session as Record<string, unknown>).ownEvents = () => [
+      { type: "turn/start", time: now - 60_000 },
+      { type: "todo/write", time: now - 50_000, data: { todos: [{ content: "同步交接文档", status: "in_progress" }] } },
+      { type: "turn/end", time: now - 10_000, data: { reason: { kind: "interrupted" } } },
+    ];
+    vi.useFakeTimers({ now });
+    await apply(h.ctx as never, { poll: false, testOverrides: { config: { bindings: [] }, repository: h.repository as never } });
+    await h.emit("agent/created", { agent: h.agent });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(h.sent).toHaveLength(1);
+    expect(h.sent[0]).toContain("同步交接文档");
+  });
+
+  it("恢复的会话上一回合正常完成或早已过时，不续跑", async () => {
+    const h = harness();
+    const now = Date.now();
+    (h.agent.session as Record<string, unknown>).ownEvents = () => [
+      { type: "todo/write", time: now - 3_600_000, data: { todos: [{ content: "旧任务", status: "pending" }] } },
+      { type: "turn/end", time: now - 3_600_000, data: { reason: { kind: "interrupted" } } },
+    ];
+    vi.useFakeTimers({ now });
+    await apply(h.ctx as never, { poll: false, testOverrides: { config: { bindings: [] }, repository: h.repository as never } });
+    await h.emit("agent/created", { agent: h.agent });
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(h.sent).toHaveLength(0);
+  });
+
   it("未绑定目录的会话不接管、工具给出绑定指引", async () => {
     const h = harness();
     await apply(h.ctx as never, { poll: false, testOverrides: { config: { bindings: [] }, repository: h.repository as never } });

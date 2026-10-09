@@ -60,7 +60,12 @@ interface DshAgent {
   id: string;
   status: "idle" | "running";
   whenIdle?(): Promise<void>;
-  session: { id: string; header: { cwd?: string; delegationDepth?: number }; append?(type: string, data: unknown): void };
+  session: {
+    id: string;
+    header: { cwd?: string; delegationDepth?: number };
+    append?(type: string, data: unknown): void;
+    ownEvents?(): ReadonlyArray<{ type: string; time?: number; data?: any }>;
+  };
   followup(message: DshMessage): void;
 }
 interface DshGoalView { id: string; revision: number; phase: string; activation: string; roundsStarted: number; maxGoalRounds: number }
@@ -203,9 +208,37 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
   ctx.tools.register(wrap(createTodoWorkToolDefinition(repository, noop)));
 
   // ---- 会话绑定 ----
+  // dsh 重启或崩溃后恢复会话时，会在插件监听之前补写 turn/end:interrupted；
+  // 插件看不到这个事件，所以接管会话时自己检查最后一个回合。只看最近 30 分钟内的，避免翻旧账。
+  const recoveredChecked = new Set<string>();
+  function resumeInterruptedOnAttach(agent: DshAgent): void {
+    const sessionId = agent.session.id;
+    if (recoveredChecked.has(sessionId)) return;
+    recoveredChecked.add(sessionId);
+    let events: ReadonlyArray<{ type: string; time?: number; data?: any }>;
+    try {
+      events = agent.session.ownEvents?.() ?? [];
+    } catch {
+      return;
+    }
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+      const event = events[i]!;
+      if (event.type === "todo/write" && Array.isArray(event.data?.todos) && !lastTodos.has(sessionId)) lastTodos.set(sessionId, event.data.todos);
+    }
+    const lastEnd = [...events].reverse().find((event) => event.type === "turn/end");
+    const lastStart = [...events].reverse().find((event) => event.type === "turn/start");
+    if (!lastEnd || (lastStart?.time ?? 0) > (lastEnd.time ?? 0)) return;
+    const reason = lastEnd.data?.reason as { kind?: string; error?: { message?: string } } | undefined;
+    if (reason?.kind !== "interrupted" && reason?.kind !== "error") return;
+    if (Date.now() - (lastEnd.time ?? 0) > 30 * 60_000) return;
+    log.info(`会话 ${sessionId.slice(0, 16)} 恢复时发现上一回合中断（${reason.kind}），安排自动续跑`);
+    scheduleContinuation(agent, { kind: reason.kind, ...(reason.error?.message ? { message: reason.error.message } : {}) });
+  }
+
   async function attach(agent: DshAgent): Promise<void> {
     const sessionId = agent.session.id;
     if ((agent.session.header.delegationDepth ?? 0) > 0) return; // 子代理不接管滴答队列
+    resumeInterruptedOnAttach(agent);
     const cwd = agent.session.header.cwd;
     if (!cwd || getSessionRuntime(sessionId) || syncing.has(sessionId)) return;
     const binding = resolveBinding(config, cwd);
@@ -374,6 +407,7 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
     continueAttempts.delete(sessionId);
     touchedWork.delete(sessionId);
     lastTodos.delete(sessionId);
+    recoveredChecked.delete(sessionId);
     lastPolled.delete(sessionId);
     removeSessionRuntime(sessionId);
   });
