@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import {
   DEFAULT_COLLAPSE_KEY,
   DEFAULT_MAX_WIDGET_LINES,
@@ -84,7 +85,7 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
   );
   const refreshOverlay = () => overlay.update();
 
-  registerTodoTool(pi, repository, refreshOverlay);
+  registerTodoTool(pi, repository, refreshOverlay, Text);
   registerTodoWorkTool(pi, repository, refreshOverlay);
   registerCommands(pi, repository, refreshOverlay);
 

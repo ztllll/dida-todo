@@ -4,6 +4,23 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-09
+
+### Added
+
+- dsh（DeepSeek Harness）插件：`npm run build:dsh` 生成单文件 `dist/dsh/dida-todo.mjs`，经 `~/.dsh/cordis.patch.yml` 挂载。复用与 Pi 相同的核心：cwd 绑定、`todo` / `todo_work`、全部子项完成后自动收口与待验收、`wait_for_human`。
+- dsh 会话中断自动续跑：回合以 `error`（content_filter / 429 / Overloaded）或 `interrupted`（崩溃）结束且会话有未完成工作（本会话推进的滴答工作、未完成 goal、未完成 `todo_write`）时，按 30s/1m/2m/5m/10m 退避自动续跑；被官方驱动器解除的 goal 先重新激活；连续 5 次失败后在滴答建 `🙋` 提醒。人类消息会撤销待发续跑。
+- `repository.createHumanReminder`：没有滴答工作可挂起时，直接在绑定清单建 `🙋` 提醒。
+
+### Changed
+
+- 核心模块去掉对 Pi 运行时的静态依赖（`withMutationQueue`、本地 `StringEnum`、`CommandRunner`、TUI `Text` 由 Pi 入口注入），Pi 行为不变。
+
+### Verification
+
+- 真实 dsh 0.2.0-rc.2（隔离 `DSH_HOME`、sdk profile、`llm/stream` 注入故障）端到端：content_filter 中断后 1 次续跑完成全部 `todo_write` 项；持续 429 时续跑 2 次后在真实滴答生成 `🙋` 提醒；无故障时子项全完成后顶层自动完成并生成待验收。
+- hbhy 生产数据：windows-image-project 会话 116 轮里 41 轮非正常结束（34 次 content_filter），全部靠人工输入“继续”恢复，最长中断 7 小时。
+
 ## [0.7.0] - 2026-10-09
 
 ### Added
@@ -336,7 +353,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/ztllll/dida-todo/releases/tag/v0.8.0
 [0.7.0]: https://github.com/ztllll/dida-todo/releases/tag/v0.7.0
 [0.6.28]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.28
 [0.6.27]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.27

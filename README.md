@@ -6,7 +6,7 @@
 
 # 中文
 
-`dida-todo` 是 [Pi Coding Agent](https://github.com/earendil-works/pi) 扩展。它保留 `todo` 工具、`/todos` 命令和编辑器上方的 Todo 面板，但把**滴答清单作为任务真源**。
+`dida-todo` 是 [Pi Coding Agent](https://github.com/earendil-works/pi) 扩展，同时提供 [dsh（DeepSeek Harness）](https://github.com/deepseek-ai/deepseek-harness) 插件。它保留 `todo` 工具、`/todos` 命令和编辑器上方的 Todo 面板，但把**滴答清单作为任务真源**。在 dsh 上它还负责**会话中断后自动续跑**。
 
 ## 工作方式
 
@@ -57,10 +57,39 @@ Agent 遇到必须由人确认、授权、决策或线下操作才能继续的�
 - **Checklist 任务**（若干子项）：所有子项完成或跳过后，**顶层任务自动完成**，Agent 不需要自己去勾顶层。只有你明确要求“顶层保持未完成”时才会保留。
 - 循环任务按实例执行：今天的实例完成只影响今天，到点后下一次轮询领取，错过的实例不补跑。
 
+## dsh：中断自动续跑
+
+dsh 会话经常因为模型返回 `content_filter`、`429` 限流、`Overloaded` 或进程崩溃而停下，而且停下后不会自己继续，必须有人输入“继续”。dida-todo 的 dsh 插件接管这件事：
+
+- **自动续跑**：回合以错误或崩溃结束、且会话还有未完成工作（滴答工作、dsh goal、`todo_write` 清单任一）时，等 30s / 1m / 2m / 5m / 10m 后自动发一条续跑消息；`content_filter` 会提示模型换个说法，不原样重复。
+- **goal 复活**：dsh 官方 goal 驱动器出错后会停止自动推进，插件会先把 goal 重新激活。
+- **转人工**：连续 5 次续跑仍中断，就在滴答清单建 `🙋 需要你处理` 提醒（+3/+6 分钟两次），不再无限重试。
+- **人优先**：你在会话里发任何消息，待发的续跑立即撤销。你主动点停止的回合不会续跑。
+- 已绑定滴答清单的目录里，dsh 同样可用 `todo` / `todo_work`、自动收口和待验收，与 Pi 共用同一套绑定。
+
+安装（在 dsh 所在机器）：
+
+1. `npm run build:dsh` 得到 `dist/dsh/dida-todo.mjs`，复制为 `~/.dsh/my-plugins/dida-todo/index.mjs`。
+2. 让同目录能找到 dida CLI：`~/.dsh/my-plugins/dida-todo/node_modules/@suibiji/dida-cli` 软链到 Pi 安装目录下的同名包（复用已登录的 CLI）。
+3. 在 `~/.dsh/cordis.patch.yml` 末尾加：
+
+   ```yaml
+   - insert:
+       - id: dida-todo
+         name: /home/<you>/.dsh/my-plugins/dida-todo/index.mjs
+         config:
+           maxAutoContinue: 5    # 0 关闭续跑
+           # poll: true          # 在 dsh 里也轮询领取滴答任务（同一清单已有 Pi 会话时别开）
+   ```
+
+4. 选会话空闲时重启 dsh-web，日志出现 `[dida-todo] 已加载` 即生效。
+
+绑定沿用 `~/.config/pi-dida-todo/config.json` 的 cwd 绑定（在 Pi 中 `/dida-bind` 一次即可）。未绑定目录里续跑仍然生效，只是用尽后无处发滴答提醒。
+
 ## 安装
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.7.0
+pi install git:github.com/ztllll/dida-todo@v0.8.0
 ```
 
 新开 Pi 会话后：
@@ -125,6 +154,7 @@ Pi 自带的 `--mode rpc` CLI 客户端只渲染字符串，看不到面板；pi
 3. 同一台机器上的并发写有跨进程锁；多台机器之间没有强一致保证（滴答 API 无 CAS/ETag）。
 4. 只针对滴答清单，不保证 TickTick 国际版。
 5. 等待人类的去重记录在内存中，重启 Pi 后会对未变化的队列重新唤醒一次。
+6. dsh 新增或升级插件后需重启 dsh-web 才可靠生效（实测 HMR 不一定加载新插件）；续跑计数在内存中，重启 dsh 后清零。
 
 ## 开发
 
@@ -148,7 +178,8 @@ npm ci && npm run check
 - **Flow:** capture tasks in Dida with a priority → the idle TUI poller (or the exact input `检查todo`) claims due work → the agent works the Checklist and posts per-step results → when every Item is completed or skipped, the top-level task completes automatically and a `🧑‍🔬` acceptance task with two reminders (+3/+6 min) is created. A comment from your own account on it creates a rework.
 - **When the agent creates a Todo:** you ask for tracking, the request has 3+ distinct deliverables, the work spans turns/sessions, or a background run needs acceptance. Never for chat, Q&A, read-only inspection, research, or a single small action.
 - **Blocked on a human:** the agent calls `todo_work wait_for_human`. The task's priority is cleared (polling stops), a `🙋` reminder fires twice, and the task stays open. Restore its priority in Dida, or ask the agent to resume. As a fallback, the poller never re-wakes the agent for a queue that has not changed.
-- **Install:** `pi install git:github.com/ztllll/dida-todo@v0.7.0`, then say “log in to Dida” and run `/dida-bind [name]`. Install while Pi is idle, then `/reload` running sessions.
+- **dsh plugin:** `dist/dsh/dida-todo.mjs` is a standalone dsh host plugin. When a turn ends with an error (content_filter, 429, Overloaded) or a crash and the session still has open work (Dida work, a dsh goal, or a `todo_write` list), it re-prompts the agent with backoff (30s to 10m), re-arms a disarmed goal, and after 5 failures leaves a reminder in Dida. Any human message cancels a pending continue.
+- **Install:** `pi install git:github.com/ztllll/dida-todo@v0.8.0`, then say “log in to Dida” and run `/dida-bind [name]`. Install while Pi is idle, then `/reload` running sessions.
 - **Hosts:** TUI gets panel + sync + poller; Web/RPC (pi-web) gets panel + sync, no poller; Print and unbound directories stay passive.
 - **Limits:** no attachment API; Checklist Items have no native in-progress state; no cross-machine strong consistency; Dida365 only.
 

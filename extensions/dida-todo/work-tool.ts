@@ -1,6 +1,7 @@
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum } from "./string-enum.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import type { ToolResult } from "./tool-result.js";
 import type { WorkTask } from "./domain.js";
 import { DidaTodoRepository } from "./repository.js";
 import { getSessionRuntime, hasQueueCheckPermission, pendingWorkFinalizations, queueWorkFinalization, resolveWorkFinalization, updateSessionWork, updateSessionWorks } from "./runtime.js";
@@ -19,8 +20,9 @@ export function selectWorkResult(works: WorkTask[], workId: string): WorkTask {
   return work;
 }
 
-export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepository, onWorkChanged: () => void): void {
-  pi.registerTool({
+/** 宿主无关的 todo_work 工具定义。 */
+export function createTodoWorkToolDefinition(repository: DidaTodoRepository, onWorkChanged: () => void) {
+  return {
     name: "todo_work",
     label: "Dida Work Queue",
     description: "Internal LLM tool for synchronizing and moving through Dida top-level work. Users normally control it with natural language, not slash commands. Pending acceptance reports and feedback are included in list/refresh results.",
@@ -43,7 +45,7 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
       workId: Type.Optional(Type.String({ description: "Dida top-level work task ID, required for switch; optional for wait_for_human/resume (defaults to the current work)" })),
       reason: Type.Optional(Type.String({ description: "Required for wait_for_human: what the human must confirm or do, in one human-readable sentence" })),
     }),
-    async execute(_id, rawParams, signal, _update, ctx) {
+    async execute(_id: string, rawParams: unknown, signal: AbortSignal | undefined, _update: unknown, ctx: { sessionManager: { getSessionId(): string } }): Promise<ToolResult> {
       const params = rawParams as { action: (typeof TODO_WORK_ACTIONS)[number]; workId?: string; reason?: string };
       const sessionId = ctx.sessionManager.getSessionId();
       const runtime = getSessionRuntime(sessionId);
@@ -157,5 +159,9 @@ export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepos
         },
       };
     },
-  });
+  };
+}
+
+export function registerTodoWorkTool(pi: ExtensionAPI, repository: DidaTodoRepository, onWorkChanged: () => void): void {
+  pi.registerTool(createTodoWorkToolDefinition(repository, onWorkChanged));
 }

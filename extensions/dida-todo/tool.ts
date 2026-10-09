@@ -1,7 +1,7 @@
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum } from "./string-enum.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import type { ToolResult } from "./tool-result.js";
 import type { DidaWorkPriority, DidaWorkType, Task, TaskStatus, TodoScope, WorkTask } from "./domain.js";
 import { DidaTodoRepository, type CreateTaskInput, type UpdateTaskInput } from "./repository.js";
 import { getActiveTasks, getSessionRuntime, queueWorkFinalization, resolveWorkFinalization, updateSessionWork } from "./runtime.js";
@@ -96,8 +96,9 @@ function getText(tasks: Task[], id: number): string {
   return lines.join("\n");
 }
 
-export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepository, onWorkChanged: () => void): void {
-  pi.registerTool({
+/** 宿主无关的 todo 工具定义；Pi 直接注册，dsh 适配层包装 execute(sessionId)。 */
+export function createTodoToolDefinition(repository: DidaTodoRepository, onWorkChanged: () => void) {
+  return {
     name: "todo",
     label: "Todo",
     description: "Track multi-step user work as a Dida checklist that the user can follow on their phone. Use it for real implementation work; skip it for chat, Q&A and one-shot actions.",
@@ -113,7 +114,7 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
       "Unbound session: the call fails with /dida-bind guidance; ask the user to run /dida-bind once, then retry. Only the exact input `检查todo` or a trusted Poller message authorizes scanning the whole queue.",
     ],
     parameters: Params,
-    async execute(_id, rawParams, signal, _update, ctx) {
+    async execute(_id: string, rawParams: unknown, signal: AbortSignal | undefined, _update: unknown, ctx: { sessionManager: { getSessionId(): string } }): Promise<ToolResult> {
       const params = rawParams as TodoParams;
       const sessionId = ctx.sessionManager.getSessionId();
       const initialized = requireInitializedRuntime(sessionId);
@@ -272,6 +273,19 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
         },
       };
     },
+  };
+}
+
+// Text 由 Pi 入口注入：核心模块不静态依赖 pi-tui，dsh 打包不会拖入整个 TUI。
+type TextComponent = new (text: string, paddingX: number, paddingY: number) => any;
+
+export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepository, onWorkChanged: () => void, Text?: TextComponent): void {
+  if (!Text) {
+    pi.registerTool(createTodoToolDefinition(repository, onWorkChanged));
+    return;
+  }
+  pi.registerTool({
+    ...createTodoToolDefinition(repository, onWorkChanged),
     renderCall(args, theme) {
       const params = args as TodoParams;
       let text = theme.fg("toolTitle", theme.bold("todo ")) + theme.fg("muted", params.action);

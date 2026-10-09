@@ -1,4 +1,3 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { DidaProject, DidaProjectData, DidaTask } from "./domain.js";
 import type { DidaGateway } from "./repository.js";
 import type { DidaComment } from "./acceptance.js";
@@ -9,9 +8,14 @@ function outputError(stderr: string, stdout: string): string {
   return (stderr || stdout || "dida CLI 执行失败").trim().slice(0, 4000);
 }
 
+/** 宿主提供的子进程执行能力（Pi 的 pi.exec 结构兼容；dsh 用 child_process 实现）。 */
+export interface CommandRunner {
+  exec(command: string, args: string[], options: { signal?: AbortSignal; timeout?: number }): Promise<{ code: number; stdout: string; stderr: string }>;
+}
+
 export class DidaCliGateway implements DidaGateway {
   constructor(
-    private readonly pi: ExtensionAPI,
+    private readonly pi: CommandRunner,
     private readonly command = "dida",
   ) {}
 

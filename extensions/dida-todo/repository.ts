@@ -1,4 +1,4 @@
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { withMutationQueue } from "./mutation-queue.js";
 import { withHostLock } from "./host-lock.js";
 import { decodeMetadata, decodeWorkTask, metadataToItems, stripManagedContent, synchronizeItemIds } from "./codec.js";
 import { claimCurrentOccurrence, claimDidaWork, createPiWorkMetadata, migrateWorkMetadata, readyForAcceptance } from "./work-lifecycle.js";
@@ -100,7 +100,7 @@ function taskQueueKey(scope: TodoScope, workId: string): string {
 
 async function withWorkLock<T>(scope: TodoScope, workId: string, action: () => Promise<T>): Promise<T> {
   const key = taskQueueKey(scope, workId);
-  return withFileMutationQueue(`/tmp/${key.replaceAll(":", "-")}.queue`, () => withHostLock(key, action));
+  return withMutationQueue(`/tmp/${key.replaceAll(":", "-")}.queue`, () => withHostLock(key, action));
 }
 
 export class DidaTodoRepository {
@@ -489,6 +489,16 @@ export class DidaTodoRepository {
     });
     await this.addProgressComment(scope, workId, `⏸ 等待人工处理：${visibleReason}`, signal);
     return work;
+  }
+
+  /** 没有滴答工作可挂起时（如 dsh 原生 goal 中断），在绑定清单直接建一条 🙋 提醒（+3/+6 分钟）。 */
+  async createHumanReminder(scope: TodoScope, title: string, reason: string, signal?: AbortSignal): Promise<DidaTask> {
+    const visibleReason = humanVisibleText(reason);
+    if (!visibleReason) throw new Error("必须写明需要人类做什么");
+    return this.gateway.createTask(
+      buildHumanWaitReminderInput({ id: "", projectId: scope.binding.projectId, title: humanVisibleText(title), status: 0, priority: 0 }, visibleReason),
+      signal,
+    );
   }
 
   /** 恢复等待人类的工作：写回原优先级（用户已在滴答改回则保留）并完成提醒。 */

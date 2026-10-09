@@ -1,6 +1,6 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { withMutationQueue } from "./mutation-queue.js";
 import { withHostLock } from "./host-lock.js";
 import { DEFAULT_CONFIG_PATH, normalizeCwd, resolveBinding } from "./config.js";
 import type { DidaProject, DidaTodoConfig, ProjectBinding } from "./domain.js";
@@ -97,7 +97,7 @@ async function persistBinding(
   cwd: string,
   tmuxTarget?: string,
 ): Promise<{ config: DidaTodoConfig; binding: ProjectBinding }> {
-  return withHostLock(`config:${path}`, () => withFileMutationQueue(path, async () => {
+  return withHostLock(`config:${path}`, () => withMutationQueue(path, async () => {
     const latest = await readConfig(path);
     const normalizedCwd = normalizeCwd(cwd);
     const primary: ProjectBinding = {
