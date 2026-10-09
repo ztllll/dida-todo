@@ -47,6 +47,31 @@ export function formatWorkSchedule(task: DidaTask): string {
   return lines.join("\n");
 }
 
+// 沿用待验收提醒策略：创建后 +3 / +6 分钟两次提醒。
+export function buildHumanWaitReminderInput(task: DidaTask, reason: string, now = new Date()): Record<string, unknown> {
+  if (!reason.trim()) throw new Error("等待人工的原因不能为空");
+  const date = utcTimestamp(new Date(now.getTime() + 3 * 60_000));
+  return {
+    projectId: task.projectId,
+    title: `🙋 需要你处理：${task.title}`,
+    content: [
+      `任务「${task.title}」已暂停自动执行，等待你的确认或参与。`,
+      "",
+      `原因：${reason.trim()}`,
+      "",
+      "处理后：在滴答把原任务的优先级改回低/中/高，或在 Pi 中让 Agent 继续。恢复后本提醒会自动完成。",
+    ].join("\n"),
+    isAllDay: false,
+    startDate: date,
+    dueDate: date,
+    timeZone: task.timeZone ?? "Asia/Shanghai",
+    reminders: ["TRIGGER:PT0S", "TRIGGER:PT3M"],
+    priority: 0,
+    items: [],
+    tags: ["pi-todo-reminder"],
+  };
+}
+
 export function buildCompletionReminderInput(task: DidaTask, minutes: number, now = new Date()): Record<string, unknown> {
   if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) throw new Error("提醒时间必须为 1 到 1440 分钟后的整数");
   const reminderAt = new Date(now.getTime() + minutes * 60_000);

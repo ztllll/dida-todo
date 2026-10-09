@@ -85,6 +85,44 @@ describe("后台 Poller 自动领取", () => {
     }
   });
 
+  it("队列没有任何变化时后续 tick 不重复唤醒 Agent", async () => {
+    const originalSetInterval = global.setInterval;
+    const originalClearInterval = global.clearInterval;
+    let tick: (() => void) | undefined;
+    let sent = 0;
+    installRuntime();
+    global.setInterval = ((callback: () => void) => {
+      tick = callback;
+      return { unref() {} } as unknown as ReturnType<typeof setInterval>;
+    }) as typeof setInterval;
+    global.clearInterval = (() => {}) as typeof clearInterval;
+    try {
+      let stuck = work("stuck", 3);
+      const repository = {
+        async syncOpenWorks() {
+          return { works: [stuck], adoptedWorkIds: [], acceptances: [], finalizationFailures: [] };
+        },
+      };
+      const pi = { sendUserMessage() { sent += 1; } };
+      const stop = startTodoPoller(pi as never, runtimeContext() as never, repository as never, 1, () => {});
+      await flush();
+      tick?.();
+      await flush();
+      tick?.();
+      await flush();
+      expect(sent).toBe(1);
+      stuck = { ...stuck, remote: { ...stuck.remote, modifiedTime: "user-edited" } };
+      tick?.();
+      await flush();
+      expect(sent).toBe(2);
+      stop();
+    } finally {
+      removeSessionRuntime("poller-resilience");
+      global.setInterval = originalSetInterval;
+      global.clearInterval = originalClearInterval;
+    }
+  });
+
   it("同步异常被捕获后保持 timer 存活，后续 tick 仍会执行", async () => {
     const originalSetInterval = global.setInterval;
     const originalClearInterval = global.clearInterval;

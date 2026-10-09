@@ -24,6 +24,20 @@ export function pollDecision(state: PollState): "silent" | "trigger" {
   return state.remoteWorkIds.length > 0 ? "trigger" : "silent";
 }
 
+/** 队列指纹：任何进展、用户编辑、新 occurrence 或优先级变化都会改变它。 */
+export function queueFingerprint(works: WorkTask[], failureIds: string[] = []): string {
+  return JSON.stringify([
+    works.map((work) => [
+      work.remote.id,
+      work.remote.modifiedTime ?? "",
+      work.remote.priority ?? 0,
+      work.remote.startDate ?? work.remote.dueDate ?? "",
+      work.tasks.map((task) => task.status).join(","),
+    ]),
+    failureIds,
+  ]);
+}
+
 export function selectPolledWork(works: WorkTask[], now = new Date()): WorkTask | undefined {
   return rankExecutableWorks(works, now)[0];
 }
@@ -41,6 +55,8 @@ export function startTodoPoller(
   const sessionId = ctx.sessionManager.getSessionId();
   let running = false;
   let stopped = false;
+  // shortcut: 只在内存中记录，重启 Pi 后会重新触发一次；足以阻止同一进程内每 10 分钟重复刷屏。
+  let lastTriggered: string | undefined;
 
   const poll = async () => {
     if (running || stopped) return;
@@ -66,6 +82,13 @@ export function startTodoPoller(
         return;
       }
 
+      // 上次触发后队列毫无变化（Agent 没推进、人类也没动）就不再重复唤醒，避免卡住的任务刷屏。
+      const fingerprint = queueFingerprint(executableWorks, finalizationFailureIds);
+      if (fingerprint === lastTriggered) {
+        onWorkChanged();
+        return;
+      }
+      lastTriggered = fingerprint;
       const selected = selectPolledWork(executableWorks);
       if (selected) updateSessionWork(sessionId, selected);
       setQueueCheckPermission(sessionId, true);

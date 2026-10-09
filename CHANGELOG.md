@@ -2,6 +2,29 @@
 
 All notable user-visible changes are recorded here. The project is released through pinned GitHub tags and does not publish to npm.
 
+## [Unreleased]
+
+## [0.7.0] - 2026-10-09
+
+### Added
+
+- `todo_work wait_for_human`：任务必须由人确认/授权/决策才能继续时挂起。滴答优先级清零（轮询不再领取、不再每 10 分钟刷屏），新建 `🙋 需要你处理` 提醒（+3/+6 分钟两次），写原因评论，任务保持未完成。用户在滴答改回优先级（同步时自动识别）或让 Agent `resume` 即恢复，提醒自动完成。
+- 轮询兜底：队列自上次唤醒后没有任何变化（无进展、无用户编辑、无新实例）时不再重复唤醒 Agent。
+
+### Fixed
+
+- Checklist 子项全部完成后顶层任务一直挂着：以前只有 `in_progress` 会接管当前实例，Agent 直接把子项标 completed 时，循环任务的新实例、以及先无优先级后补设优先级的任务都不具备收口资格。现在 completed/skipped 也会接管当前实例，草稿补设优先级后可重新接管，顶层任务与待验收照常自动生成。
+
+### Changed
+
+- `todo` create/update 的返回结果附带当前 Checklist 和剩余未完成项，防止 Agent 把首项重复写进 `items` 后漏勾、导致顶层任务挂着；`items` 参数说明明确只放第 2..N 项。
+- `todo` 工具说明改为可判定的建表条件：用户要求追踪、3 个及以上交付步骤、跨轮/跨会话、后台执行需验收；并明确顶层任务自动收口、阻塞时用 `wait_for_human`。
+- 文档合并：`AGENTS.md` 作为唯一开发/Agent 规范（领域词汇、模块地图、宿主模式、规则、发布流程）；README 精简为用户文档。删除 `CONTEXT.md`、`DEVELOPMENT.md`、`CONTRIBUTING.md`、`extensions/dida-todo/README.md` 和整个 `docs/`（含暂缓的多 CLI 研究）。
+
+### Verification
+
+- 在 Pi 1.1.0 TUI + 一次性滴答清单上实测：轮询领取阻塞任务后 Agent 自行调用 `wait_for_human`（优先级清零、🙋 两次提醒、任务未完成）；滴答改回优先级后自动恢复并完成提醒；子项直接标完成时顶层自动完成并生成待验收；简单问答不建 Todo；多步骤请求 Agent 主动建 Checklist 并收口。
+
 ## [0.6.40] - 2026-10-03
 
 ### Fixed
@@ -313,7 +336,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.6.28...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ztllll/dida-todo/releases/tag/v0.7.0
 [0.6.28]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.28
 [0.6.27]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.27
 [0.6.26]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.26

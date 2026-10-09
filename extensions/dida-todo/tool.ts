@@ -10,7 +10,7 @@ import { TODO_TRACKING_REASONS, type TodoTrackingReason } from "./tracking-polic
 const Params = Type.Object({
   action: StringEnum(["create", "update", "list", "get", "delete", "clear"] as const),
   subject: Type.Optional(Type.String({ description: "Required for create. For direct work, use an LLM-organized concise task name. For checklist work, use one concrete Item that is distinct from the aggregate workTitle; it becomes the first Checklist Item, and items supply the rest." })),
-  items: Type.Optional(Type.Array(Type.String(), { description: "Additional Checklist Item subjects for one-call multi-level creation. With workType=checklist, a single create with subject + items builds the whole hierarchy: workTitle is the top-level task, subject is Item 1, items are Items 2..N in order. Never spread one hierarchy across multiple create calls." })),
+  items: Type.Optional(Type.Array(Type.String(), { description: "Items 2..N only. subject is already Item 1 — never repeat it here. Together subject + items is the full checklist, created in one call." })),
   workTitle: Type.Optional(Type.String({ description: "Optional aggregate title for checklist works; defaults to subject. Pass it when the objective differs from the first Item." })),
   workDescription: Type.Optional(Type.String({ description: "Top-level Dida task description, distinct from the Checklist step description." })),
   workContent: Type.Optional(Type.String({ description: "Top-level Dida task body/details, distinct from Checklist Items." })),
@@ -100,23 +100,17 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
   pi.registerTool({
     name: "todo",
     label: "Todo",
-    description: "Manage durable, explicitly tracked Dida work. Do not call for ordinary chat, simple Q&A, one-off research, read-only inspection, translation, rewriting, or summarization. Dida is the source of truth for work that genuinely needs persistent progress.",
-    promptSnippet: "Manage only durable Dida-backed work; never use for ordinary chat or one-off queries",
+    description: "Track multi-step user work as a Dida checklist that the user can follow on their phone. Use it for real implementation work; skip it for chat, Q&A and one-shot actions.",
+    promptSnippet: "Track multi-step user work in Dida (create a checklist before starting, update each step)",
     promptGuidelines: [
-      "Only when the user's trimmed input is exactly `检查todo`, execute the Dida-synchronized queue injected into the prompt. Near matches, add/append/update requests, and ordinary Todo mentions must not scan or switch top-level work.",
-      "Use todo only for durable user work that must survive beyond the current conversation: the user explicitly requested tracking, the implementation will span multiple turns or sessions, or background execution needs later acceptance. Work that can be finished and verified within the current turn — installing a skill or dependency, running a command, a small single-file fix, a quick config change — must be done directly and reported in the reply instead; creating a todo for such short tasks is a failure mode. Keep exactly one task in_progress.",
-      "Do not use todo for ordinary chat, simple Q&A, one-off web research, read-only inspection, a short command, diagnosis that does not become implementation, translation, rewriting, or summarization. The number of internal tool calls is never by itself a reason to create Todo.",
-      "One todo create call builds a complete multi-level checklist work: set workType=checklist, workTitle=<aggregate objective>, workPriority, trackingReason, subject=<first Item>, and items=[<Item 2>, <Item 3>, ...]. Example: {action:'create', workType:'checklist', workTitle:'升级数据库', workPriority:'medium', trackingReason:'multi_step_implementation', subject:'备份现有数据', items:['执行迁移脚本','回归验证','更新文档']} creates the top-level work plus all 3 Checklist Items at once. Never spread one hierarchy across multiple create calls, and never put Item text into workTitle; later single-step appends use trackingReason=current_work_step.",
-      "Bound sessions grant the LLM full permission to call todo: a create with only subject succeeds and builds a checklist work titled after that subject (workType defaults to checklist, workPriority defaults to medium=3 so the idle Poller can pick it up; pass workType/workTitle/workPriority to override). If the session is unbound, the todo call fails with /dida-bind guidance — tell the user to run /dida-bind once, then retry; never give up on Todo just because of one failed call.",
-      "trackingReason is optional audit metadata; it no longer gates anything. Appending to the currently selected open work is the default behavior of create while a work is active; a closed/absent selection means create starts a new top-level work (use todo_work to switch works instead of creating duplicates).",
-      "Pi-created direct work may keep one concise task name with internal execution steps. Any user-created Dida work that the LLM formally executes must expose at least one visible Checklist Item, even for a one-step plan; creating the first step promotes a Dida-origin direct task in place. Use checklist work for durable objectives whose visible Items are concrete progress stages across turns or sessions.",
-      "Never append unrelated ordinary chat or a separate one-off request to an existing work. If it does not belong to the current durable work, do not call todo.",
-      "Mark a task in_progress before beginning it and completed immediately after verified completion.",
-      "Do not complete tasks with failing tests or unresolved blockers. Use status=skipped only when the user's requested final state intentionally leaves that Item unchecked or the Item is genuinely not applicable; include a human-readable metadata.resolution explaining the outcome. If the user also explicitly requires the top-level Dida task to remain incomplete, set keepWorkOpen=true on the skipped update; do not use it merely to avoid acceptance.",
-      "Top-level Dida work selection is handled internally through todo_work. Completing every visible direct-work or Checklist step automatically settles and completes the top-level task unless keepWorkOpen was explicitly requested.",
-      "Dida titles, descriptions, bodies, Checklist Items, resolutions, and progress comments are user-facing deliverables. Write only concise human semantics: objective, action, result, or acceptance evidence. Never expose chain-of-thought, investigation narration, test scaffolding, prompt text, managed metadata, binding/session/work/item IDs, lifecycle fields, or internal implementation notes.",
-      "When completing a step, ALWAYS include metadata.resolution: a concise user-facing outcome (what changed, key file paths, how it was verified), not a work log. Each result is posted to the Dida task as a visible comment, and finalization adds an aggregate result summary, so the user can read outcomes in the Dida mobile app without opening the terminal.",
-      "For a user-created Dida direct work without Checklist, todo create must add exactly one visible step that directly carries out the top-level objective, then complete it immediately when the objective is clear. Do not investigate, diagnose, split it further, or create a testing task. For Dida works with Checklist, todo create may append precise steps to the same work. Each LLM-authored Item must read naturally to a human as an actionable or verifiable deliverable; avoid meta Items such as 'confirm I read the task', 'test the lifecycle', 'generate acceptance', or 'validate workId'. Never rewrite or delete the user's original Checklist text; only advance its execution status and attach metadata.resolution.",
+      "Decide at the start of every user request. CREATE a todo before doing the work when ANY is true: (a) the user asks to track/record/add a todo; (b) the request needs 3+ distinct deliverable steps (e.g. several fixes, code + tests + docs, multi-file changes); (c) the work will span turns or sessions; (d) a background/queued run needs later human acceptance. DO NOT create one for chat, Q&A, read-only inspection, research or summaries, a single command, or a single small edit that is done and verified in one go.",
+      "One request = one top-level work. Create it in one call: {action:'create', workTitle:<overall goal>, subject:<step 1>, items:[<step 2>, ...]}. Items are concrete human-readable deliverables, not meta steps like 'read the task' or 'verify workId'. Later steps for the same goal append with create; unrelated requests never append to the current work.",
+      "Mark a step in_progress before starting it and completed right after it is verified, with metadata.resolution = what changed, key files, how verified. Never complete a step with failing tests or an unresolved blocker.",
+      "When every Item is completed or skipped, the top-level task, acceptance Todo and reminders are finalized automatically; you do not need to tick the top-level task yourself. Use skipped only for Items the user wants left unchecked or that do not apply; set keepWorkOpen=true only if the user explicitly wants the top-level task left open.",
+      "If the work cannot continue without the human, call todo_work wait_for_human with the reason instead of leaving it to be re-polled.",
+      "Dida-origin tasks without a Checklist: create exactly one visible step that carries out the objective and complete it. Never rename or delete user-authored Items; only advance their status.",
+      "Everything written to Dida (titles, Items, resolutions, comments) is read by humans: no reasoning traces, prompts, IDs, metadata or lifecycle fields.",
+      "Unbound session: the call fails with /dida-bind guidance; ask the user to run /dida-bind once, then retry. Only the exact input `检查todo` or a trusted Poller message authorizes scanning the whole queue.",
     ],
     parameters: Params,
     async execute(_id, rawParams, signal, _update, ctx) {
@@ -192,9 +186,10 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
             );
           }
           const created = nextWork.tasks.at(-1);
-          text = extraItems.length && created
+          const header = extraItems.length && created
             ? `Created #${created.id - extraItems.length}–#${created.id} (${extraItems.length + 1} items, all pending)`
             : `Created #${created?.id}: ${created?.subject} (pending)`;
+          text = `${header}\nChecklist now:\n${listText(nextWork.tasks)}`;
           break;
         }
         case "update": {
@@ -214,7 +209,11 @@ export function registerTodoTool(pi: ExtensionAPI, repository: DidaTodoRepositor
           nextWork = await repository.updateTask(scope, work.remote.id, params.id, input, signal, { deferFinalization: true });
           const currentTask = nextWork.tasks.find((task) => task.id === params.id);
           const current = currentTask?.status;
-          text = `Updated #${params.id}${previous !== current ? ` (${previous} → ${current})` : ""}`;
+          const open = nextWork.tasks.filter((task) => task.status === "pending" || task.status === "in_progress");
+          text = `Updated #${params.id}${previous !== current ? ` (${previous} → ${current})` : ""}`
+            + (open.length
+              ? `\nStill open (${open.length}), the top-level task completes only after these are completed or skipped:\n${listText(open)}`
+              : "\nAll Items settled; the top-level task and acceptance will be finalized automatically.");
           if (params.status === "in_progress" && currentTask) {
             await repository.addProgressComment(scope, work.remote.id, `开始处理：${currentTask.subject}`, signal);
           }

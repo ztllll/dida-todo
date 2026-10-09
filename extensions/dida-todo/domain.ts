@@ -94,6 +94,8 @@ export interface WorkMetadataV2 {
   userDescription?: string;
   userContent?: string;
   keepOpen?: boolean;
+  /** 等待人类：滴答优先级已清零以停止自动领取；priority 为恢复时写回的原优先级。 */
+  waitingForHuman?: { priority: number; reason: string; since: string; reminderId?: string };
   workTypeMigratedFromLegacy?: boolean;
   migratedFromVersion?: 1;
   execution?: {

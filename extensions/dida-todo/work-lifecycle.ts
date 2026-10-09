@@ -68,7 +68,8 @@ export function claimCurrentOccurrence(metadata: WorkMetadata, remote: DidaTask,
   const current = migrateWorkMetadata(metadata);
   if (current.origin === "dida" && (remote.priority ?? 0) <= 0) return current;
   const occurrence = occurrenceKeyForTask(remote);
-  if (current.execution?.occurrence === occurrence && current.lifecycle !== "finalized") return current;
+  // draft 是接管时无优先级的状态；用户补设优先级后必须重新接管，否则永远不具备收口资格。
+  if (current.execution?.occurrence === occurrence && current.lifecycle !== "finalized" && current.lifecycle !== "draft") return current;
   return {
     ...current,
     lifecycle: "claimed",

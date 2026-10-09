@@ -13,7 +13,7 @@ import type {
   WorkTask,
   DidaWorkType,
 } from "./domain.js";
-import { buildCompletionReminderInput } from "./scheduling.js";
+import { buildCompletionReminderInput, buildHumanWaitReminderInput } from "./scheduling.js";
 import { buildAcceptanceResultUpdate, buildHumanAcceptanceResult } from "./acceptance-result.js";
 import { MemoryWorkStateStore, type WorkStateStore } from "./state-store.js";
 import { composeHumanWorkDescription, originalHumanDescription } from "./human-task-surface.js";
@@ -395,7 +395,8 @@ export class DidaTodoRepository {
     options: { deferFinalization?: boolean } = {},
   ): Promise<WorkTask> {
     return this.mutate(scope, workId, signal, async (work) => {
-      const claimed = input.status === "in_progress"
+      // Agent 常跳过 in_progress 直接 completed；任何推进状态的更新都必须接管当前 occurrence，否则顶层永远不会收口。
+      const claimed = input.status === "in_progress" || input.status === "completed" || input.status === "skipped"
         ? claimCurrentOccurrence(work.metadata, work.remote, scope)
         : work.metadata;
       const index = work.tasks.findIndex((task) => task.id === id);
@@ -457,6 +458,59 @@ export class DidaTodoRepository {
       }
       return metadata;
     }, (input.status === "completed" || input.status === "skipped") && !options.deferFinalization ? id : undefined);
+  }
+
+  /** 需要人类参与时暂停：优先级清零（Poller 不再领取）、创建两次提醒、写一条原因评论；不完成任务。 */
+  async waitForHuman(scope: TodoScope, workId: string, reason: string, signal?: AbortSignal): Promise<WorkTask> {
+    const visibleReason = humanVisibleText(reason);
+    if (!visibleReason) throw new Error("必须写明需要人类做什么");
+    const work = await withWorkLock(scope, workId, async () => {
+      const current = await this.getWork(scope, workId, signal);
+      if (current.remote.status !== 0) throw new Error("已完成的工作任务不能挂起");
+      const metadata = migrateWorkMetadata(current.metadata);
+      if (metadata.waitingForHuman) return current;
+      const reminder = await this.gateway.createTask(buildHumanWaitReminderInput(current.remote, visibleReason), signal);
+      const waiting: WorkMetadata = {
+        ...metadata,
+        waitingForHuman: {
+          priority: (current.remote.priority ?? 0) > 0 ? current.remote.priority : 3,
+          reason: visibleReason,
+          since: new Date().toISOString(),
+          reminderId: reminder.id,
+        },
+      };
+      await this.stateStore.set(scope.binding.projectId, workId, waiting);
+      const remote = await this.gateway.updateTask(
+        workId,
+        this.buildUpdateInput({ ...current.remote, priority: 0 }, waiting, current.userContent),
+        signal,
+      );
+      return decodeWorkTask(remote, waiting) ?? { ...current, remote, metadata: waiting };
+    });
+    await this.addProgressComment(scope, workId, `⏸ 等待人工处理：${visibleReason}`, signal);
+    return work;
+  }
+
+  /** 恢复等待人类的工作：写回原优先级（用户已在滴答改回则保留）并完成提醒。 */
+  async resumeWork(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<WorkTask> {
+    return withWorkLock(scope, workId, async () => {
+      const current = await this.getWork(scope, workId, signal);
+      const { waitingForHuman: waiting, ...metadata } = migrateWorkMetadata(current.metadata);
+      if (!waiting) return current;
+      await this.stateStore.set(scope.binding.projectId, workId, metadata);
+      let remote = current.remote;
+      if ((remote.priority ?? 0) <= 0 && remote.status === 0) {
+        remote = await this.gateway.updateTask(
+          workId,
+          this.buildUpdateInput({ ...remote, priority: waiting.priority }, metadata, current.userContent),
+          signal,
+        );
+      }
+      if (waiting.reminderId) {
+        await this.gateway.completeTask(scope.binding.projectId, waiting.reminderId, signal).catch(() => undefined);
+      }
+      return decodeWorkTask(remote, metadata) ?? { ...current, remote, metadata };
+    });
   }
 
   async markWorkReadyForAcceptance(scope: TodoScope, workId: string, signal?: AbortSignal): Promise<WorkTask> {
@@ -543,7 +597,10 @@ export class DidaTodoRepository {
           } else if (JSON.stringify(metadata) !== JSON.stringify(migrateWorkMetadata(stored))) {
             await this.stateStore.set(scope.binding.projectId, remote.id, metadata);
           }
-          if (metadata.origin === "pi" && (remote.priority ?? 0) <= 0) {
+          if (metadata.waitingForHuman && (remote.priority ?? 0) > 0) {
+            // 用户在滴答把优先级改回来 = 人类已参与，恢复自动执行。
+            work = await this.resumeWork(scope, remote.id, signal);
+          } else if (metadata.origin === "pi" && !metadata.waitingForHuman && (remote.priority ?? 0) <= 0) {
             work = await this.migratePiWorkPriority(scope, remote.id, signal);
           }
           works.push(work);

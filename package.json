@@ -1,6 +1,6 @@
 {
   "name": "dida-todo",
-  "version": "0.6.40",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "Pi 扩展：以滴答清单为 Todo 真源，支持自然语言执行、双向同步、提醒和强制人类验收闭环。",
@@ -25,22 +25,16 @@
   ],
   "files": [
     "extensions/dida-todo",
-    "docs/adr",
-    "docs/development",
-    "docs/operations",
-    "docs/research",
     "README.md",
+    "AGENTS.md",
     "CHANGELOG.md",
-    "CONTEXT.md",
-    "DEVELOPMENT.md",
     "LICENSE"
   ],
   "scripts": {
     "check": "bash scripts/check-structure.sh && npm run typecheck && npm test && npm run pack:check",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "pack:check": "npm pack --dry-run --json >/tmp/dida-todo-pack.json",
-    "inventory": "bash scripts/pi-inventory.sh"
+    "pack:check": "npm pack --dry-run --json >/tmp/dida-todo-pack.json"
   },
   "pi": {
     "extensions": [
