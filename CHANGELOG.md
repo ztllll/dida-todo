@@ -4,6 +4,17 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-09
+
+### Added
+
+- dsh 界面显示滴答 Checklist：`todo` 每次调用及每个新回合开始时，把当前滴答工作的步骤写成 dsh `todo/write`，由 dsh 自带的输入框上方“任务”面板展示（完成 / 进行中 / 待办），效果与 Pi 的 Todo 面板一致；skipped 显示为已完成。
+- dsh 已绑定滴答的会话注入一段系统提示，让 agent 对多步工作使用 `todo`（同步滴答 + 面板）而非 dsh 自带 `todo_write`；未绑定会话不注入。
+
+### Verification
+
+- hbhy 真实 dsh-web（Chrome 浏览器）：新建工作区会话下达三步任务，agent 自行调用 `todo create/update`；任务面板依次显示「2 已完成 · 1 进行中」到「3 已完成」并列出三个步骤；滴答侧顶层任务自动完成并生成待验收（+3/+6 分钟提醒）。
+
 ## [0.8.0] - 2026-10-09
 
 ### Added
@@ -353,7 +364,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/ztllll/dida-todo/releases/tag/v0.8.1
 [0.8.0]: https://github.com/ztllll/dida-todo/releases/tag/v0.8.0
 [0.7.0]: https://github.com/ztllll/dida-todo/releases/tag/v0.7.0
 [0.6.28]: https://github.com/ztllll/dida-todo/releases/tag/v0.6.28

@@ -60,7 +60,7 @@ interface DshAgent {
   id: string;
   status: "idle" | "running";
   whenIdle?(): Promise<void>;
-  session: { id: string; header: { cwd?: string; delegationDepth?: number } };
+  session: { id: string; header: { cwd?: string; delegationDepth?: number }; append?(type: string, data: unknown): void };
   followup(message: DshMessage): void;
 }
 interface DshGoalView { id: string; revision: number; phase: string; activation: string; roundsStarted: number; maxGoalRounds: number }
@@ -121,6 +121,8 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
   const pollEnabled = pluginConfig.poll === true;
   const pollMs = resolvePollIntervalMinutes(config) * 60_000;
 
+  // dsh 的 todos 投影在 turn/start 清空，续跑时读不到上一轮清单；这里自己记每个会话最后一次 todo_write。
+  const lastTodos = new Map<string, Array<{ content?: string; status?: string }>>();
   const continueAttempts = new Map<string, number>();
   // 本会话亲手用 todo/todo_work 推进过的滴答工作；只有它们算“本会话未完成工作”，
   // 避免一次中断把 agent 推去做别人（或 Pi 会话）的任务。
@@ -151,9 +153,52 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
       const result = await definition.execute(String(exec.callId ?? ""), args, exec.signal, undefined, sessionCtx(sessionId));
       const workId = getSessionRuntime(sessionId)?.work?.remote.id;
       if (workId) touchedWork.set(sessionId, (touchedWork.get(sessionId) ?? new Set()).add(workId));
+      if (exec.agent) mirrorChecklist(exec.agent);
       return toolText(result);
     },
   });
+  // UI：把当前滴答 Checklist 写成 dsh 的 todo/write 事件，由 dsh 自带 TodoPanel（输入框下方）显示，
+  // 等价 Pi 的 Todo 面板。dsh 每个 turn/start 会清空面板，所以续跑与新回合也要重写。
+  function mirrorChecklist(agent: DshAgent): void {
+    const work = getSessionRuntime(agent.session.id)?.work;
+    if (!work || typeof agent.session.append !== "function") return;
+    const seen = new Set<string>();
+    const todos = work.tasks
+      .filter((task) => task.status !== "deleted")
+      .map((task) => {
+        let content = task.subject.trim() || `#${task.id}`;
+        while (seen.has(content)) content = `${content} (#${task.id})`;
+        seen.add(content);
+        // dsh 只有 pending/in_progress/completed；skipped 视为已处理。
+        const status = task.status === "completed" || task.status === "skipped" ? "completed" : task.status === "in_progress" ? "in_progress" : "pending";
+        return { content, status };
+      });
+    if (!todos.length) return;
+    try {
+      agent.session.append("todo/write", { todos });
+      lastTodos.set(agent.session.id, todos);
+    } catch (error) {
+      log.warn(`Todo 面板同步失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  // 已绑定滴答的会话里，引导 agent 用 todo（同步滴答 + 面板）替代 dsh 自带 todo_write。按会话现算，未绑定会话不注入。
+  const systemPrompt = ctx.get?.("systemPrompt") as { section(section: { name: string; order: number; interpolate?: boolean; text: (context: { agent?: DshAgent }) => string }): () => void } | undefined;
+  systemPrompt?.section({
+    name: "dida-todo",
+    order: 60,
+    interpolate: false,
+    text: (context) => {
+      const sessionId = context.agent?.session.id;
+      if (!sessionId || !getSessionRuntime(sessionId)) return "";
+      return [
+        "[dida-todo] This workspace is bound to a Dida (滴答清单) project shared with the human.",
+        "For multi-step work (3+ deliverables, multi-file changes, or work spanning turns), track it with the `todo` tool instead of `todo_write`: create the whole checklist in one call ({action:'create', workTitle, subject, items}), mark each item in_progress before starting and completed (with metadata.resolution) right after verifying it. The checklist is shown in the Todo panel and on the human's phone; the top-level task and acceptance close automatically when every item is done.",
+        "Skip it for chat, Q&A, read-only inspection or a single small action. If the work cannot continue without the human, call `todo_work` wait_for_human with the reason.",
+      ].join("\n");
+    },
+  });
+
   ctx.tools.register(wrap(createTodoToolDefinition(repository, noop)));
   ctx.tools.register(wrap(createTodoWorkToolDefinition(repository, noop)));
 
@@ -207,8 +252,6 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
       return undefined;
     }
   }
-  // dsh 的 todos 投影在 turn/start 清空，续跑时读不到上一轮清单；这里自己记每个会话最后一次 todo_write。
-  const lastTodos = new Map<string, Array<{ content?: string; status?: string }>>();
   function nativeOpenTodos(agent: DshAgent): string[] {
     return (lastTodos.get(agent.session.id) ?? []).filter((todo) => todo.status !== "completed").map((todo) => String(todo.content ?? ""));
   }
@@ -351,7 +394,11 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
   });
   ctx.on("session/event", (session: { id: string }, event: { type: string; data?: { reason?: { kind: string; error?: { message?: string } }; todos?: Array<{ content?: string; status?: string }> } }) => {
     if (event.type === "todo/write" && Array.isArray(event.data?.todos)) lastTodos.set(session.id, event.data.todos);
-    if (event.type === "turn/start") lastTurnStartAt.set(session.id, Date.now());
+    if (event.type === "turn/start") {
+      lastTurnStartAt.set(session.id, Date.now());
+      const live = ctx.agents.get(session.id);
+      if (live && ownWork(session.id)) queueMicrotask(() => mirrorChecklist(live));
+    }
     if (event.type !== "turn/end") return;
     const agent = ctx.agents.get(session.id);
     if (!agent) return;

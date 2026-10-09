@@ -19,10 +19,11 @@ function harness() {
   const tools: any[] = [];
   const sent: string[] = [];
   const paused: string[] = [];
+  const appended: Array<{ type: string; data: any }> = [];
   const agent = {
     id: "s1",
     status: "idle" as "idle" | "running",
-    session: { id: "s1", header: { cwd: "/work" } },
+    session: { id: "s1", header: { cwd: "/work" }, append(type: string, data: unknown) { appended.push({ type, data }); } },
     followup(message: { content: Array<{ text: string }> }) { sent.push(message.content[0]!.text); },
   };
   const ctx = {
@@ -37,7 +38,7 @@ function harness() {
   };
   const emit = async (event: string, ...args: unknown[]) => { for (const fn of listeners.get(event) ?? []) await fn(...args); };
   const turnEnd = (kind: string, message?: string) => emit("session/event", agent.session, { type: "turn/end", data: { reason: { kind, ...(message ? { error: { message } } : {}) } } });
-  return { ctx, tools, sent, paused, agent, emit, turnEnd, repository };
+  return { ctx, tools, sent, paused, agent, emit, turnEnd, repository, appended };
 }
 
 afterEach(() => { vi.useRealTimers(); removeSessionRuntime("s1"); });
@@ -50,6 +51,14 @@ describe("dsh 宿主插件", () => {
     await vi.waitFor(async () => {
       expect(await h.tools[0].execute({ action: "list" }, { agent: h.agent })).toContain("第一步");
     });
+  });
+
+  it("todo 工具调用后把滴答 Checklist 写成 dsh todo/write，显示在 dsh 自带 Todo 面板", async () => {
+    const h = harness();
+    await apply(h.ctx as never, { poll: false, testOverrides: { config: { bindings: [{ key: "cwd:/work", projectId: "proj", cwd: "/work" }] }, repository: h.repository as never } });
+    await vi.waitFor(async () => expect(await h.tools[0].execute({ action: "list" }, { agent: h.agent })).toContain("第一步"));
+    const last = h.appended.filter((event) => event.type === "todo/write").at(-1);
+    expect(last?.data.todos).toEqual([{ content: "第一步", status: "pending" }, { content: "第二步", status: "pending" }]);
   });
 
   it("content_filter 中断后自动续跑；人手发消息后撤销待发续跑", async () => {

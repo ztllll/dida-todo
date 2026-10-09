@@ -65,7 +65,7 @@ dsh 会话经常因为模型返回 `content_filter`、`429` 限流、`Overloaded
 - **goal 复活**：dsh 官方 goal 驱动器出错后会停止自动推进，插件会先把 goal 重新激活。
 - **转人工**：连续 5 次续跑仍中断，就在滴答清单建 `🙋 需要你处理` 提醒（+3/+6 分钟两次），不再无限重试。
 - **人优先**：你在会话里发任何消息，待发的续跑立即撤销。你主动点停止的回合不会续跑。
-- 已绑定滴答清单的目录里，dsh 同样可用 `todo` / `todo_work`、自动收口和待验收，与 Pi 共用同一套绑定。
+- 已绑定滴答清单的目录里，dsh 同样可用 `todo` / `todo_work`、自动收口和待验收，与 Pi 共用同一套绑定。滴答 Checklist 会显示在 dsh 输入框上方的“任务”面板里（完成 / 进行中 / 待办），和 Pi 的 Todo 面板一样随步骤实时更新。
 
 安装（在 dsh 所在机器）：
 
@@ -89,7 +89,7 @@ dsh 会话经常因为模型返回 `content_filter`、`429` 限流、`Overloaded
 ## 安装
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.8.0
+pi install git:github.com/ztllll/dida-todo@v0.8.1
 ```
 
 新开 Pi 会话后：
@@ -179,7 +179,7 @@ npm ci && npm run check
 - **When the agent creates a Todo:** you ask for tracking, the request has 3+ distinct deliverables, the work spans turns/sessions, or a background run needs acceptance. Never for chat, Q&A, read-only inspection, research, or a single small action.
 - **Blocked on a human:** the agent calls `todo_work wait_for_human`. The task's priority is cleared (polling stops), a `🙋` reminder fires twice, and the task stays open. Restore its priority in Dida, or ask the agent to resume. As a fallback, the poller never re-wakes the agent for a queue that has not changed.
 - **dsh plugin:** `dist/dsh/dida-todo.mjs` is a standalone dsh host plugin. When a turn ends with an error (content_filter, 429, Overloaded) or a crash and the session still has open work (Dida work, a dsh goal, or a `todo_write` list), it re-prompts the agent with backoff (30s to 10m), re-arms a disarmed goal, and after 5 failures leaves a reminder in Dida. Any human message cancels a pending continue.
-- **Install:** `pi install git:github.com/ztllll/dida-todo@v0.8.0`, then say “log in to Dida” and run `/dida-bind [name]`. Install while Pi is idle, then `/reload` running sessions.
+- **Install:** `pi install git:github.com/ztllll/dida-todo@v0.8.1`, then say “log in to Dida” and run `/dida-bind [name]`. Install while Pi is idle, then `/reload` running sessions.
 - **Hosts:** TUI gets panel + sync + poller; Web/RPC (pi-web) gets panel + sync, no poller; Print and unbound directories stay passive.
 - **Limits:** no attachment API; Checklist Items have no native in-progress state; no cross-machine strong consistency; Dida365 only.
 

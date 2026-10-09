@@ -59,7 +59,7 @@ extensions/dsh/         dsh 入口：把 dsh 生命周期映射到同一核心�
 | Pi TUI（已绑定） | 是 | 是 | 是 | — |
 | Pi Web/RPC（已绑定，如 pi-web） | 是 | 是 | 否（RPC 下 `isIdle()` 恒为 true） | — |
 | Pi Print/JSON（`hasUI=false`） | 否 | 否 | 否 | — |
-| dsh（web/sdk/headless） | dsh 自带 todo_write | 是（已绑定 cwd） | 默认关（`poll: true` 开启） | 是 |
+| dsh（web/sdk/headless） | dsh 任务面板（镜像滴答 Checklist） | 是（已绑定 cwd） | 默认关（`poll: true` 开启） | 是 |
 | 未绑定目录 | 被动 | 否 | 否 | dsh 仍续跑原生 goal/todo_write |
 
 ## dsh 续跑规则

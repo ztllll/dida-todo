@@ -6732,6 +6732,7 @@ async function apply(ctx, pluginConfig = {}) {
   };
   const pollEnabled = pluginConfig.poll === true;
   const pollMs = resolvePollIntervalMinutes(config) * 6e4;
+  const lastTodos = /* @__PURE__ */ new Map();
   const continueAttempts = /* @__PURE__ */ new Map();
   const touchedWork = /* @__PURE__ */ new Map();
   const continueTimers = /* @__PURE__ */ new Map();
@@ -6758,7 +6759,42 @@ async function apply(ctx, pluginConfig = {}) {
       const result = await definition.execute(String(exec.callId ?? ""), args, exec.signal, void 0, sessionCtx(sessionId));
       const workId = getSessionRuntime(sessionId)?.work?.remote.id;
       if (workId) touchedWork.set(sessionId, (touchedWork.get(sessionId) ?? /* @__PURE__ */ new Set()).add(workId));
+      if (exec.agent) mirrorChecklist(exec.agent);
       return toolText(result);
+    }
+  });
+  function mirrorChecklist(agent) {
+    const work = getSessionRuntime(agent.session.id)?.work;
+    if (!work || typeof agent.session.append !== "function") return;
+    const seen = /* @__PURE__ */ new Set();
+    const todos = work.tasks.filter((task) => task.status !== "deleted").map((task) => {
+      let content = task.subject.trim() || `#${task.id}`;
+      while (seen.has(content)) content = `${content} (#${task.id})`;
+      seen.add(content);
+      const status = task.status === "completed" || task.status === "skipped" ? "completed" : task.status === "in_progress" ? "in_progress" : "pending";
+      return { content, status };
+    });
+    if (!todos.length) return;
+    try {
+      agent.session.append("todo/write", { todos });
+      lastTodos.set(agent.session.id, todos);
+    } catch (error) {
+      log.warn(`Todo \u9762\u677F\u540C\u6B65\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const systemPrompt = ctx.get?.("systemPrompt");
+  systemPrompt?.section({
+    name: "dida-todo",
+    order: 60,
+    interpolate: false,
+    text: (context) => {
+      const sessionId = context.agent?.session.id;
+      if (!sessionId || !getSessionRuntime(sessionId)) return "";
+      return [
+        "[dida-todo] This workspace is bound to a Dida (\u6EF4\u7B54\u6E05\u5355) project shared with the human.",
+        "For multi-step work (3+ deliverables, multi-file changes, or work spanning turns), track it with the `todo` tool instead of `todo_write`: create the whole checklist in one call ({action:'create', workTitle, subject, items}), mark each item in_progress before starting and completed (with metadata.resolution) right after verifying it. The checklist is shown in the Todo panel and on the human's phone; the top-level task and acceptance close automatically when every item is done.",
+        "Skip it for chat, Q&A, read-only inspection or a single small action. If the work cannot continue without the human, call `todo_work` wait_for_human with the reason."
+      ].join("\n");
     }
   });
   ctx.tools.register(wrap(createTodoToolDefinition(repository, noop)));
@@ -6806,7 +6842,6 @@ async function apply(ctx, pluginConfig = {}) {
       return void 0;
     }
   }
-  const lastTodos = /* @__PURE__ */ new Map();
   function nativeOpenTodos(agent) {
     return (lastTodos.get(agent.session.id) ?? []).filter((todo) => todo.status !== "completed").map((todo) => String(todo.content ?? ""));
   }
@@ -6940,7 +6975,11 @@ ${todos.map((todo) => `- ${todo}`).join("\n")}`);
   });
   ctx.on("session/event", (session, event) => {
     if (event.type === "todo/write" && Array.isArray(event.data?.todos)) lastTodos.set(session.id, event.data.todos);
-    if (event.type === "turn/start") lastTurnStartAt.set(session.id, Date.now());
+    if (event.type === "turn/start") {
+      lastTurnStartAt.set(session.id, Date.now());
+      const live = ctx.agents.get(session.id);
+      if (live && ownWork(session.id)) queueMicrotask(() => mirrorChecklist(live));
+    }
     if (event.type !== "turn/end") return;
     const agent = ctx.agents.get(session.id);
     if (!agent) return;
