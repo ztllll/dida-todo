@@ -55,7 +55,7 @@ interface DshConfig {
 }
 
 // ---- 最小 dsh 结构类型（仅本插件用到的字段；官方类型见 @deepseek-ai/dsh-agent）----
-interface DshMessage { id: string; content: Array<{ type: string; text?: string }>; source: { kind: string } }
+interface DshMessage { id: string; role: "user"; content: Array<{ type: string; text?: string }>; source: { kind: string } }
 interface DshAgent {
   id: string;
   status: "idle" | "running";
@@ -83,6 +83,7 @@ interface DshContext {
 function userMessage(text: string, kind: string, summary: string): DshMessage {
   return Object.freeze({
     id: crypto.randomUUID(),
+    role: "user", // dsh 校验会话日志：user/message 缺 role 时重启后整个会话无法加载
     content: [{ type: "text", text }],
     source: { kind, form: "notice", summary: summary.slice(0, 120) },
   }) as DshMessage;

@@ -6697,6 +6697,8 @@ var inject = ["agents", "tools", "sessions"];
 function userMessage(text, kind, summary) {
   return Object.freeze({
     id: crypto.randomUUID(),
+    role: "user",
+    // dsh 校验会话日志：user/message 缺 role 时重启后整个会话无法加载
     content: [{ type: "text", text }],
     source: { kind, form: "notice", summary: summary.slice(0, 120) }
   });

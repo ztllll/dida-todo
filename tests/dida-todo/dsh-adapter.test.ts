@@ -18,13 +18,14 @@ function harness() {
   const listeners = new Map<string, Array<(...args: any[]) => unknown>>();
   const tools: any[] = [];
   const sent: string[] = [];
+  const messages: Array<{ role?: string; content: Array<{ text: string }> }> = [];
   const paused: string[] = [];
   const appended: Array<{ type: string; data: any }> = [];
   const agent = {
     id: "s1",
     status: "idle" as "idle" | "running",
     session: { id: "s1", header: { cwd: "/work" }, append(type: string, data: unknown) { appended.push({ type, data }); } },
-    followup(message: { content: Array<{ text: string }> }) { sent.push(message.content[0]!.text); },
+    followup(message: { role?: string; content: Array<{ text: string }> }) { messages.push(message); sent.push(message.content[0]!.text); },
   };
   const ctx = {
     agents: { get: (id: string) => (id === "s1" ? agent : undefined), list: () => [agent], withoutInitiator: <T>(op: () => T) => op() },
@@ -38,7 +39,7 @@ function harness() {
   };
   const emit = async (event: string, ...args: unknown[]) => { for (const fn of listeners.get(event) ?? []) await fn(...args); };
   const turnEnd = (kind: string, message?: string) => emit("session/event", agent.session, { type: "turn/end", data: { reason: { kind, ...(message ? { error: { message } } : {}) } } });
-  return { ctx, tools, sent, paused, agent, emit, turnEnd, repository, appended };
+  return { ctx, tools, sent, messages, paused, agent, emit, turnEnd, repository, appended };
 }
 
 afterEach(() => { vi.useRealTimers(); removeSessionRuntime("s1"); });
@@ -70,6 +71,8 @@ describe("dsh 宿主插件", () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0]).toContain("AUTO-CONTINUE 1/5");
+    // dsh 校验会话日志：user/message 缺 role 时重启后整个会话无法加载。
+    expect(h.messages[0]!.role).toBe("user");
 
     await h.turnEnd("error", "Overloaded");
     await h.emit("agent/inbox/inserted", { agent: h.agent, message: { id: "m", content: [{ type: "text", text: "我来看看" }], source: { kind: "user" } } });

@@ -15,13 +15,13 @@ DeepSeek Harness（dsh）插件：**滴答清单 Todo + 会话中断自动续跑
 在 dsh 侧栏 **插件 → 添加插件**，填：
 
 ```text
-github:ztllll/dida-todo#v0.9.1
+github:ztllll/dida-todo#v0.9.2
 ```
 
 或命令行：
 
 ```sh
-dsh plugin --profile web add "github:ztllll/dida-todo#v0.9.1"
+dsh plugin --profile web add "github:ztllll/dida-todo#v0.9.2"
 ```
 
 安装后在插件页启用（默认启用），刷新页面即生效。不需要构建脚本授权。

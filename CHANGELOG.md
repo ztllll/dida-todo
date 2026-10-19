@@ -4,13 +4,19 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-19
+
+### Fixed
+
+- dsh 自动续跑消息补上 `role: "user"`。缺少它时 dsh 0.2.x 校验会话日志失败（`message must have role "user"`），发生过续跑的会话在 dsh 重启后整个无法加载。已在 0.9.1 中发生过续跑的会话需升级本版本后才能重新打开（日志内容不受影响）。
+
 ### Added
 
 - `npm run e2e:dsh`（`scripts/e2e-dsh.mjs`）：在临时目录安装真实 dsh 与本仓库插件，用本地假模型注入 content_filter、持续失败和宿主重启，验证续跑、不误续跑、转人工、重启恢复；设置 `DIDA_E2E_PROJECT_ID` 时额外验证滴答工作镜像、自动收口与 🙋 提醒。不读写本机 `~/.dsh` 与绑定配置。
 
 ### Verification
 
-- dsh 0.2.1-rc.2：插件依赖的接口与 0.2.0-rc.2 相比无破坏性变化；`e2e:dsh` 8/8 通过；hbhy 生产环境升级 dsh 后插件照常加载，无需更新插件。
+- dsh 0.2.1-rc.2：插件依赖的接口与 0.2.0-rc.2 相比无破坏性变化；`e2e:dsh` 9/9 通过（新增“含续跑消息的会话重启后仍能加载”回归场景）。
 
 ## [0.9.1] - 2026-10-09
 
@@ -395,7 +401,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/ztllll/dida-todo/tree/v0.9.2
 [0.9.1]: https://github.com/ztllll/dida-todo/tree/v0.9.1
 [0.9.0]: https://github.com/ztllll/dida-todo/tree/v0.9.0
 [0.8.1]: https://github.com/ztllll/dida-todo/tree/v0.8.1

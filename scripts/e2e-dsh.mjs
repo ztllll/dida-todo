@@ -90,7 +90,7 @@ function session({ cwd, prompt = "go", resume = false, sessionId = `e2e-${Date.n
       try {
         await call("initialize", { cwd, provider: "mock", model: "mock-model" });
         if (resume) await call("session/resume", { sessionId });
-        else await call("session/prompt", { sessionId, contentBlocks: [{ type: "text", text: prompt }] });
+        if (!resume || resume === "prompt") await call("session/prompt", { sessionId, contentBlocks: [{ type: "text", text: prompt }] });
         while (Date.now() < deadline && out.turns.length < wantTurns) await new Promise((r) => setTimeout(r, 300));
         await new Promise((r) => setTimeout(r, lingerMs));
       } catch (error) {
@@ -173,6 +173,13 @@ try {
   script = ["ok"]; served = 0;
   r = await session({ cwd: join(root, "ws-d"), sessionId: "e2e-restart", resume: true, wantTurns: 1 });
   check("宿主重启打断的回合 → 恢复会话后自动续跑", r.turns.join() === "completed" && r.continues === 1 && r.logs.some((l) => l.includes("恢复时发现上一回合中断")), r);
+
+  // 回归：续跑消息写进会话日志后，重启 dsh 必须还能加载该会话（消息缺 role 时 dsh 0.2.x 拒绝加载）。
+  script = ["todo_write", "filter", "ok"]; served = 0;
+  await session({ cwd: join(root, "ws-e"), sessionId: "e2e-reload", wantTurns: 2 });
+  script = ["ok"]; served = 0;
+  r = await session({ cwd: join(root, "ws-e"), sessionId: "e2e-reload", resume: "prompt", prompt: "after restart", wantTurns: 1 });
+  check("含续跑消息的会话重启后仍能加载并继续对话", !r.error && r.turns.join() === "completed", r);
 
   // ---------- 滴答场景（需一次性专用清单） ----------
   if (didaProject) {
