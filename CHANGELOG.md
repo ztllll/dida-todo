@@ -4,6 +4,14 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+### Added
+
+- `npm run e2e:dsh`（`scripts/e2e-dsh.mjs`）：在临时目录安装真实 dsh 与本仓库插件，用本地假模型注入 content_filter、持续失败和宿主重启，验证续跑、不误续跑、转人工、重启恢复；设置 `DIDA_E2E_PROJECT_ID` 时额外验证滴答工作镜像、自动收口与 🙋 提醒。不读写本机 `~/.dsh` 与绑定配置。
+
+### Verification
+
+- dsh 0.2.1-rc.2：插件依赖的接口与 0.2.0-rc.2 相比无破坏性变化；`e2e:dsh` 8/8 通过；hbhy 生产环境升级 dsh 后插件照常加载，无需更新插件。
+
 ## [0.9.1] - 2026-10-09
 
 ### Changed

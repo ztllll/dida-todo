@@ -49,7 +49,8 @@
     "test": "vitest run",
     "pack:check": "npm pack --dry-run --json >/tmp/dida-todo-pack.json",
     "build:dsh": "node scripts/build-dsh.mjs",
-    "pack:dsh": "npm run build:dsh && mkdir -p dist && npm pack --pack-destination dist >/dev/null && ls dist/dida-todo-*.tgz"
+    "pack:dsh": "npm run build:dsh && mkdir -p dist && npm pack --pack-destination dist >/dev/null && ls dist/dida-todo-*.tgz",
+    "e2e:dsh": "node scripts/e2e-dsh.mjs"
   },
   "pi": {
     "extensions": [

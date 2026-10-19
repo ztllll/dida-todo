@@ -71,6 +71,8 @@ dsh 会话经常因为模型返回 `content_filter`、`429` 限流、`Overloaded
 
 绑定沿用 `~/.config/pi-dida-todo/config.json` 的 cwd 绑定（在 Pi 中 `/dida-bind` 一次即可）。未绑定目录里续跑仍然生效，只是用尽后无处发滴答提醒。
 
+已验证的 dsh 版本：0.2.0-rc.2、0.2.1-rc.2。dsh 升级后插件无需重装，升级 dsh 不会卸载它。
+
 ## 安装
 
 ```bash
@@ -146,6 +148,7 @@ Pi 自带的 `--mode rpc` CLI 客户端只渲染字符串，看不到面板；pi
 ```bash
 git clone https://github.com/ztllll/dida-todo.git && cd dida-todo
 npm ci && npm run check
+npm run e2e:dsh   # 真实 dsh 端到端验证（临时目录，不碰本机 ~/.dsh）
 ```
 
 开发约定见 [AGENTS.md](AGENTS.md)，安全问题见 [SECURITY.md](SECURITY.md)，变更见 [CHANGELOG.md](CHANGELOG.md)。
@@ -163,7 +166,7 @@ npm ci && npm run check
 - **Flow:** capture tasks in Dida with a priority → the idle TUI poller (or the exact input `检查todo`) claims due work → the agent works the Checklist and posts per-step results → when every Item is completed or skipped, the top-level task completes automatically and a `🧑‍🔬` acceptance task with two reminders (+3/+6 min) is created. A comment from your own account on it creates a rework.
 - **When the agent creates a Todo:** you ask for tracking, the request has 3+ distinct deliverables, the work spans turns/sessions, or a background run needs acceptance. Never for chat, Q&A, read-only inspection, research, or a single small action.
 - **Blocked on a human:** the agent calls `todo_work wait_for_human`. The task's priority is cleared (polling stops), a `🙋` reminder fires twice, and the task stays open. Restore its priority in Dida, or ask the agent to resume. As a fallback, the poller never re-wakes the agent for a queue that has not changed.
-- **dsh plugin:** the repository root is a standard dsh bundle: install it from the Plugins page with `github:ztllll/dida-todo#v0.9.1`; it only adds a plugin row and the `todo`/`todo_work` tools, never overrides the built-in `todo_write`, and uninstalling restores dsh as it was. When a turn ends with an error (content_filter, 429, Overloaded) or a crash and the session still has open work (Dida work, a dsh goal, or a `todo_write` list), it re-prompts the agent with backoff (30s to 10m), re-arms a disarmed goal, and after 5 failures leaves a reminder in Dida. Any human message cancels a pending continue.
+- **dsh plugin:** the repository root is a standard dsh bundle: install it from the Plugins page with `github:ztllll/dida-todo#v0.9.1`; it only adds a plugin row and the `todo`/`todo_work` tools, never overrides the built-in `todo_write`, and uninstalling restores dsh as it was. When a turn ends with an error (content_filter, 429, Overloaded) or a crash and the session still has open work (Dida work, a dsh goal, or a `todo_write` list), it re-prompts the agent with backoff (30s to 10m), re-arms a disarmed goal, and after 5 failures leaves a reminder in Dida. Any human message cancels a pending continue. Verified on dsh 0.2.0-rc.2 and 0.2.1-rc.2.
 - **Install:** `pi install git:github.com/ztllll/dida-todo@v0.9.1`, then say “log in to Dida” and run `/dida-bind [name]`. Install while Pi is idle, then `/reload` running sessions.
 - **Hosts:** TUI gets panel + sync + poller; Web/RPC (pi-web) gets panel + sync, no poller; Print and unbound directories stay passive.
 - **Limits:** no attachment API; Checklist Items have no native in-progress state; no cross-machine strong consistency; Dida365 only.

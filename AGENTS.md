@@ -9,6 +9,7 @@ npm ci
 npm run check        # 结构/凭据扫描 + typecheck + vitest + dsh 打包 + pack dry-run
 npm run build:dsh    # 生成 dsh-plugin/index.mjs（dsh 组合包入口，不含任何 Pi 依赖）
 npm run pack:dsh     # 打成 dist/dida-todo-<ver>.tgz，可 `dsh plugin add` 本地验证
+npm run e2e:dsh      # 真实 dsh 端到端：临时目录装 dsh@next + 本仓库插件，假模型注入故障跑续跑场景
 git diff --check
 ```
 
@@ -72,6 +73,21 @@ dsh-plugin/             dsh 组合包资源：index.mjs（构建产物，需提�
 - 人类发出任何消息即撤销待发续跑并清零计数；续跑前若 dsh goal 已被官方驱动器解除（disarm）会先 `resume`。
 - 日志只写 stderr（sdk/acp 的 stdout 是 JSON-RPC 专用）。
 
+## dsh 端到端与升级适配
+
+`scripts/e2e-dsh.mjs` 在临时目录装 `@deepseek-ai/dsh@${DSH_VERSION:-next}`，把本仓库打包后 `dsh plugin add` 进隔离 sdk profile（`DSH_HOME`、`HOME` 都指向临时目录，只软链 dida CLI 登录态），用本地 OpenAI 兼容假模型按脚本返回 `todo_write` / `content_filter` / 不应答，经 JSON-RPC 断言：
+
+| 场景 | 预期 |
+| --- | --- |
+| 挂载 | `--dump-config` 有 `dida-todo`，且 `tool-todo` 仍在 |
+| 有未完成 `todo_write` 时 content_filter | 续跑 1 次后回合完成 |
+| 无未完成工作时中断 | 不续跑 |
+| 持续失败 | 续跑 `maxAutoContinue` 次后转人工 |
+| 宿主重启打断回合 | `session/resume` 后续跑 |
+| 滴答（设 `DIDA_E2E_PROJECT_ID`） | `todo` 建工作镜像到任务面板；全部完成后顶层收口 + 待验收；续跑用尽出 🙋 提醒 |
+
+滴答场景只用一次性专用清单，跑完删除。dsh 新版本发布后：先对比新旧 release 中 `dsh-agent`、`dsh-session`、`dsh-goal`、`dsh-system-prompt`、`dsh-tool-todo` 的 `lib/**/*.d.ts`，再 `DSH_VERSION=<新版本> npm run e2e:dsh`；通过后把版本补进 README 与 `dsh-plugin/README.md` 的“已验证的 dsh 版本”。
+
 ## 不可破坏的规则
 
 - 没有未完成的待验收 Todo，源 Work 不能 completed；全部子项完成/跳过后顶层必须自动收口（`keepOpen` 除外）。
@@ -81,7 +97,7 @@ dsh-plugin/             dsh 组合包资源：index.mjs（构建产物，需提�
 - 等待人类时禁止把未完成子项标 completed/skipped 来止住轮询。
 - 滴答可见文字不得出现思考过程、prompt、ID、lifecycle。
 - 不提交 OAuth Token、真实任务数据、日志、会话文件或本地绝对路径。
-- dsh 适配改动后必须真实 dsh 端到端验证（隔离 `DSH_HOME` + sdk profile + `llm/stream` 故障注入），不能只靠假 ctx 测试。
+- dsh 适配改动后必须跑 `npm run e2e:dsh`（真实 dsh），不能只靠假 ctx 测试。
 
 ## 改动与发布
 

@@ -26,6 +26,8 @@ dsh plugin --profile web add "github:ztllll/dida-todo#v0.9.1"
 
 安装后在插件页启用（默认启用），刷新页面即生效。不需要构建脚本授权。
 
+已验证的 dsh 版本：0.2.0-rc.2、0.2.1-rc.2。升级 dsh 不会卸载插件，也无需重装。
+
 ## 绑定滴答（可选）
 
 只用自动续跑可以跳过。要用滴答 Todo：
