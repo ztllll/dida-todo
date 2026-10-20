@@ -66,8 +66,9 @@ dsh 会话经常因为模型返回 `content_filter`、`429` 限流、`Overloaded
 - **转人工**：连续 5 次续跑仍中断，就在滴答清单建 `🙋 需要你处理` 提醒（+3/+6 分钟两次），不再无限重试。
 - **人优先**：你在会话里发任何消息，待发的续跑立即撤销。你主动点停止的回合不会续跑。
 - 已绑定滴答清单的目录里，dsh 同样可用 `todo` / `todo_work`、自动收口和待验收，与 Pi 共用同一套绑定。滴答 Checklist 会显示在 dsh 输入框上方的“任务”面板里（完成 / 进行中 / 待办），和 Pi 的 Todo 面板一样随步骤实时更新。
+- **按会话隔离**：同一项目开多个 dsh 会话时，每个会话只显示、只推进自己创建或领取的工作；新会话不会接管别的会话正在执行的工作，新建的任务也不会并进去。要让某个会话接手别人的工作或清单里的新任务，在该会话输入 `检查todo`。
 
-安装：dsh 侧栏 **插件 → 添加插件**，填 `github:ztllll/dida-todo#v0.9.2`；或命令行 `dsh plugin --profile web add "github:ztllll/dida-todo#v0.9.2"`。仓库本身就是标准 dsh 组合包（`package.json` 声明 `dsh.bundle`），出现在插件页「已安装」里，可停用、可卸载。它**只新增**一行插件和 `todo` / `todo_work` 两个工具，不覆盖、不禁用 dsh 自带的 `todo_write` 与任务面板；卸载后 dsh 恢复原样。详见 [dsh-plugin/README.md](dsh-plugin/README.md)。
+安装：dsh 侧栏 **插件 → 添加插件**，填 `github:ztllll/dida-todo#v0.9.3`；或命令行 `dsh plugin --profile web add "github:ztllll/dida-todo#v0.9.3"`。仓库本身就是标准 dsh 组合包（`package.json` 声明 `dsh.bundle`），出现在插件页「已安装」里，可停用、可卸载。它**只新增**一行插件和 `todo` / `todo_work` 两个工具，不覆盖、不禁用 dsh 自带的 `todo_write` 与任务面板；卸载后 dsh 恢复原样。详见 [dsh-plugin/README.md](dsh-plugin/README.md)。
 
 绑定沿用 `~/.config/pi-dida-todo/config.json` 的 cwd 绑定（在 Pi 中 `/dida-bind` 一次即可）。未绑定目录里续跑仍然生效，只是用尽后无处发滴答提醒。
 
@@ -76,7 +77,7 @@ dsh 会话经常因为模型返回 `content_filter`、`429` 限流、`Overloaded
 ## 安装
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.9.2
+pi install git:github.com/ztllll/dida-todo@v0.9.3
 ```
 
 新开 Pi 会话后：
@@ -166,8 +167,8 @@ npm run e2e:dsh   # 真实 dsh 端到端验证（临时目录，不碰本机 ~/.
 - **Flow:** capture tasks in Dida with a priority → the idle TUI poller (or the exact input `检查todo`) claims due work → the agent works the Checklist and posts per-step results → when every Item is completed or skipped, the top-level task completes automatically and a `🧑‍🔬` acceptance task with two reminders (+3/+6 min) is created. A comment from your own account on it creates a rework.
 - **When the agent creates a Todo:** you ask for tracking, the request has 3+ distinct deliverables, the work spans turns/sessions, or a background run needs acceptance. Never for chat, Q&A, read-only inspection, research, or a single small action.
 - **Blocked on a human:** the agent calls `todo_work wait_for_human`. The task's priority is cleared (polling stops), a `🙋` reminder fires twice, and the task stays open. Restore its priority in Dida, or ask the agent to resume. As a fallback, the poller never re-wakes the agent for a queue that has not changed.
-- **dsh plugin:** the repository root is a standard dsh bundle: install it from the Plugins page with `github:ztllll/dida-todo#v0.9.2`; it only adds a plugin row and the `todo`/`todo_work` tools, never overrides the built-in `todo_write`, and uninstalling restores dsh as it was. When a turn ends with an error (content_filter, 429, Overloaded) or a crash and the session still has open work (Dida work, a dsh goal, or a `todo_write` list), it re-prompts the agent with backoff (30s to 10m), re-arms a disarmed goal, and after 5 failures leaves a reminder in Dida. Any human message cancels a pending continue. Verified on dsh 0.2.0-rc.2 and 0.2.1-rc.2.
-- **Install:** `pi install git:github.com/ztllll/dida-todo@v0.9.2`, then say “log in to Dida” and run `/dida-bind [name]`. Install while Pi is idle, then `/reload` running sessions.
+- **dsh plugin:** the repository root is a standard dsh bundle: install it from the Plugins page with `github:ztllll/dida-todo#v0.9.3`; it only adds a plugin row and the `todo`/`todo_work` tools, never overrides the built-in `todo_write`, and uninstalling restores dsh as it was. When a turn ends with an error (content_filter, 429, Overloaded) or a crash and the session still has open work (Dida work, a dsh goal, or a `todo_write` list), it re-prompts the agent with backoff (30s to 10m), re-arms a disarmed goal, and after 5 failures leaves a reminder in Dida. Any human message cancels a pending continue. Verified on dsh 0.2.0-rc.2 and 0.2.1-rc.2.
+- **Install:** `pi install git:github.com/ztllll/dida-todo@v0.9.3`, then say “log in to Dida” and run `/dida-bind [name]`. Install while Pi is idle, then `/reload` running sessions.
 - **Hosts:** TUI gets panel + sync + poller; Web/RPC (pi-web) gets panel + sync, no poller; Print and unbound directories stay passive.
 - **Limits:** no attachment API; Checklist Items have no native in-progress state; no cross-machine strong consistency; Dida365 only.
 

@@ -50,6 +50,7 @@ const mock = http.createServer((req, res) => {
     res.write(chunk({ role: "assistant", content: "" }));
     if (step === "todo_write") toolCall("todo_write", { todos: [{ content: "e2e step one", status: "in_progress" }, { content: "e2e step two", status: "pending" }] });
     else if (step === "dida_create") toolCall("todo", { action: "create", workTitle: "dsh e2e 验证", subject: "第一步", items: ["第二步"] });
+    else if (step === "dida_create_b") toolCall("todo", { action: "create", workTitle: "dsh e2e 另一个会话", subject: "B 的步骤" });
     else if (step.startsWith("dida_done_")) toolCall("todo", { action: "update", id: Number(step.slice(10)), status: "completed", metadata: { resolution: "e2e ok" } });
     else if (step === "filter") { res.write(chunk({ content: "partial" })); res.write(chunk({}, "content_filter")); }
     else { res.write(chunk({ content: `mock reply #${served}` })); res.write(chunk({}, "stop")); }
@@ -59,7 +60,8 @@ const mock = http.createServer((req, res) => {
 });
 
 // ---------- 一次 sdk 会话：发 prompt（或 resume），收集 turn/end、续跑消息、todo/write、插件日志 ----------
-function session({ cwd, prompt = "go", resume = false, sessionId = `e2e-${Date.now()}`, wantTurns, timeoutMs = 45000, lingerMs = 1500 }) {
+// then：首个回合结束且插件已完成滴答同步后，在同一会话再发的消息（模拟会话先闲置、之后才派新任务）。
+function session({ cwd, prompt = "go", then, resume = false, sessionId = `e2e-${Date.now()}`, wantTurns, timeoutMs = 45000, lingerMs = 1500 }) {
   mkdirSync(cwd, { recursive: true });
   return new Promise((done) => {
     const child = spawn(dsh, ["--profile", "sdk"], { cwd, env: { ...process.env, DSH_HOME: dshHome, HOME: fakeHome, MOCK_API_KEY: "x" }, stdio: ["pipe", "pipe", "pipe"] });
@@ -91,6 +93,10 @@ function session({ cwd, prompt = "go", resume = false, sessionId = `e2e-${Date.n
         await call("initialize", { cwd, provider: "mock", model: "mock-model" });
         if (resume) await call("session/resume", { sessionId });
         if (!resume || resume === "prompt") await call("session/prompt", { sessionId, contentBlocks: [{ type: "text", text: prompt }] });
+        if (then) {
+          while (Date.now() < deadline && !(out.turns.length >= 1 && out.logs.some((l) => l.includes("已绑定滴答清单")))) await new Promise((r) => setTimeout(r, 300));
+          await call("session/prompt", { sessionId, contentBlocks: [{ type: "text", text: then }] });
+        }
         while (Date.now() < deadline && out.turns.length < wantTurns) await new Promise((r) => setTimeout(r, 300));
         await new Promise((r) => setTimeout(r, lingerMs));
       } catch (error) {
@@ -189,6 +195,20 @@ try {
     check("todo 建滴答工作 → 镜像到 dsh 任务面板", last.length === 2 && last.every((t) => t.status === "completed"), r);
     const open = dida(["project", "data", didaProject]).tasks.map((t) => t.title);
     check("全部子项完成 → 顶层自动完成并生成待验收", !open.includes("dsh e2e 验证") && open.some((t) => t.startsWith("🧑‍🔬 待验收：dsh e2e 验证")), open);
+
+    // 同目录两个会话：A 的工作做到一半，B 新开会话建新工作，两边清单不串。
+    script = ["dida_create", "dida_done_1", "ok"]; served = 0;
+    const a = await session({ cwd: boundCwd, wantTurns: 1 });
+    script = ["ok", "dida_create_b", "ok"]; served = 0;
+    const b = await session({ cwd: boundCwd, prompt: "你好", then: "做一个新任务", wantTurns: 2 });
+    const works = dida(["project", "data", didaProject]).tasks.filter((t) => t.title.startsWith("dsh e2e"));
+    const itemsOf = (title) => (works.find((t) => t.title === title)?.items ?? []).map((i) => i.title);
+    check("同目录两个会话：新会话不接管另一会话的工作，面板与滴答各自独立",
+      JSON.stringify(a.todoWrites.at(-1)?.map((t) => t.content)) === JSON.stringify(["第一步", "第二步"])
+        && JSON.stringify(b.todoWrites.at(-1)?.map((t) => t.content)) === JSON.stringify(["B 的步骤"])
+        && JSON.stringify(itemsOf("dsh e2e 验证")) === JSON.stringify(["第一步", "第二步"])
+        && JSON.stringify(itemsOf("dsh e2e 另一个会话")) === JSON.stringify(["B 的步骤"]),
+      { a: a.todoWrites.at(-1), b: b.todoWrites.at(-1), works: works.map((t) => [t.title, (t.items ?? []).map((i) => i.title)]) });
 
     script = ["todo_write", "filter"]; served = 0;
     await session({ cwd: boundCwd, wantTurns: 4, timeoutMs: 30000 });

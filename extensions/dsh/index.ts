@@ -30,10 +30,11 @@ import { createTodoWorkToolDefinition } from "../dida-todo/work-tool.js";
 import { finalizeWorkAtSettlement } from "../dida-todo/settled-finalization.js";
 import { formatWorkContentForAgent, formatWorkQueueForAgent, hasUnfinishedTasks, isExecutableWork } from "../dida-todo/work-queue.js";
 import { queueFingerprint, selectPolledWork } from "../dida-todo/poller.js";
+import { migrateWorkMetadata } from "../dida-todo/work-lifecycle.js";
 import { TODO_AUTO_POLL_PREFIX, shouldCheckTodoInput } from "../dida-todo/input-sync.js";
 import { DEFAULT_CONTINUATION_POLICY, decideContinuation, renderContinuationPrompt, type ContinuationPolicy } from "../dida-todo/continuation.js";
 import type { ToolResult } from "../dida-todo/tool-result.js";
-import type { DidaTodoConfig, TodoScope } from "../dida-todo/domain.js";
+import type { DidaTodoConfig, TodoScope, WorkTask } from "../dida-todo/domain.js";
 
 export const name = "dida-todo";
 export const inject = ["agents", "tools", "sessions"];
@@ -208,6 +209,24 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
   ctx.tools.register(wrap(createTodoToolDefinition(repository, noop)));
   ctx.tools.register(wrap(createTodoWorkToolDefinition(repository, noop)));
 
+  // ---- 会话隔离 ----
+  // 同一目录可能同时开着多个 dsh 会话，都绑定同一个滴答清单。核心的 updateSessionWorks 会把“清单里唯一一个
+  // 可执行工作”自动设为当前工作，在 dsh 下就会让新会话接管别的会话正在执行的工作，清单和面板串到一起。
+  // dsh 会话只自动选中自己领取/创建过的工作（滴答 metadata 的 execution.owner.sessionId）；
+  // 本次同步才收编的人类新建任务（adoptedWorkIds，收编时 owner 写成当前会话）不算，
+  // 其他工作要靠 检查todo / Poller 授权的 todo_work switch/next 显式领取。
+  function ownedBy(work: WorkTask, sessionId: string): boolean {
+    return migrateWorkMetadata(work.metadata).execution?.owner?.sessionId === sessionId;
+  }
+  function syncSessionWorks(sessionId: string, sync: { works: WorkTask[]; adoptedWorkIds: string[] }): void {
+    const keep = getSessionRuntime(sessionId)?.work?.remote.id;
+    updateSessionWorks(sessionId, sync.works, keep);
+    const current = getSessionRuntime(sessionId)?.work;
+    if (current && current.remote.id !== keep && (!ownedBy(current, sessionId) || sync.adoptedWorkIds.includes(current.remote.id))) {
+      updateSessionWork(sessionId, undefined);
+    }
+  }
+
   // ---- 会话绑定 ----
   // dsh 重启或崩溃后恢复会话时，会在插件监听之前补写 turn/end:interrupted；
   // 插件看不到这个事件，所以接管会话时自己检查最后一个回合。只看最近 30 分钟内的，避免翻旧账。
@@ -249,7 +268,7 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
     syncing.add(sessionId);
     try {
       const sync = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
-      updateSessionWorks(sessionId, sync.works);
+      syncSessionWorks(sessionId, sync);
       log.info(`会话 ${sessionId.slice(0, 16)} 已绑定滴答清单 ${binding.label ?? binding.projectId}，同步 ${sync.works.length} 个工作`);
     } catch (error) {
       log.warn(`同步滴答失败（会话照常运行）：${error instanceof Error ? error.message : String(error)}`);
@@ -380,7 +399,7 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
     const runtime = getSessionRuntime(sessionId);
     if (!runtime || agent.status !== "idle" || continueTimers.has(sessionId)) return;
     const sync = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true, deferFinalizationWorkIds: pendingWorkFinalizations(sessionId) });
-    updateSessionWorks(sessionId, sync.works, runtime.work?.remote.id);
+    syncSessionWorks(sessionId, sync);
     const executable = sync.works.filter(isExecutableWork);
     if (!executable.length || agent.status !== "idle") return;
     const fingerprint = queueFingerprint(executable, sync.finalizationFailures.map((failure) => failure.workId));

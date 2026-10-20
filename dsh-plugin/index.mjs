@@ -6801,6 +6801,17 @@ async function apply(ctx, pluginConfig = {}) {
   });
   ctx.tools.register(wrap(createTodoToolDefinition(repository, noop)));
   ctx.tools.register(wrap(createTodoWorkToolDefinition(repository, noop)));
+  function ownedBy(work, sessionId) {
+    return migrateWorkMetadata(work.metadata).execution?.owner?.sessionId === sessionId;
+  }
+  function syncSessionWorks(sessionId, sync) {
+    const keep = getSessionRuntime(sessionId)?.work?.remote.id;
+    updateSessionWorks(sessionId, sync.works, keep);
+    const current = getSessionRuntime(sessionId)?.work;
+    if (current && current.remote.id !== keep && (!ownedBy(current, sessionId) || sync.adoptedWorkIds.includes(current.remote.id))) {
+      updateSessionWork(sessionId, void 0);
+    }
+  }
   const recoveredChecked = /* @__PURE__ */ new Set();
   function resumeInterruptedOnAttach(agent) {
     const sessionId = agent.session.id;
@@ -6838,7 +6849,7 @@ async function apply(ctx, pluginConfig = {}) {
     syncing.add(sessionId);
     try {
       const sync = await repository.syncOpenWorks(scope, { adoptUnmanaged: true });
-      updateSessionWorks(sessionId, sync.works);
+      syncSessionWorks(sessionId, sync);
       log.info(`\u4F1A\u8BDD ${sessionId.slice(0, 16)} \u5DF2\u7ED1\u5B9A\u6EF4\u7B54\u6E05\u5355 ${binding.label ?? binding.projectId}\uFF0C\u540C\u6B65 ${sync.works.length} \u4E2A\u5DE5\u4F5C`);
     } catch (error) {
       log.warn(`\u540C\u6B65\u6EF4\u7B54\u5931\u8D25\uFF08\u4F1A\u8BDD\u7167\u5E38\u8FD0\u884C\uFF09\uFF1A${error instanceof Error ? error.message : String(error)}`);
@@ -6953,7 +6964,7 @@ ${todos.map((todo) => `- ${todo}`).join("\n")}`);
     const runtime = getSessionRuntime(sessionId);
     if (!runtime || agent.status !== "idle" || continueTimers.has(sessionId)) return;
     const sync = await repository.syncOpenWorks(runtime.scope, { adoptUnmanaged: true, deferFinalizationWorkIds: pendingWorkFinalizations(sessionId) });
-    updateSessionWorks(sessionId, sync.works, runtime.work?.remote.id);
+    syncSessionWorks(sessionId, sync);
     const executable = sync.works.filter(isExecutableWork);
     if (!executable.length || agent.status !== "idle") return;
     const fingerprint = queueFingerprint(executable, sync.finalizationFailures.map((failure) => failure.workId));

@@ -68,6 +68,7 @@ dsh-plugin/             dsh 组合包资源：index.mjs（构建产物，需提�
 ## dsh 续跑规则
 
 - 只对 `turn/end` 为 `error`（content_filter / 429 / Overloaded 等）或 `interrupted`（崩溃）续跑；`aborted`（用户停止）、`completed`、`blocked` 不续跑。
+- 会话隔离：dsh 会话同步后只自动选中 `execution.owner.sessionId` 为本会话、且不是本次同步才收编的工作；其他工作只能经 `检查todo` / Poller 授权的 `todo_work switch/next` 领取（`extensions/dsh/index.ts` 的 `syncSessionWorks`）。Pi 每个 tmux pane 一个会话，仍沿用核心的“唯一可执行工作自动续接”。
 - 只在会话有未完成工作时续跑：本会话推进过的滴答工作、未完成的 dsh goal、或最后一次 `todo_write` 仍有未完成项。子代理会话（`delegationDepth > 0`）不续跑。
 - 退避 30s / 1m / 2m / 5m / 10m，默认最多 5 次；用尽后挂起滴答工作（或在绑定清单建 🙋 提醒）通知人类。
 - 人类发出任何消息即撤销待发续跑并清零计数；续跑前若 dsh goal 已被官方驱动器解除（disarm）会先 `resume`。
@@ -84,7 +85,7 @@ dsh-plugin/             dsh 组合包资源：index.mjs（构建产物，需提�
 | 无未完成工作时中断 | 不续跑 |
 | 持续失败 | 续跑 `maxAutoContinue` 次后转人工 |
 | 宿主重启打断回合 | `session/resume` 后续跑 |
-| 滴答（设 `DIDA_E2E_PROJECT_ID`） | `todo` 建工作镜像到任务面板；全部完成后顶层收口 + 待验收；续跑用尽出 🙋 提醒 |
+| 滴答（设 `DIDA_E2E_PROJECT_ID`） | `todo` 建工作镜像到任务面板；全部完成后顶层收口 + 待验收；同目录两个会话各自的工作互不并入；续跑用尽出 🙋 提醒 |
 
 滴答场景只用一次性专用清单，跑完删除。dsh 新版本发布后：先对比新旧 release 中 `dsh-agent`、`dsh-session`、`dsh-goal`、`dsh-system-prompt`、`dsh-tool-todo` 的 `lib/**/*.d.ts`，再 `DSH_VERSION=<新版本> npm run e2e:dsh`；通过后把版本补进 README 与 `dsh-plugin/README.md` 的“已验证的 dsh 版本”。
 

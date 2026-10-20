@@ -10,7 +10,8 @@ function work(): WorkTask {
     remote: { id: "w1", projectId: "proj", title: "大任务", status: 0, priority: 3 },
     userContent: "",
     tasks,
-    metadata: { schemaVersion: 2, kind: "pi-todo-work", bindingKey: "cwd:/work", origin: "dida", lifecycle: "claimed", workType: "checklist", nextId: 3, tasks },
+    // 本会话（s1）领取的工作：领取/创建时滴答 metadata 记录 owner。
+    metadata: { schemaVersion: 2, kind: "pi-todo-work", bindingKey: "cwd:/work", origin: "dida", lifecycle: "claimed", workType: "checklist", nextId: 3, tasks, execution: { claimedAt: "2026-10-19T00:00:00.000Z", owner: { hostId: "h", sessionId: "s1" } } },
   };
 }
 
@@ -42,7 +43,7 @@ function harness() {
   return { ctx, tools, sent, messages, paused, agent, emit, turnEnd, repository, appended };
 }
 
-afterEach(() => { vi.useRealTimers(); removeSessionRuntime("s1"); });
+afterEach(() => { vi.useRealTimers(); for (const id of ["s1", "s2", "s3"]) removeSessionRuntime(id); });
 
 describe("dsh 宿主插件", () => {
   it("注册 todo/todo_work，按会话 cwd 绑定滴答清单", async () => {
@@ -157,6 +158,73 @@ describe("dsh 宿主插件", () => {
     await h.emit("agent/created", { agent: h.agent });
     await vi.advanceTimersByTimeAsync(600_000);
     expect(h.sent).toHaveLength(0);
+  });
+
+  it("同目录多会话按会话隔离：新会话不接管别的会话正在执行的工作，各自面板只显示自己的清单", async () => {
+    // 会话 s1 已在执行“大任务”（滴答 metadata 记录 owner=s1）；之后同目录开新会话 s2 做新任务。
+    const owned = (id: string, title: string, owner: string, subjects: string[]): WorkTask => {
+      const tasks = subjects.map((subject, index) => ({ id: index + 1, subject, status: "pending" as const }));
+      return {
+        remote: { id, projectId: "proj", title, status: 0, priority: 3 },
+        userContent: "",
+        tasks,
+        metadata: { schemaVersion: 2, kind: "pi-todo-work", bindingKey: "cwd:/work", origin: "pi", lifecycle: "claimed", workType: "checklist", nextId: tasks.length + 1, tasks, execution: { claimedAt: "2026-10-19T00:00:00.000Z", owner: { hostId: "h", sessionId: owner } } },
+      };
+    };
+    const remote = new Map<string, WorkTask>([["w1", owned("w1", "大任务", "s1", ["第一步", "第二步"])]]);
+    const listeners = new Map<string, Array<(...args: any[]) => unknown>>();
+    const tools: any[] = [];
+    const appended = new Map<string, Array<{ content: string }[]>>();
+    const mk = (id: string) => ({
+      id,
+      status: "idle" as const,
+      session: { id, header: { cwd: "/work" }, append(type: string, data: any) { if (type === "todo/write") appended.set(id, [...(appended.get(id) ?? []), data.todos]); } },
+      followup() {},
+    });
+    const agents = new Map([["s1", mk("s1")], ["s2", mk("s2")]]);
+    const ctx = {
+      agents: { get: (id: string) => agents.get(id), list: () => [...agents.values()], withoutInitiator: <T>(op: () => T) => op() },
+      tools: { register(def: unknown) { tools.push(def); return () => {}; } },
+      on(event: string, fn: (...args: any[]) => unknown) { listeners.set(event, [...(listeners.get(event) ?? []), fn]); return () => {}; },
+      effect(factory: () => () => void) { factory(); },
+    };
+    const repository = {
+      async syncOpenWorks() { return { works: [...remote.values()], adoptedWorkIds: [] as string[], acceptances: [], finalizationFailures: [] }; },
+      async createWork(scope: { sessionId: string }, title: string) { const work = owned(`w${remote.size + 1}`, title, scope.sessionId, []); remote.set(work.remote.id, work); return work; },
+      async createTask(_scope: unknown, workId: string, input: { subject: string }) {
+        const work = remote.get(workId)!;
+        const tasks = [...work.tasks, { id: work.tasks.length + 1, subject: input.subject, status: "pending" as const }];
+        const next = { ...work, tasks, metadata: { ...work.metadata, tasks, nextId: tasks.length + 1 } } as WorkTask;
+        remote.set(workId, next);
+        return next;
+      },
+    };
+    await apply(ctx as never, { poll: false, testOverrides: { config: { bindings: [{ key: "cwd:/work", projectId: "proj", cwd: "/work" }] }, repository: repository as never } });
+    const [todo] = tools;
+    // s1 继续自己的工作。
+    await vi.waitFor(async () => expect(await todo.execute({ action: "list" }, { agent: agents.get("s1") })).toContain("第一步"));
+
+    // 新会话 s2：看不到 s1 的清单，新建的工作不会并入 s1 的工作。
+    expect(await todo.execute({ action: "list" }, { agent: agents.get("s2") })).not.toContain("第一步");
+    await todo.execute({ action: "create", workTitle: "新任务", subject: "新步骤" }, { agent: agents.get("s2") });
+    expect(remote.get("w1")!.tasks.map((task) => task.subject)).toEqual(["第一步", "第二步"]);
+    expect(remote.get("w2")!.tasks.map((task) => task.subject)).toEqual(["新步骤"]);
+    expect(appended.get("s2")!.at(-1)!.map((todo) => todo.content)).toEqual(["新步骤"]);
+
+    // 人在滴答新建的任务：被新会话同步收编（owner 写成该会话）也不自动并入。
+    const s3 = mk("s3");
+    agents.set("s3", s3);
+    const human = owned("w9", "人类新建", "s3", ["人类的步骤"]);
+    remote.set("w9", human);
+    const sync = repository.syncOpenWorks;
+    repository.syncOpenWorks = async () => ({ ...(await sync()), works: [human], adoptedWorkIds: ["w9"] });
+    for (const fn of listeners.get("agent/created") ?? []) await fn({ agent: s3 });
+    await vi.waitFor(async () => expect(await todo.execute({ action: "list" }, { agent: s3 })).toContain("已同步 1 个顶层任务"));
+    repository.syncOpenWorks = sync;
+
+    // 两边各自的清单互不串。
+    expect(await todo.execute({ action: "list" }, { agent: agents.get("s1") })).not.toContain("新步骤");
+    expect(appended.get("s1")!.at(-1)!.map((todo) => todo.content)).toEqual(["第一步", "第二步"]);
   });
 
   it("未绑定目录的会话不接管、工具给出绑定指引", async () => {

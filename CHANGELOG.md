@@ -4,6 +4,16 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-10-19
+
+### Fixed
+
+- dsh 同一项目多个会话互相串任务：新会话同步滴答时会把清单里唯一的可执行工作（往往是另一个会话正在执行的大任务）设为自己的当前工作，新建的步骤随之并进那个工作，任务面板也显示别人的清单。现在 dsh 会话只自动选中自己创建或领取的工作，其他工作需在该会话输入 `检查todo` 显式领取。Pi 行为不变。
+
+### Verification
+
+- `e2e:dsh` 新增“同目录两个会话”场景：旧代码在真实 dsh 0.2.1-rc.2 上复现（B 的步骤并入 A 的工作），修复后 10/10 通过。
+
 ## [0.9.2] - 2026-10-19
 
 ### Fixed
@@ -401,7 +411,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.9.3...HEAD
+[0.9.3]: https://github.com/ztllll/dida-todo/tree/v0.9.3
 [0.9.2]: https://github.com/ztllll/dida-todo/tree/v0.9.2
 [0.9.1]: https://github.com/ztllll/dida-todo/tree/v0.9.1
 [0.9.0]: https://github.com/ztllll/dida-todo/tree/v0.9.0
