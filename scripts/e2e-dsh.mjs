@@ -29,6 +29,7 @@ const log = (msg) => console.log(`[e2e] ${msg}`);
 // ---------- 假模型：脚本逐请求消费，最后一项重复 ----------
 let script = ["ok"];
 let served = 0;
+let ptcSdkSeen = false;
 const mock = http.createServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
@@ -49,6 +50,17 @@ const mock = http.createServer((req, res) => {
     };
     res.write(chunk({ role: "assistant", content: "" }));
     if (step === "todo_write") toolCall("todo_write", { todos: [{ content: "e2e step one", status: "in_progress" }, { content: "e2e step two", status: "pending" }] });
+    else if (step === "ptc_todo") {
+      const request = JSON.parse(body);
+      const system = request.messages.filter((m) => m.role === "system" || m.role === "developer").map((m) => typeof m.content === "string" ? m.content : JSON.stringify(m.content)).join("\n");
+      ptcSdkSeen = system.includes("todo_work") && system.includes("wait_for_human") && system.includes("workTitle")
+        && request.tools.some((t) => t.function.name === "run_code") && !request.tools.some((t) => t.function.name === "todo");
+      toolCall("run_code", { description: "Check Dida tool bindings", code: `for (const name of ["todo", "todo_work"]) {
+        try { await tools[name]({ action: "list" }); throw new Error("expected unbound workspace"); }
+        catch (error) { if (!String(error).includes("未绑定滴答清单")) throw error; }
+      }
+      return "ptc-dida-bindings-ok";` });
+    }
     else if (step === "dida_create") toolCall("todo", { action: "create", workTitle: "dsh e2e 验证", subject: "第一步", items: ["第二步"] });
     else if (step === "dida_create_b") toolCall("todo", { action: "create", workTitle: "dsh e2e 另一个会话", subject: "B 的步骤" });
     else if (step.startsWith("dida_done_")) toolCall("todo", { action: "update", id: Number(step.slice(10)), status: "completed", metadata: { resolution: "e2e ok" } });
@@ -61,11 +73,11 @@ const mock = http.createServer((req, res) => {
 
 // ---------- 一次 sdk 会话：发 prompt（或 resume），收集 turn/end、续跑消息、todo/write、插件日志 ----------
 // then：首个回合结束且插件已完成滴答同步后，在同一会话再发的消息（模拟会话先闲置、之后才派新任务）。
-function session({ cwd, prompt = "go", then, resume = false, sessionId = `e2e-${Date.now()}`, wantTurns, timeoutMs = 45000, lingerMs = 1500 }) {
+function session({ cwd, prompt = "go", then, resume = false, sessionId = `e2e-${Date.now()}`, wantTurns, timeoutMs = 45000, lingerMs = 1500, permissionMode = process.env.DSH_PERMISSION_MODE }) {
   mkdirSync(cwd, { recursive: true });
   return new Promise((done) => {
-    const child = spawn(dsh, ["--profile", "sdk"], { cwd, env: { ...process.env, DSH_HOME: dshHome, HOME: fakeHome, MOCK_API_KEY: "x" }, stdio: ["pipe", "pipe", "pipe"] });
-    const out = { turns: [], continues: 0, todoWrites: [], logs: [] };
+    const child = spawn(dsh, ["--profile", "sdk"], { cwd, env: { ...process.env, DSH_HOME: dshHome, HOME: fakeHome, MOCK_API_KEY: "x", ...(permissionMode ? { DSH_PERMISSION_MODE: permissionMode } : {}) }, stdio: ["pipe", "pipe", "pipe"] });
+    const out = { turns: [], continues: 0, todoWrites: [], toolResults: [], logs: [] };
     const pending = new Map();
     let buf = "";
     let nextId = 1;
@@ -79,6 +91,7 @@ function session({ cwd, prompt = "go", then, resume = false, sessionId = `e2e-${
         const ev = msg.method === "session.event" ? msg.params.event : undefined;
         if (ev?.type === "turn/end") out.turns.push(ev.data.reason.kind);
         if (ev?.type === "todo/write") out.todoWrites.push(ev.data.todos);
+        if (ev?.type === "tool/result") out.toolResults.push(ev.data.message);
         if (ev?.type === "user/message" && ev.data.source?.kind === "dida-todo") out.continues += 1;
       }
     });
@@ -143,7 +156,8 @@ try {
   writeFileSync(join(dshHome, "profiles", "sdk", ".npmrc"), "ignore-workspace-root-check=true\n");
   run(dsh, ["plugin", "--profile", "sdk", "add", join(root, tgz)], { env });
   await new Promise((r) => mock.listen(0, "127.0.0.1", r));
-  writeFileSync(join(dshHome, "profiles", "sdk", "cordis.patch.yml"), `- id: llm-pi-ai
+  const profilePatch = join(dshHome, "profiles", "sdk", "cordis.patch.yml");
+  const nativePatch = `- id: llm-pi-ai
   config:
     providers:
       mock:
@@ -157,7 +171,8 @@ try {
     maxAutoContinue: 3
     continueDelayMs: 1500
     poll: false
-`);
+`;
+  writeFileSync(profilePatch, nativePatch);
   const dump = run(dsh, ["--profile", "sdk", "--dump-config"], { env });
   check("插件挂载且 dsh 自带 todo_write 保留", /- id: dida-todo\n/.test(dump) && /- id: tool-todo\n/.test(dump));
 
@@ -186,6 +201,15 @@ try {
   script = ["ok"]; served = 0;
   r = await session({ cwd: join(root, "ws-e"), sessionId: "e2e-reload", resume: "prompt", prompt: "after restart", wantTurns: 1 });
   check("含续跑消息的会话重启后仍能加载并继续对话", !r.error && r.turns.join() === "completed", r);
+
+  // PTC 回归：真实宿主生成 SDK，并经 run_code 调用两个插件工具；未绑定目录不访问滴答。
+  writeFileSync(profilePatch, `${nativePatch}- id: tools\n  config:\n    mode: ptc\n`);
+  script = ["ptc_todo", "ok"]; served = 0; ptcSdkSeen = false;
+  // /tmp 安装的 worker 会被 workspace-write 隐藏；固定本地程序不访问文件或网络。
+  r = await session({ cwd: join(root, "ws-ptc"), wantTurns: 1, permissionMode: "danger-full-access" });
+  check("PTC 生成两个工具的 SDK 并成功分派 todo/todo_work", ptcSdkSeen && r.turns.join() === "completed"
+    && r.toolResults.some((m) => !m.isError && JSON.stringify(m.content).includes("ptc-dida-bindings-ok")), r);
+  writeFileSync(profilePatch, nativePatch);
 
   // ---------- 滴答场景（需一次性专用清单） ----------
   if (didaProject) {

@@ -6747,7 +6747,8 @@ async function apply(ctx, pluginConfig = {}) {
   const wrap = (definition) => ({
     name: definition.name,
     description: [definition.description, ...definition.promptGuidelines].join("\n"),
-    parameters: definition.parameters,
+    // TypeBox 的隐藏 ~kind/~optional 只供 Pi 使用；dsh PTC 要求纯 JSON Schema。
+    parameters: JSON.parse(JSON.stringify(definition.parameters)),
     output: {
       schema: { type: "string" },
       render: (_args, value) => [{ type: "text", text: value }]

@@ -4,6 +4,12 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-10-24
+
+### Fixed
+
+- dsh PTC 模式生成工具 SDK 时，`todo` / `todo_work` 的 TypeBox 参数定义带有隐藏元数据，触发 `parameters must be lossless JSON before schema projection`。现在 dsh 适配层将两个工具的参数定义转换为纯 JSON Schema，只剥离 TypeBox 隐藏元数据，保留参数约束，兼容标准（native）与 PTC 模式。Pi 继续使用原始 TypeBox schema；不修改或放宽 dsh 宿主的 JSON 校验。
+
 ## [0.9.3] - 2026-10-19
 
 ### Fixed
@@ -411,7 +417,8 @@ All notable user-visible changes are recorded here. The project is released thro
 
 - Introduce lifecycle-aware metadata, occurrence-safe finalization, mandatory acceptance, same-host cross-process locks, and real-Dida release validation.
 
-[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.9.3...HEAD
+[Unreleased]: https://github.com/ztllll/dida-todo/compare/v0.9.4...HEAD
+[0.9.4]: https://github.com/ztllll/dida-todo/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/ztllll/dida-todo/tree/v0.9.3
 [0.9.2]: https://github.com/ztllll/dida-todo/tree/v0.9.2
 [0.9.1]: https://github.com/ztllll/dida-todo/tree/v0.9.1

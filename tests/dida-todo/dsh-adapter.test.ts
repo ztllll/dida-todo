@@ -46,6 +46,29 @@ function harness() {
 afterEach(() => { vi.useRealTimers(); for (const id of ["s1", "s2", "s3"]) removeSessionRuntime(id); });
 
 describe("dsh 宿主插件", () => {
+  it("注册的两个工具提供纯 JSON Schema，PTC 快照不会丢失隐藏属性", async () => {
+    const h = harness();
+    await apply(h.ctx as never, { testOverrides: { config: { bindings: [] }, repository: h.repository as never } });
+    const checkJsonKeys = (value: unknown): void => {
+      if (value === null || typeof value !== "object") return;
+      expect(Reflect.ownKeys(value)).toEqual([...Object.keys(value), ...(Array.isArray(value) ? ["length"] : [])]);
+      for (const child of Object.values(value)) checkJsonKeys(child);
+    };
+    for (const tool of h.tools) {
+      checkJsonKeys(tool.parameters);
+      expect(tool.parameters.required).toEqual(["action"]);
+    }
+    const [todo, work] = h.tools;
+    expect(todo.parameters.properties.action.enum).toEqual(["create", "update", "list", "get", "delete", "clear"]);
+    expect(todo.parameters.properties.subject.description).toContain("Required for create");
+    expect(todo.parameters.properties.items.items.type).toBe("string");
+    const metadataPatterns = todo.parameters.properties.metadata.patternProperties;
+    expect(Object.values(metadataPatterns)).toEqual([{}]);
+    expect(new RegExp(Object.keys(metadataPatterns)[0]!).test("resolution")).toBe(true);
+    expect(work.parameters.properties.action.enum).toContain("wait_for_human");
+    expect(work.parameters.properties.reason.description).toContain("Required for wait_for_human");
+  });
+
   it("注册 todo/todo_work，按会话 cwd 绑定滴答清单", async () => {
     const h = harness();
     await apply(h.ctx as never, { poll: false, testOverrides: { config: { bindings: [{ key: "cwd:/work", projectId: "proj", cwd: "/work" }] }, repository: h.repository as never } });

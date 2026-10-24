@@ -17,18 +17,22 @@ DeepSeek Harness（dsh）插件：**滴答清单 Todo + 会话中断自动续跑
 在 dsh 侧栏 **插件 → 添加插件**，填：
 
 ```text
-github:ztllll/dida-todo#v0.9.3
+github:ztllll/dida-todo#v0.9.4
 ```
 
 或命令行：
 
 ```sh
-dsh plugin --profile web add "github:ztllll/dida-todo#v0.9.3"
+dsh plugin --profile web add "github:ztllll/dida-todo#v0.9.4"
 ```
 
 安装后在插件页启用（默认启用），刷新页面即生效。不需要构建脚本授权。
 
 已验证的 dsh 版本：0.2.0-rc.2、0.2.1-rc.2。升级 dsh 不会卸载插件，也无需重装。
+
+## 标准 / PTC 模式兼容
+
+`todo` / `todo_work` 同时适用于 dsh 标准（native）与 PTC 模式。PTC 生成工具 SDK 时要求参数定义是无损 JSON；直接传入 TypeBox 对象会因其隐藏元数据触发 `parameters must be lossless JSON before schema projection`。dsh 适配层将两个工具的 TypeBox 参数定义转换为纯 JSON Schema，只剥离 TypeBox 隐藏元数据，保留参数约束。Pi 仍使用原始 TypeBox schema，不修改或放宽 dsh 宿主的严格 JSON 校验。
 
 ## 绑定滴答（可选）
 

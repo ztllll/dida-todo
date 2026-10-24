@@ -146,7 +146,8 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
   const wrap = (definition: ReturnType<typeof createTodoToolDefinition> | ReturnType<typeof createTodoWorkToolDefinition>) => ({
     name: definition.name,
     description: [definition.description, ...definition.promptGuidelines].join("\n"),
-    parameters: definition.parameters,
+    // TypeBox 的隐藏 ~kind/~optional 只供 Pi 使用；dsh PTC 要求纯 JSON Schema。
+    parameters: JSON.parse(JSON.stringify(definition.parameters)),
     output: {
       schema: { type: "string" },
       render: (_args: unknown, value: string) => [{ type: "text", text: value }],
