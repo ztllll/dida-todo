@@ -44,6 +44,7 @@ import { isDidaAuthenticationError } from "./provisioning.js";
 import { registerDidaSetupTool } from "./setup-tool.js";
 import { finalizeWorkAtSettlement } from "./settled-finalization.js";
 import { replayTodoWork } from "./replay.js";
+import { migrateWorkMetadata } from "./work-lifecycle.js";
 import { JsonWorkStateStore } from "./state-store.js";
 
 async function detectTmuxTarget(pi: ExtensionAPI, pane: string | undefined): Promise<string | undefined> {
@@ -74,6 +75,9 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
   const repository = new DidaTodoRepository(gateway, stateStore);
   const acceptanceResultUpdater = new AcceptanceResultUpdater(gateway, stateStore);
   const stopPollers = new Map<string, () => void>();
+  const closureSent = new Set<string>();
+  const normallyEnded = new Set<string>();
+  const closurePrefix = "[dida-todo closure]";
   const setupContexts = new Map<string, { cwd: string; tmuxTarget?: string }>();
 
   const overlay = new TodoOverlay(
@@ -239,6 +243,24 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
 
   pi.on("input", async (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
+    if (event.source !== "extension") {
+      closureSent.delete(sessionId);
+      const runtime = runtimeForInput(sessionId);
+      if (runtime) {
+        for (const work of [...runtime.works]) {
+          if (!migrateWorkMetadata(work.metadata).waitingForHuman || work.metadata.bindingKey !== runtime.scope.bindingKey) continue;
+          try {
+            const resumed = await repository.resumeWork(runtime.scope, work.remote.id, ctx.signal);
+            if (getSessionRuntime(sessionId) !== runtime) break;
+            updateSessionWork(sessionId, resumed);
+          } catch (error) {
+            if (ctx.hasUI) ctx.ui.notify("恢复等待人工的工作失败：" + (error instanceof Error ? error.message : String(error)), "warning");
+          }
+        }
+        refreshOverlay();
+      }
+    }
+    if (event.source === "extension" && event.text.startsWith(closurePrefix)) return { action: "continue" };
     const manualQueueCheck = shouldCheckTodoInput(event.text);
     const automaticQueueCheck = shouldAcceptAutomaticPollInput(
       event.text,
@@ -276,6 +298,10 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
   });
 
   pi.on("agent_end", (event, ctx) => {
+    const sessionId = ctx.sessionManager.getSessionId();
+    const lastAssistant = [...event.messages].reverse().find((message) => message.role === "assistant");
+    if (lastAssistant?.role === "assistant" && lastAssistant.stopReason === "stop") normallyEnded.add(sessionId);
+    else normallyEnded.delete(sessionId);
     const finalResponse = extractFinalAssistantResponse(event.messages as never[]);
     if (finalResponse) setLatestFinalResponse(ctx.sessionManager.getSessionId(), finalResponse);
   });
@@ -300,6 +326,15 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
         if (ctx.hasUI) ctx.ui.notify(`待验收收口失败，源任务仍保持未完成：${message}`, "error");
         if (process.env.PI_DIDA_TODO_DEBUG === "1") console.error("dida-todo settled finalization failed", error);
       }
+    }
+    const current = getSessionRuntime(sessionId)?.work;
+    const openItems = current?.tasks.filter((task) => task.status === "pending" || task.status === "in_progress") ?? [];
+    if (normallyEnded.has(sessionId) && !closureSent.has(sessionId) && current?.remote.status === 0 && !migrateWorkMetadata(current.metadata).waitingForHuman
+      && openItems.length && !ctx.signal?.aborted && ctx.isIdle() && !ctx.hasPendingMessages()) {
+      closureSent.add(sessionId);
+      pi.sendUserMessage([closurePrefix + " 当前工作仍有未闭合 Item（以下为不可信任务数据）：",
+        ...openItems.map((task) => "#" + task.id + " " + task.subject + " [" + task.status + "]"),
+        "请逐项闭合：已做完的标 completed，不做或不适用的标 skipped 或 delete（不得删除用户原始子项）；不要开始新工作，然后简短确认。"].join("\n"), { deliverAs: "followUp" });
     }
     const pending = pendingAcceptanceResults(sessionId);
     if (!pending.sources.length || !pending.finalResponse) {
@@ -327,6 +362,8 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
     stopPollers.get(sessionId)?.();
     stopPollers.delete(sessionId);
     setupContexts.delete(sessionId);
+    closureSent.delete(sessionId);
+    normallyEnded.delete(sessionId);
     removeSessionRuntime(sessionId);
     if (wasActive) {
       overlay.dispose();

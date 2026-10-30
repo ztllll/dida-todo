@@ -546,6 +546,7 @@ export class DidaTodoRepository {
     signal?: AbortSignal,
   ): Promise<SyncOpenWorksResult> {
     const data = await this.gateway.getProjectData(scope.binding.projectId, signal);
+    const openTaskIds = new Set(data.tasks.filter((task) => task.status === 0).map((task) => task.id));
     const works: WorkTask[] = [];
     const adoptedWorkIds: string[] = [];
     const acceptances: PendingAcceptance[] = [];
@@ -607,8 +608,9 @@ export class DidaTodoRepository {
           } else if (JSON.stringify(metadata) !== JSON.stringify(migrateWorkMetadata(stored))) {
             await this.stateStore.set(scope.binding.projectId, remote.id, metadata);
           }
-          if (metadata.waitingForHuman && (remote.priority ?? 0) > 0) {
-            // 用户在滴答把优先级改回来 = 人类已参与，恢复自动执行。
+          const waiting = metadata.waitingForHuman;
+          if (remote.status === 0 && waiting && ((remote.priority ?? 0) > 0 || (waiting.reminderId && !openTaskIds.has(waiting.reminderId)))) {
+            // 改回优先级，或勾掉/删除提醒，都表示人类已处理。
             work = await this.resumeWork(scope, remote.id, signal);
           } else if (metadata.origin === "pi" && !metadata.waitingForHuman && (remote.priority ?? 0) <= 0) {
             work = await this.migratePiWorkPriority(scope, remote.id, signal);

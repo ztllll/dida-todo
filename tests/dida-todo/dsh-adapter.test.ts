@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { apply } from "../../extensions/dsh/index.js";
 import type { WorkTask } from "../../extensions/dida-todo/domain.js";
-import { removeSessionRuntime } from "../../extensions/dida-todo/runtime.js";
+import { getSessionRuntime, updateSessionWork, removeSessionRuntime } from "../../extensions/dida-todo/runtime.js";
 
 // dsh 适配层冒烟：假 dsh 上下文 + 假仓库，跑通 绑定 → 工具 → 中断续跑 → 用户接手撤销 → 用尽转提醒。
-function work(): WorkTask {
+function work(): WorkTask & { metadata: import("../../extensions/dida-todo/domain.js").WorkMetadataV2 } {
   const tasks = [{ id: 1, subject: "第一步", status: "pending" as const }, { id: 2, subject: "第二步", status: "pending" as const }];
   return {
     remote: { id: "w1", projectId: "proj", title: "大任务", status: 0, priority: 3 },
@@ -46,6 +46,89 @@ function harness() {
 afterEach(() => { vi.useRealTimers(); for (const id of ["s1", "s2", "s3"]) removeSessionRuntime(id); });
 
 describe("dsh 宿主插件", () => {
+  it("人类消息恢复等待工作，工具等待恢复后追加原工作，不接管其他会话", async () => {
+    const h = harness();
+    await apply(h.ctx as never, { testOverrides: { config: { bindings: [{ key: "cwd:/work", projectId: "proj", cwd: "/work" }] }, repository: h.repository as never } });
+    await vi.waitFor(() => expect(getSessionRuntime("s1")?.work).toBeDefined());
+    const paused = work();
+    paused.metadata.waitingForHuman = { priority: 3, reason: "确认", since: "now", reminderId: "reminder" };
+    paused.remote.priority = 0;
+    const foreign = structuredClone(paused);
+    foreign.remote.id = "foreign";
+    foreign.metadata.execution!.owner!.sessionId = "s2";
+    getSessionRuntime("s1")!.works = [paused, foreign];
+    updateSessionWork("s1", undefined);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const resumeWork = vi.fn(async (_scope: unknown, _workId: string) => { await gate; return work(); });
+    const createTask = vi.fn(async (_scope, id, input) => ({ ...work(), tasks: [...work().tasks, { id: 3, subject: input.subject, status: "pending" }] }));
+    const createWork = vi.fn(async () => { throw new Error("must append original work"); });
+    Object.assign(h.repository, { resumeWork, createTask, createWork });
+    await h.emit("agent/inbox/inserted", { agent: h.agent, message: { source: { kind: "user" }, content: [{ text: "已处理" }] } });
+    const creating = h.tools[0].execute({ action: "create", subject: "验收报告" }, { agent: h.agent });
+    await Promise.resolve();
+    expect(createTask).not.toHaveBeenCalled();
+    release();
+    await creating;
+    expect(resumeWork).toHaveBeenCalledTimes(1);
+    expect(resumeWork.mock.calls[0]?.[1]).toBe("w1");
+    expect(createWork).not.toHaveBeenCalled();
+    expect(createTask.mock.calls[0]?.[1]).toBe("w1");
+    expect(getSessionRuntime("s1")?.work?.remote.id).toBe("w1");
+    expect(h.appended.at(-1)?.data.todos).toContainEqual({ content: "验收报告", status: "pending" });
+  });
+
+  it("正常结束只发一次子项护栏，人类消息重置；空清单、等待和错误不发", async () => {
+    const h = harness();
+    await apply(h.ctx as never, { testOverrides: { config: { bindings: [{ key: "cwd:/work", projectId: "proj", cwd: "/work" }] }, repository: h.repository as never } });
+    await vi.waitFor(async () => expect(await h.tools[0].execute({ action: "list" }, { agent: h.agent })).toContain("第一步"));
+    await h.turnEnd("completed");
+    await vi.waitFor(() => expect(h.sent).toHaveLength(1));
+    expect(h.sent[0]).toContain("#1 第一步 [pending]");
+    await h.turnEnd("completed");
+    expect(h.sent).toHaveLength(1);
+    await h.emit("agent/inbox/inserted", { agent: h.agent, message: { source: { kind: "user" }, content: [{ text: "继续" }] } });
+    await h.turnEnd("completed");
+    await vi.waitFor(() => expect(h.sent).toHaveLength(2));
+    const current = getSessionRuntime("s1")!.work!;
+    current.tasks.forEach((task) => { task.status = "completed"; });
+    await h.emit("agent/inbox/inserted", { agent: h.agent, message: { source: { kind: "user" }, content: [] } });
+    await h.turnEnd("completed");
+    expect(h.sent).toHaveLength(2);
+    current.tasks[0]!.status = "pending";
+    if (current.metadata.schemaVersion !== 2) throw new Error("expected v2 metadata");
+    current.metadata.waitingForHuman = { priority: 3, reason: "确认", since: "now" };
+    await h.turnEnd("completed");
+    expect(h.sent).toHaveLength(2);
+    delete current.metadata.waitingForHuman;
+    vi.useFakeTimers();
+    await h.turnEnd("error", "failure");
+    expect(h.sent).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(h.sent.at(-1)).toContain("AUTO-CONTINUE");
+  });
+
+  it("护栏等待 idle，等待期间的人类消息使旧护栏失效", async () => {
+    const h = harness();
+    let idle!: () => void;
+    const whenIdle = vi.fn(() => new Promise<void>((resolve) => { idle = resolve; }));
+    Object.assign(h.agent, { whenIdle });
+    await apply(h.ctx as never, { testOverrides: { config: { bindings: [{ key: "cwd:/work", projectId: "proj", cwd: "/work" }] }, repository: h.repository as never } });
+    await vi.waitFor(async () => expect(await h.tools[0].execute({ action: "list" }, { agent: h.agent })).toContain("第一步"));
+    h.agent.status = "running";
+    await h.turnEnd("completed");
+    expect(whenIdle).toHaveBeenCalledTimes(1);
+    expect(h.sent).toEqual([]);
+    await h.emit("agent/inbox/inserted", { agent: h.agent, message: { source: { kind: "user" }, content: [{ text: "新要求" }] } });
+    h.agent.status = "idle";
+    idle();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(h.sent).toEqual([]);
+    await h.turnEnd("completed");
+    await vi.waitFor(() => expect(h.sent).toHaveLength(1));
+  });
+
   it("注册的两个工具提供纯 JSON Schema，PTC 快照不会丢失隐藏属性", async () => {
     const h = harness();
     await apply(h.ctx as never, { testOverrides: { config: { bindings: [] }, repository: h.repository as never } });

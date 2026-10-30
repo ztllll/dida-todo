@@ -97,6 +97,24 @@ describe("等待人类：停止轮询刷屏且不完成任务", () => {
     expect(gateway.completed).toContain(reminderId);
   });
 
+  it.each(["completed", "deleted", "returned-completed"])("提醒 %s 后同步恢复原工作", async (state) => {
+    const gateway = new Gateway([blockedWork()]);
+    const repo = await adopted(gateway);
+    const paused = await repo.waitForHuman(scope, "work", "确认停机窗口");
+    if (paused.metadata.schemaVersion !== 2) throw new Error("expected v2 metadata");
+    const reminderId = paused.metadata.waitingForHuman!.reminderId!;
+    if (state === "deleted") gateway.tasks.splice(gateway.tasks.findIndex((task) => task.id === reminderId), 1);
+    else gateway.tasks.find((task) => task.id === reminderId)!.status = 2;
+    if (state === "returned-completed") {
+      gateway.getProjectData = async (projectId) => ({ project: { id: projectId, name: "demo" }, tasks: structuredClone(gateway.tasks), columns: [] });
+    }
+    const sync = await repo.syncOpenWorks(scope, { adoptUnmanaged: true });
+    const resumed = sync.works.find((work) => work.remote.id === "work")!;
+    expect(resumed.metadata).not.toHaveProperty("waitingForHuman");
+    expect(resumed.remote.priority).toBe(5);
+    expect(gateway.completed).toContain(reminderId);
+  });
+
   it("resume 写回原优先级", async () => {
     const gateway = new Gateway([blockedWork()]);
     const repo = await adopted(gateway);

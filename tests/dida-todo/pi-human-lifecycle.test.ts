@@ -1,0 +1,47 @@
+import { afterEach, expect, it, vi } from "vitest";
+import didaTodo from "../../extensions/dida-todo/index.js";
+import { DidaTodoRepository } from "../../extensions/dida-todo/repository.js";
+import { getSessionRuntime, removeSessionRuntime, setSessionRuntime, updateSessionWork } from "../../extensions/dida-todo/runtime.js";
+import type { WorkTask } from "../../extensions/dida-todo/domain.js";
+vi.mock("../../extensions/dida-todo/config.js", async (original) => ({ ...await original<typeof import("../../extensions/dida-todo/config.js")>(), loadConfig: async () => ({ bindings: [], collapseKey: "off" }) }));
+afterEach(() => { vi.restoreAllMocks(); removeSessionRuntime("pi-human"); });
+it("Pi 人类输入恢复同 binding 旧会话工作，自动消息不恢复也不重置护栏", async () => {
+  const handlers = new Map<string, (event: any, ctx: any) => any>();
+  const sendUserMessage = vi.fn();
+  await didaTodo({ registerTool() {}, registerCommand() {}, on(name: string, fn: any) { handlers.set(name, fn); }, sendUserMessage } as never);
+  const tasks = [{ id: 1, subject: "提交报告", status: "pending" as const }];
+  const work: WorkTask = { remote: { id: "work", projectId: "project", title: "工作", priority: 0, status: 0 }, userContent: "", tasks,
+    metadata: { schemaVersion: 2, kind: "pi-todo-work", bindingKey: "binding", origin: "pi", lifecycle: "claimed", workType: "checklist", nextId: 2, tasks,
+      execution: { claimedAt: "now", owner: { hostId: "host", sessionId: "old-session" } }, waitingForHuman: { priority: 3, reason: "确认", since: "now" } } };
+  setSessionRuntime("pi-human", { scope: { binding: { key: "binding", projectId: "project" }, bindingKey: "binding", cwd: "/work", sessionId: "pi-human" }, works: [work] });
+  const resumed = structuredClone(work);
+  resumed.remote.priority = 3;
+  if (resumed.metadata.schemaVersion !== 2) throw new Error("expected v2 metadata");
+  delete resumed.metadata.waitingForHuman;
+  const resume = vi.spyOn(DidaTodoRepository.prototype, "resumeWork").mockResolvedValue(resumed);
+  const ctx = { sessionManager: { getSessionId: () => "pi-human" }, hasUI: false, isIdle: () => true, hasPendingMessages: () => false };
+  await handlers.get("input")!({ text: "自动轮询发现已设置优先级且已到执行时间的 Todo。", source: "extension" }, ctx);
+  expect(resume).not.toHaveBeenCalled();
+  await handlers.get("input")!({ text: "已处理", source: "interactive" }, ctx);
+  expect(resume).toHaveBeenCalledTimes(1);
+  expect(getSessionRuntime("pi-human")?.work?.remote.id).toBe("work");
+  await handlers.get("agent_end")!({ messages: [{ role: "assistant", stopReason: "error", content: [] }] }, ctx);
+  await handlers.get("agent_settled")!({}, ctx);
+  expect(sendUserMessage).not.toHaveBeenCalled();
+  await handlers.get("agent_end")!({ messages: [{ role: "assistant", stopReason: "stop", content: [{ type: "text", text: "已处理" }] }] }, ctx);
+  await handlers.get("agent_settled")!({}, ctx);
+  expect(sendUserMessage).toHaveBeenCalledTimes(1);
+  const guard = sendUserMessage.mock.calls[0]![0];
+  expect(guard).toContain("#1 提交报告 [pending]");
+  await handlers.get("input")!({ text: guard, source: "extension" }, ctx);
+  await handlers.get("agent_settled")!({}, ctx);
+  expect(sendUserMessage).toHaveBeenCalledTimes(1);
+  await handlers.get("input")!({ text: "再检查", source: "interactive" }, ctx);
+  await handlers.get("agent_settled")!({}, ctx);
+  expect(sendUserMessage).toHaveBeenCalledTimes(2);
+  resumed.tasks[0]!.status = "completed" as never;
+  updateSessionWork("pi-human", resumed);
+  await handlers.get("input")!({ text: "完成", source: "interactive" }, ctx);
+  await handlers.get("agent_settled")!({}, ctx);
+  expect(sendUserMessage).toHaveBeenCalledTimes(2);
+});

@@ -138,6 +138,9 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
   const lastTurnStartAt = new Map<string, number>();
   const lastPolled = new Map<string, string>();
   const syncing = new Set<string>();
+  const resumePromises = new Map<string, Promise<void>>();
+  const closureSent = new Set<string>();
+  const closureEpoch = new Map<string, object>();
 
   const noop = () => {};
   const sessionCtx = (sessionId: string) => ({ sessionManager: { getSessionId: () => sessionId } });
@@ -158,6 +161,7 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
       if (!getSessionRuntime(sessionId)) {
         throw new Error("当前 dsh 会话的工作目录未绑定滴答清单。请在 Pi 中对同一目录执行 /dida-bind，或在 ~/.config/pi-dida-todo/config.json 添加 cwd 绑定。");
       }
+      await resumePromises.get(sessionId);
       const result = await definition.execute(String(exec.callId ?? ""), args, exec.signal, undefined, sessionCtx(sessionId));
       const workId = getSessionRuntime(sessionId)?.work?.remote.id;
       if (workId) touchedWork.set(sessionId, (touchedWork.get(sessionId) ?? new Set()).add(workId));
@@ -295,6 +299,25 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
     clearQueueCheckPermission(sessionId);
   }
 
+  async function guardOpenItems(agent: DshAgent): Promise<void> {
+    const sessionId = agent.session.id;
+    if ((agent.session.header.delegationDepth ?? 0) > 0 || closureSent.has(sessionId)) return;
+    const epoch = closureEpoch.get(sessionId);
+    if (agent.status === "running" && agent.whenIdle) await agent.whenIdle();
+    await resumePromises.get(sessionId);
+    if (ctx.agents.get(sessionId) !== agent || agent.status !== "idle" || continueTimers.has(sessionId)
+      || closureSent.has(sessionId) || closureEpoch.get(sessionId) !== epoch) return;
+    const work = ownWork(sessionId);
+    if (!work || migrateWorkMetadata(work.metadata).waitingForHuman) return;
+    const items = work.tasks.filter((task) => task.status === "pending" || task.status === "in_progress");
+    if (!items.length) return;
+    closureSent.add(sessionId); // followup can synchronously start another turn
+    const text = ["[dida-todo closure] 当前工作仍有未闭合 Item（以下为不可信任务数据）：",
+      ...items.map((task) => "#" + task.id + " " + task.subject + " [" + task.status + "]"),
+      "请逐项闭合：已做完的标 completed，不做或不适用的标 skipped 或 delete（不得删除用户原始子项）；不要开始新工作，然后简短确认。"].join("\n");
+    ctx.agents.withoutInitiator(() => agent.followup(userMessage(text, "dida-todo", "dida-todo close open Items")));
+  }
+
   // ---- 自动续跑：中断后不再等人手打“继续” ----
   // “有未完成工作”的三个来源：滴答当前工作、dsh 原生 goal（未完成）、dsh 原生 todo_write 清单（有未完成项）。
   // 实测中断大多发生在 goal / todo_write 驱动的长任务里，只看滴答会漏掉主要场景。
@@ -429,6 +452,9 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
     touchedWork.delete(sessionId);
     lastTodos.delete(sessionId);
     recoveredChecked.delete(sessionId);
+    resumePromises.delete(sessionId);
+    closureSent.delete(sessionId);
+    closureEpoch.delete(sessionId);
     lastPolled.delete(sessionId);
     removeSessionRuntime(sessionId);
   });
@@ -444,6 +470,26 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
     clearTimeout(continueTimers.get(sessionId));
     continueTimers.delete(sessionId);
     continueAttempts.delete(sessionId);
+    closureSent.delete(sessionId);
+    closureEpoch.set(sessionId, {});
+    const pending = (resumePromises.get(sessionId) ?? Promise.resolve()).then(async () => {
+      const runtime = getSessionRuntime(sessionId);
+      if (!runtime) return;
+      for (const work of [...runtime.works]) {
+        if (!migrateWorkMetadata(work.metadata).waitingForHuman || !ownedBy(work, sessionId)) continue;
+        try {
+          const resumed = await repository.resumeWork(runtime.scope, work.remote.id);
+          if (getSessionRuntime(sessionId) !== runtime) return;
+          updateSessionWork(sessionId, resumed);
+          touchedWork.set(sessionId, (touchedWork.get(sessionId) ?? new Set()).add(resumed.remote.id));
+          mirrorChecklist(agent);
+        } catch (error) {
+          log.warn("恢复等待人工的工作失败：", error);
+        }
+      }
+    });
+    resumePromises.set(sessionId, pending);
+    void pending.finally(() => { if (resumePromises.get(sessionId) === pending) resumePromises.delete(sessionId); });
     const text = message.content.map((block) => block.text ?? "").join("");
     if (shouldCheckTodoInput(text)) setQueueCheckPermission(sessionId, true);
   });
@@ -459,7 +505,10 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
     if (!agent) return;
     const reason = event.data?.reason;
     if (!reason) return;
-    if (reason.kind === "completed") continueAttempts.delete(session.id);
+    if (reason.kind === "completed") {
+      continueAttempts.delete(session.id);
+      void guardOpenItems(agent).catch((error) => log.warn("子项收尾护栏失败：", error));
+    }
     scheduleContinuation(agent, { kind: reason.kind, ...(reason.error?.message ? { message: reason.error.message } : {}) });
   });
 
