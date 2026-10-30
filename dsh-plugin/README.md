@@ -4,6 +4,8 @@ DeepSeek Harness（dsh）插件：**滴答清单 Todo + 会话中断自动续跑
 
 ## 它做什么
 
+- **恢复与收尾**：在原会话发任何消息会恢复本会话挂起的工作并勾掉 🙋 提醒；勾掉 / 删除提醒也会在同步时恢复。正常结束仍有未闭合子项时最多补一轮收尾，每条人类消息重置次数；不催促等待人工的工作，不接管子代理，也不开启轮询。
+
 - **中断自动续跑**：回合因 `content_filter`、`429` 限流、`Overloaded` 或进程崩溃结束，且会话还有未完成工作（dsh goal、`todo_write` 清单、或滴答工作）时，等 30s / 1m / 2m / 5m / 10m 后自动让 Agent 继续；被 goal 驱动器停掉的 goal 会先重新激活。你点停止的回合不续跑；你发任何消息都会撤销待发的续跑。
 - **转人工提醒**：连续 5 次续跑仍中断，在滴答清单建一条「🙋 需要你处理」（+3/+6 分钟两次提醒），不再无限重试。
 - **滴答 Todo**（工作目录已绑定滴答清单时）：新增 `todo` / `todo_work` 工具，多步工作同步到滴答（手机可看），步骤显示在输入框上方的「任务」面板；全部完成后顶层任务自动完成并生成待验收。卡住时 Agent 可 `wait_for_human` 挂起，不会反复刷屏。
@@ -17,13 +19,13 @@ DeepSeek Harness（dsh）插件：**滴答清单 Todo + 会话中断自动续跑
 在 dsh 侧栏 **插件 → 添加插件**，填：
 
 ```text
-github:ztllll/dida-todo#v0.9.4
+github:ztllll/dida-todo#v0.9.5
 ```
 
 或命令行：
 
 ```sh
-dsh plugin --profile web add "github:ztllll/dida-todo#v0.9.4"
+dsh plugin --profile web add "github:ztllll/dida-todo#v0.9.5"
 ```
 
 安装后在插件页启用（默认启用），刷新页面即生效。不需要构建脚本授权。

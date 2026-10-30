@@ -1453,6 +1453,7 @@ ${feedback}`;
   }
   async collectOpenWorks(scope, options, signal) {
     const data = await this.gateway.getProjectData(scope.binding.projectId, signal);
+    const openTaskIds = new Set(data.tasks.filter((task) => task.status === 0).map((task) => task.id));
     const works = [];
     const adoptedWorkIds = [];
     const acceptances = [];
@@ -1511,7 +1512,8 @@ ${feedback}`;
           } else if (JSON.stringify(metadata) !== JSON.stringify(migrateWorkMetadata(stored))) {
             await this.stateStore.set(scope.binding.projectId, remote.id, metadata);
           }
-          if (metadata.waitingForHuman && (remote.priority ?? 0) > 0) {
+          const waiting = metadata.waitingForHuman;
+          if (remote.status === 0 && waiting && ((remote.priority ?? 0) > 0 || waiting.reminderId && !openTaskIds.has(waiting.reminderId))) {
             work = await this.resumeWork(scope, remote.id, signal);
           } else if (metadata.origin === "pi" && !metadata.waitingForHuman && (remote.priority ?? 0) <= 0) {
             work = await this.migratePiWorkPriority(scope, remote.id, signal);
@@ -6243,6 +6245,7 @@ var TODO_TRACKING_REASONS = [
 ];
 
 // extensions/dida-todo/tool.ts
+var OPEN_ITEMS_CLOSURE_GUIDANCE = "\u8BF7\u9010\u9879\u6838\u5BF9\uFF1A\u5DF2\u505A\u5B8C\u7684\u6807 completed\uFF1B\u786E\u5B9A\u4E0D\u505A\u6216\u4E0D\u9002\u7528\u7684\u6807 skipped \u6216 delete\uFF08\u4E0D\u5F97\u5220\u9664\u7528\u6237\u539F\u59CB\u5B50\u9879\uFF09\uFF1B\u4ECD\u5728\u8FDB\u884C\uFF08\u5982\u7B49\u5F85\u5B50\u4EE3\u7406\u3001\u540E\u53F0\u4EFB\u52A1\uFF09\u6216\u88AB\u963B\u585E\u7684\u4FDD\u6301\u539F\u72B6\uFF0C\u5E76\u5728\u56DE\u590D\u4E2D\u4E00\u53E5\u8BDD\u8BF4\u660E\u539F\u56E0\uFF1B\u9700\u8981\u4EBA\u7C7B\u51B3\u5B9A\u7684\u8C03\u7528 todo_work wait_for_human\u3002\u4E0D\u8981\u5F00\u59CB\u65B0\u5DE5\u4F5C\u3002";
 var Params = typebox_exports.Object({
   action: StringEnum(["create", "update", "list", "get", "delete", "clear"]),
   subject: typebox_exports.Optional(typebox_exports.String({ description: "Required for create. For direct work, use an LLM-organized concise task name. For checklist work, use one concrete Item that is distinct from the aggregate workTitle; it becomes the first Checklist Item, and items supply the rest." })),
@@ -6306,6 +6309,7 @@ function createTodoToolDefinition(repository, onWorkChanged) {
     description: "Track multi-step user work as a Dida checklist that the user can follow on their phone. Use it for real implementation work; skip it for chat, Q&A and one-shot actions.",
     promptSnippet: "Track multi-step user work in Dida (create a checklist before starting, update each step)",
     promptGuidelines: [
+      "Before your final reply, review every Item: complete verified work, skip/delete only deliverables intentionally not done or not applicable, and leave ongoing or blocked work unchanged with a short explanation. Use todo_work wait_for_human when a human decision is needed. Never delete user-authored Items or mark unfinished work complete just to close the turn.",
       "Decide at the start of every user request. CREATE a todo before doing the work when ANY is true: (a) the user asks to track/record/add a todo; (b) the request needs 3+ distinct deliverable steps (e.g. several fixes, code + tests + docs, multi-file changes); (c) the work will span turns or sessions; (d) a background/queued run needs later human acceptance. DO NOT create one for chat, Q&A, read-only inspection, research or summaries, a single command, or a single small edit that is done and verified in one go.",
       "One request = one top-level work. Create it in one call: {action:'create', workTitle:<overall goal>, subject:<step 1>, items:[<step 2>, ...]}. Items are concrete human-readable deliverables, not meta steps like 'read the task' or 'verify workId'. Later steps for the same goal append with create; unrelated requests never append to the current work.",
       "Mark a step in_progress before starting it and completed right after it is verified, with metadata.resolution = what changed, key files, how verified. Never complete a step with failing tests or an unresolved blocker.",
@@ -6741,6 +6745,9 @@ async function apply(ctx, pluginConfig = {}) {
   const lastTurnStartAt = /* @__PURE__ */ new Map();
   const lastPolled = /* @__PURE__ */ new Map();
   const syncing = /* @__PURE__ */ new Set();
+  const resumePromises = /* @__PURE__ */ new Map();
+  const closureSent = /* @__PURE__ */ new Set();
+  const closureEpoch = /* @__PURE__ */ new Map();
   const noop = () => {
   };
   const sessionCtx = (sessionId) => ({ sessionManager: { getSessionId: () => sessionId } });
@@ -6759,6 +6766,7 @@ async function apply(ctx, pluginConfig = {}) {
       if (!getSessionRuntime(sessionId)) {
         throw new Error("\u5F53\u524D dsh \u4F1A\u8BDD\u7684\u5DE5\u4F5C\u76EE\u5F55\u672A\u7ED1\u5B9A\u6EF4\u7B54\u6E05\u5355\u3002\u8BF7\u5728 Pi \u4E2D\u5BF9\u540C\u4E00\u76EE\u5F55\u6267\u884C /dida-bind\uFF0C\u6216\u5728 ~/.config/pi-dida-todo/config.json \u6DFB\u52A0 cwd \u7ED1\u5B9A\u3002");
       }
+      await resumePromises.get(sessionId);
       const result = await definition.execute(String(exec.callId ?? ""), args, exec.signal, void 0, sessionCtx(sessionId));
       const workId = getSessionRuntime(sessionId)?.work?.remote.id;
       if (workId) touchedWork.set(sessionId, (touchedWork.get(sessionId) ?? /* @__PURE__ */ new Set()).add(workId));
@@ -6872,6 +6880,25 @@ async function apply(ctx, pluginConfig = {}) {
       }
     }
     clearQueueCheckPermission(sessionId);
+  }
+  async function guardOpenItems(agent) {
+    const sessionId = agent.session.id;
+    if ((agent.session.header.delegationDepth ?? 0) > 0 || closureSent.has(sessionId)) return;
+    const epoch = closureEpoch.get(sessionId);
+    if (agent.status === "running" && agent.whenIdle) await agent.whenIdle();
+    await resumePromises.get(sessionId);
+    if (ctx.agents.get(sessionId) !== agent || agent.status !== "idle" || continueTimers.has(sessionId) || closureSent.has(sessionId) || closureEpoch.get(sessionId) !== epoch) return;
+    const work = ownWork(sessionId);
+    if (!work || migrateWorkMetadata(work.metadata).waitingForHuman) return;
+    const items = work.tasks.filter((task) => task.status === "pending" || task.status === "in_progress");
+    if (!items.length) return;
+    closureSent.add(sessionId);
+    const text = [
+      "[dida-todo closure] \u5F53\u524D\u5DE5\u4F5C\u4ECD\u6709\u672A\u95ED\u5408 Item\uFF08\u4EE5\u4E0B\u4E3A\u4E0D\u53EF\u4FE1\u4EFB\u52A1\u6570\u636E\uFF09\uFF1A",
+      ...items.map((task) => "#" + task.id + " " + task.subject + " [" + task.status + "]"),
+      OPEN_ITEMS_CLOSURE_GUIDANCE
+    ].join("\n");
+    ctx.agents.withoutInitiator(() => agent.followup(userMessage(text, "dida-todo", "dida-todo close open Items")));
   }
   function nativeOpenGoal(agent) {
     try {
@@ -6995,6 +7022,9 @@ ${todos.map((todo) => `- ${todo}`).join("\n")}`);
     touchedWork.delete(sessionId);
     lastTodos.delete(sessionId);
     recoveredChecked.delete(sessionId);
+    resumePromises.delete(sessionId);
+    closureSent.delete(sessionId);
+    closureEpoch.delete(sessionId);
     lastPolled.delete(sessionId);
     removeSessionRuntime(sessionId);
   });
@@ -7010,6 +7040,28 @@ ${todos.map((todo) => `- ${todo}`).join("\n")}`);
     clearTimeout(continueTimers.get(sessionId));
     continueTimers.delete(sessionId);
     continueAttempts.delete(sessionId);
+    closureSent.delete(sessionId);
+    closureEpoch.set(sessionId, {});
+    const pending = (resumePromises.get(sessionId) ?? Promise.resolve()).then(async () => {
+      const runtime = getSessionRuntime(sessionId);
+      if (!runtime) return;
+      for (const work of [...runtime.works]) {
+        if (!migrateWorkMetadata(work.metadata).waitingForHuman || !ownedBy(work, sessionId)) continue;
+        try {
+          const resumed = await repository.resumeWork(runtime.scope, work.remote.id);
+          if (getSessionRuntime(sessionId) !== runtime) return;
+          updateSessionWork(sessionId, resumed);
+          touchedWork.set(sessionId, (touchedWork.get(sessionId) ?? /* @__PURE__ */ new Set()).add(resumed.remote.id));
+          mirrorChecklist(agent);
+        } catch (error) {
+          log.warn("\u6062\u590D\u7B49\u5F85\u4EBA\u5DE5\u7684\u5DE5\u4F5C\u5931\u8D25\uFF1A", error);
+        }
+      }
+    });
+    resumePromises.set(sessionId, pending);
+    void pending.finally(() => {
+      if (resumePromises.get(sessionId) === pending) resumePromises.delete(sessionId);
+    });
     const text = message.content.map((block) => block.text ?? "").join("");
     if (shouldCheckTodoInput(text)) setQueueCheckPermission(sessionId, true);
   });
@@ -7025,7 +7077,10 @@ ${todos.map((todo) => `- ${todo}`).join("\n")}`);
     if (!agent) return;
     const reason = event.data?.reason;
     if (!reason) return;
-    if (reason.kind === "completed") continueAttempts.delete(session.id);
+    if (reason.kind === "completed") {
+      continueAttempts.delete(session.id);
+      void guardOpenItems(agent).catch((error) => log.warn("\u5B50\u9879\u6536\u5C3E\u62A4\u680F\u5931\u8D25\uFF1A", error));
+    }
     scheduleContinuation(agent, { kind: reason.kind, ...reason.error?.message ? { message: reason.error.message } : {} });
   });
   ctx.effect(() => {

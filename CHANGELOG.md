@@ -4,6 +4,14 @@ All notable user-visible changes are recorded here. The project is released thro
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-10-30
+
+### Fixed
+
+- Pi / dsh 在人类回复时恢复挂起工作，复用原工作并自动完成 🙋 提醒；dsh 在 todo 工具执行前等待恢复，避免误建新顶层工作，并保留会话隔离。
+- 同步时识别已完成 / 删除的 🙋 提醒，恢复原优先级与工作；保留改回优先级和显式 resume 路径。
+- 正常结束仍有未闭合子项时补发一次收尾请求，每条人类消息最多一次；等待人工不催促，dsh 子代理不触发，中断仍沿用原退避续跑。不改变验收 / 返工或 dsh 默认关闭轮询。
+
 ## [0.9.4] - 2026-10-24
 
 ### Fixed

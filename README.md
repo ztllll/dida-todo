@@ -47,7 +47,7 @@ Agent 遇到必须由人确认、授权、决策或线下操作才能继续的�
 - 新建一条 `🙋 需要你处理：<任务名>`，写明原因，**+3 / +6 分钟提醒两次**；
 - 原任务**保持未完成**，不会被硬勾掉，并写一条原因评论。
 
-恢复方式（任选其一）：在滴答**把原任务优先级改回低/中/高**，或在 Pi 里让 Agent “继续 xxx”。恢复后 `🙋` 提醒自动完成。
+恢复方式（任选其一）：在原会话里**发任何消息**（Pi 或 dsh），会自动恢复挂起的工作并勾掉 `🙋` 提醒；也可在滴答**勾掉 / 删除 🙋 提醒**，或**把原任务优先级改回低/中/高**，在下次同步时恢复。dsh 默认不开轮询，想立即恢复请在会话里回复；dsh 只恢复本会话拥有的工作，Pi 恢复当前绑定内的挂起工作。
 
 兜底：即使 Agent 没有调用挂起，只要队列自上次唤醒后没有任何变化（没有进展、你也没有编辑），轮询也不会再重复唤醒 Agent。
 
@@ -69,7 +69,7 @@ dsh 会话经常因为模型返回 `content_filter`、`429` 限流、`Overloaded
 - **按会话隔离**：同一项目开多个 dsh 会话时，每个会话只显示、只推进自己创建或领取的工作；新会话不会接管别的会话正在执行的工作，新建的任务也不会并进去。要让某个会话接手别人的工作或清单里的新任务，在该会话输入 `检查todo`。
 - **标准 / PTC 模式兼容**：dsh 适配层将 `todo` / `todo_work` 的 TypeBox 参数定义转换为纯 JSON Schema，只剥离 TypeBox 隐藏元数据并保留参数约束，避免 PTC 生成工具 SDK 时出现 `parameters must be lossless JSON before schema projection`。Pi 仍使用原始 TypeBox schema，dsh 宿主的严格 JSON 校验不变。
 
-安装：dsh 侧栏 **插件 → 添加插件**，填 `github:ztllll/dida-todo#v0.9.4`；或命令行 `dsh plugin --profile web add "github:ztllll/dida-todo#v0.9.4"`。仓库本身就是标准 dsh 组合包（`package.json` 声明 `dsh.bundle`），出现在插件页「已安装」里，可停用、可卸载。它**只新增**一行插件和 `todo` / `todo_work` 两个工具，不覆盖、不禁用 dsh 自带的 `todo_write` 与任务面板；卸载后 dsh 恢复原样。详见 [dsh-plugin/README.md](dsh-plugin/README.md)。
+安装：dsh 侧栏 **插件 → 添加插件**，填 `github:ztllll/dida-todo#v0.9.5`；或命令行 `dsh plugin --profile web add "github:ztllll/dida-todo#v0.9.5"`。仓库本身就是标准 dsh 组合包（`package.json` 声明 `dsh.bundle`），出现在插件页「已安装」里，可停用、可卸载。它**只新增**一行插件和 `todo` / `todo_work` 两个工具，不覆盖、不禁用 dsh 自带的 `todo_write` 与任务面板；卸载后 dsh 恢复原样。详见 [dsh-plugin/README.md](dsh-plugin/README.md)。
 
 绑定沿用 `~/.config/pi-dida-todo/config.json` 的 cwd 绑定（在 Pi 中 `/dida-bind` 一次即可）。未绑定目录里续跑仍然生效，只是用尽后无处发滴答提醒。
 
@@ -78,7 +78,7 @@ dsh 会话经常因为模型返回 `content_filter`、`429` 限流、`Overloaded
 ## 安装
 
 ```bash
-pi install git:github.com/ztllll/dida-todo@v0.9.4
+pi install git:github.com/ztllll/dida-todo@v0.9.5
 ```
 
 新开 Pi 会话后：
@@ -86,7 +86,7 @@ pi install git:github.com/ztllll/dida-todo@v0.9.4
 1. 对 Agent 说“登录滴答”（浏览器 OAuth，依赖已随包安装）；
 2. 执行 `/dida-bind [清单名称]`：唯一同名清单直接绑定，不存在则按输入名称创建，取消则什么也不做。
 
-升级时先等正在使用 dida-todo 的 Pi 空闲，再安装新版本，然后对每个已运行的 Pi 执行 `/reload`。忙碌时覆盖安装可能让旧进程与新文件混用。
+升级时先等正在使用 dida-todo 的 Pi 空闲，再安装新版本，然后对每个已运行的 Pi 执行 `/reload`。忙碌时覆盖安装可能让旧进程与新文件混用。0.9.5 的会话回复恢复与收尾护栏在新插件加载后生效；无需改绑定或开启 dsh 轮询。
 
 与 `rpiv-todo` 冲突（两者都注册 `todo` 和 `/todos`），需先禁用。
 
@@ -98,9 +98,11 @@ pi install git:github.com/ztllll/dida-todo@v0.9.4
 | 立即执行整个队列 | 完整输入 `检查todo`（近似说法不会触发） |
 | 加 / 改 / 完成 Todo | 自然语言，只操作对应工作，不扫描队列 |
 | 暂存草稿 | 在滴答创建任务但不设优先级，不会被执行 |
-| 恢复挂起任务 | 滴答改回优先级，或对 Agent 说“继续” |
+| 恢复挂起任务 | 在原会话回复；或勾掉 / 删除 🙋 提醒、改回优先级后同步 |
 
 ## 调度规则
+
+- **收尾护栏**：正常结束仍有 pending / in_progress 子项时，自动续写一轮要求逐项核对：已验证的 completed，确定不做的 skipped / deleted（不能删除用户原始子项），仍在进行或被阻塞的保持原状并说明原因，需要人类决定时挂起，不开始新工作；每条人类消息之后最多一次，等待人类时不催促。dsh 子代理不触发此护栏，也不因此开启轮询。
 
 - 轮询默认 10 分钟（`pollIntervalMinutes` 可设 1–1440），只在 Pi 空闲且无待处理消息时运行，只在 TUI 会话里运行。
 - 只执行：优先级为低/中/高、未完成、且已到计划时间的任务。按优先级高→中→低，同级保持滴答顺序。
@@ -167,10 +169,11 @@ npm run e2e:dsh   # 真实 dsh 端到端验证（临时目录，不碰本机 ~/.
 
 - **Flow:** capture tasks in Dida with a priority → the idle TUI poller (or the exact input `检查todo`) claims due work → the agent works the Checklist and posts per-step results → when every Item is completed or skipped, the top-level task completes automatically and a `🧑‍🔬` acceptance task with two reminders (+3/+6 min) is created. A comment from your own account on it creates a rework.
 - **When the agent creates a Todo:** you ask for tracking, the request has 3+ distinct deliverables, the work spans turns/sessions, or a background run needs acceptance. Never for chat, Q&A, read-only inspection, research, or a single small action.
-- **Blocked on a human:** the agent calls `todo_work wait_for_human`. The task's priority is cleared (polling stops), a `🙋` reminder fires twice, and the task stays open. Restore its priority in Dida, or ask the agent to resume. As a fallback, the poller never re-wakes the agent for a queue that has not changed.
-- **dsh plugin:** the repository root is a standard dsh bundle: install it from the Plugins page with `github:ztllll/dida-todo#v0.9.4`; it only adds a plugin row and the `todo`/`todo_work` tools, never overrides the built-in `todo_write`, and uninstalling restores dsh as it was. When a turn ends with an error (content_filter, 429, Overloaded) or a crash and the session still has open work (Dida work, a dsh goal, or a `todo_write` list), it re-prompts the agent with backoff (30s to 10m), re-arms a disarmed goal, and after 5 failures leaves a reminder in Dida. Any human message cancels a pending continue. Verified on dsh 0.2.0-rc.2 and 0.2.1-rc.2.
+- **Blocked on a human:** the agent calls `todo_work wait_for_human`. The task's priority is cleared (polling stops), a `🙋` reminder fires twice, and the task stays open. Send any human message in the original session to resume and complete the reminder, or complete/delete the 🙋 reminder (or restore the priority) in Dida and sync. dsh resumes only its own work; Pi resumes waiting work in the current binding. As a fallback, the poller never re-wakes the agent for a queue that has not changed.
+- **dsh plugin:** the repository root is a standard dsh bundle: install it from the Plugins page with `github:ztllll/dida-todo#v0.9.5`; it only adds a plugin row and the `todo`/`todo_work` tools, never overrides the built-in `todo_write`, and uninstalling restores dsh as it was. When a turn ends with an error (content_filter, 429, Overloaded) or a crash and the session still has open work (Dida work, a dsh goal, or a `todo_write` list), it re-prompts the agent with backoff (30s to 10m), re-arms a disarmed goal, and after 5 failures leaves a reminder in Dida. Any human message cancels a pending continue. Verified on dsh 0.2.0-rc.2 and 0.2.1-rc.2.
 - **dsh native / PTC compatibility:** the dsh adapter converts the TypeBox parameter definitions for both `todo` and `todo_work` to plain JSON Schema, stripping only TypeBox's hidden metadata while preserving parameter constraints. This avoids `parameters must be lossless JSON before schema projection` during PTC SDK generation. Pi keeps its original TypeBox schemas, and dsh's strict host JSON validation is unchanged.
-- **Install:** `pi install git:github.com/ztllll/dida-todo@v0.9.4`, then say “log in to Dida” and run `/dida-bind [name]`. Install while Pi is idle, then `/reload` running sessions.
+- **Install:** `pi install git:github.com/ztllll/dida-todo@v0.9.5`, then say “log in to Dida” and run `/dida-bind [name]`. Install while Pi is idle, then `/reload` running sessions.
+- **Closure guard:** a normal end with open Items prompts one follow-up to review them without falsely closing ongoing or blocked work, at most once per human message. Waiting work is excluded; dsh child agents are excluded.
 - **Hosts:** TUI gets panel + sync + poller; Web/RPC (pi-web) gets panel + sync, no poller; Print and unbound directories stay passive.
 - **Limits:** no attachment API; Checklist Items have no native in-progress state; no cross-machine strong consistency; Dida365 only.
 

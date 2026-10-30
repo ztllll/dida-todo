@@ -1,6 +1,6 @@
 {
   "name": "dida-todo",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "private": true,
   "type": "module",
   "main": "./dsh-plugin/index.mjs",
@@ -47,7 +47,7 @@
     "check": "bash scripts/check-structure.sh && npm run typecheck && npm test && npm run build:dsh && npm run pack:check",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "pack:check": "npm pack --dry-run --json >/tmp/dida-todo-pack.json",
+    "pack:check": "npm pack --dry-run --json >\"${TMPDIR:-/tmp}/dida-todo-pack.json\"",
     "build:dsh": "node scripts/build-dsh.mjs",
     "pack:dsh": "npm run build:dsh && mkdir -p dist && npm pack --pack-destination dist >/dev/null && ls dist/dida-todo-*.tgz",
     "e2e:dsh": "node scripts/e2e-dsh.mjs"
