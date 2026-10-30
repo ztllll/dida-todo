@@ -1,7 +1,11 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("../../extensions/dida-todo/config.js", async (original) => ({
+  ...await original<typeof import("../../extensions/dida-todo/config.js")>(),
+  loadConfig: async () => ({ bindings: [{ key: "cwd:/home/pyadmin/dida-todo", cwd: "/home/pyadmin/dida-todo", projectId: "6a799f4de4b050c704b321b2" }] }),
+}));
 import didaTodo from "../../extensions/dida-todo/index.js";
 import { getActiveRuntime, getSessionRuntime, removeSessionRuntime } from "../../extensions/dida-todo/runtime.js";
 
