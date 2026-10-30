@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DidaProjectData, DidaTask, TodoScope, WorkTask } from "../../extensions/dida-todo/domain.js";
+import { apply } from "../../extensions/dsh/index.js";
+import { getSessionRuntime, removeSessionRuntime } from "../../extensions/dida-todo/runtime.js";
 import { queueFingerprint } from "../../extensions/dida-todo/poller.js";
 import { DidaTodoRepository, type DidaGateway } from "../../extensions/dida-todo/repository.js";
 import { MemoryWorkStateStore } from "../../extensions/dida-todo/state-store.js";
@@ -113,6 +115,37 @@ describe("等待人类：停止轮询刷屏且不完成任务", () => {
     expect(resumed.metadata).not.toHaveProperty("waitingForHuman");
     expect(resumed.remote.priority).toBe(5);
     expect(gateway.completed).toContain(reminderId);
+  });
+
+  it("dsh 挂起后人类回复完成提醒、恢复优先级，create 仍追加原工作", async () => {
+    const gateway = new Gateway([blockedWork()]);
+    const repo = new DidaTodoRepository(gateway, new MemoryWorkStateStore());
+    const listeners = new Map<string, (...args: any[]) => unknown>();
+    const tools: any[] = [];
+    const sessionId = scope.sessionId;
+    const agent = { id: sessionId, status: "idle", session: { id: sessionId, header: { cwd: scope.cwd } }, followup() {} };
+    try {
+      await apply({ agents: { get: () => agent, list: () => [agent], withoutInitiator: (op: any) => op() },
+        tools: { register(tool: any) { tools.push(tool); return () => {}; } },
+        on(name: string, fn: any) { listeners.set(name, fn); return () => {}; }, effect(factory: any) { factory(); },
+      } as never, { testOverrides: { config: { bindings: [{ ...scope.binding, key: "cwd:" + scope.cwd, cwd: scope.cwd }] }, repository: repo } });
+      // Initial adoption is not an automatic claim in dsh. Explicitly select it via the authorized queue seam.
+      const runtime = getSessionRuntime(sessionId)!;
+      const initial = await repo.syncOpenWorks(runtime.scope, { adoptUnmanaged: true });
+      const { updateSessionWorks, updateSessionWork } = await import("../../extensions/dida-todo/runtime.js");
+      updateSessionWorks(sessionId, initial.works);
+      updateSessionWork(sessionId, initial.works[0]);
+      await tools[1].execute({ action: "wait_for_human", reason: "确认窗口" }, { agent });
+      expect(getSessionRuntime(sessionId)?.work).toBeUndefined();
+      const reminderId = gateway.created.find((task) => task.title.startsWith("🙋"))!.id;
+      listeners.get("agent/inbox/inserted")!({ agent, message: { source: { kind: "user" }, content: [{ text: "已确认" }] } });
+      await tools[0].execute({ action: "create", subject: "提交报告" }, { agent });
+      expect(gateway.completed).toContain(reminderId);
+      expect(gateway.tasks[0]!.priority).toBe(5);
+      expect(getSessionRuntime(sessionId)?.work?.remote.id).toBe("work");
+      expect(getSessionRuntime(sessionId)?.work?.tasks.map((task) => task.subject)).toContain("提交报告");
+      expect(gateway.created.filter((task) => !task.tags?.includes("pi-todo-reminder"))).toEqual([]);
+    } finally { removeSessionRuntime(sessionId); }
   });
 
   it("resume 写回原优先级", async () => {

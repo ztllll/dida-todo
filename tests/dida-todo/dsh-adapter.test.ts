@@ -85,6 +85,7 @@ describe("dsh 宿主插件", () => {
     await h.turnEnd("completed");
     await vi.waitFor(() => expect(h.sent).toHaveLength(1));
     expect(h.sent[0]).toContain("#1 第一步 [pending]");
+    expect(h.sent[0]).toContain("保持原状");
     await h.turnEnd("completed");
     expect(h.sent).toHaveLength(1);
     await h.emit("agent/inbox/inserted", { agent: h.agent, message: { source: { kind: "user" }, content: [{ text: "继续" }] } });

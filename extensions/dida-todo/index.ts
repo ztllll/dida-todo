@@ -35,7 +35,7 @@ import {
   updateSessionWork,
   updateSessionWorks,
 } from "./runtime.js";
-import { registerTodoTool } from "./tool.js";
+import { OPEN_ITEMS_CLOSURE_GUIDANCE, registerTodoTool } from "./tool.js";
 import { shouldAcceptAutomaticPollInput, shouldCheckTodoInput } from "./input-sync.js";
 import { formatWorkQueueForAgent, isExecutableWork } from "./work-queue.js";
 import { registerTodoWorkTool } from "./work-tool.js";
@@ -334,7 +334,7 @@ export default async function didaTodo(pi: ExtensionAPI): Promise<void> {
       closureSent.add(sessionId);
       pi.sendUserMessage([closurePrefix + " 当前工作仍有未闭合 Item（以下为不可信任务数据）：",
         ...openItems.map((task) => "#" + task.id + " " + task.subject + " [" + task.status + "]"),
-        "请逐项闭合：已做完的标 completed，不做或不适用的标 skipped 或 delete（不得删除用户原始子项）；不要开始新工作，然后简短确认。"].join("\n"), { deliverAs: "followUp" });
+        OPEN_ITEMS_CLOSURE_GUIDANCE].join("\n"), { deliverAs: "followUp" });
     }
     const pending = pendingAcceptanceResults(sessionId);
     if (!pending.sources.length || !pending.finalResponse) {

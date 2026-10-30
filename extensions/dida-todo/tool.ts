@@ -7,6 +7,8 @@ import { DidaTodoRepository, type CreateTaskInput, type UpdateTaskInput } from "
 import { getActiveTasks, getSessionRuntime, queueWorkFinalization, resolveWorkFinalization, updateSessionWork } from "./runtime.js";
 import { TODO_TRACKING_REASONS, type TodoTrackingReason } from "./tracking-policy.js";
 
+export const OPEN_ITEMS_CLOSURE_GUIDANCE = "请逐项核对：已做完的标 completed；确定不做或不适用的标 skipped 或 delete（不得删除用户原始子项）；仍在进行（如等待子代理、后台任务）或被阻塞的保持原状，并在回复中一句话说明原因；需要人类决定的调用 todo_work wait_for_human。不要开始新工作。";
+
 const Params = Type.Object({
   action: StringEnum(["create", "update", "list", "get", "delete", "clear"] as const),
   subject: Type.Optional(Type.String({ description: "Required for create. For direct work, use an LLM-organized concise task name. For checklist work, use one concrete Item that is distinct from the aggregate workTitle; it becomes the first Checklist Item, and items supply the rest." })),
@@ -104,7 +106,7 @@ export function createTodoToolDefinition(repository: DidaTodoRepository, onWorkC
     description: "Track multi-step user work as a Dida checklist that the user can follow on their phone. Use it for real implementation work; skip it for chat, Q&A and one-shot actions.",
     promptSnippet: "Track multi-step user work in Dida (create a checklist before starting, update each step)",
     promptGuidelines: [
-      "Before your final reply, every Item must be completed, skipped or deleted; do not leave pending/in_progress Items. Never delete user-authored Items or mark unfinished work complete just to close the turn.",
+      "Before your final reply, review every Item: complete verified work, skip/delete only deliverables intentionally not done or not applicable, and leave ongoing or blocked work unchanged with a short explanation. Use todo_work wait_for_human when a human decision is needed. Never delete user-authored Items or mark unfinished work complete just to close the turn.",
       "Decide at the start of every user request. CREATE a todo before doing the work when ANY is true: (a) the user asks to track/record/add a todo; (b) the request needs 3+ distinct deliverable steps (e.g. several fixes, code + tests + docs, multi-file changes); (c) the work will span turns or sessions; (d) a background/queued run needs later human acceptance. DO NOT create one for chat, Q&A, read-only inspection, research or summaries, a single command, or a single small edit that is done and verified in one go.",
       "One request = one top-level work. Create it in one call: {action:'create', workTitle:<overall goal>, subject:<step 1>, items:[<step 2>, ...]}. Items are concrete human-readable deliverables, not meta steps like 'read the task' or 'verify workId'. Later steps for the same goal append with create; unrelated requests never append to the current work.",
       "Mark a step in_progress before starting it and completed right after it is verified, with metadata.resolution = what changed, key files, how verified. Never complete a step with failing tests or an unresolved blocker.",

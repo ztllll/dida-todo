@@ -25,7 +25,7 @@ import {
   updateSessionWork,
   updateSessionWorks,
 } from "../dida-todo/runtime.js";
-import { createTodoToolDefinition } from "../dida-todo/tool.js";
+import { OPEN_ITEMS_CLOSURE_GUIDANCE, createTodoToolDefinition } from "../dida-todo/tool.js";
 import { createTodoWorkToolDefinition } from "../dida-todo/work-tool.js";
 import { finalizeWorkAtSettlement } from "../dida-todo/settled-finalization.js";
 import { formatWorkContentForAgent, formatWorkQueueForAgent, hasUnfinishedTasks, isExecutableWork } from "../dida-todo/work-queue.js";
@@ -314,7 +314,7 @@ export async function apply(ctx: DshContext, pluginConfig: DshConfig = {}): Prom
     closureSent.add(sessionId); // followup can synchronously start another turn
     const text = ["[dida-todo closure] 当前工作仍有未闭合 Item（以下为不可信任务数据）：",
       ...items.map((task) => "#" + task.id + " " + task.subject + " [" + task.status + "]"),
-      "请逐项闭合：已做完的标 completed，不做或不适用的标 skipped 或 delete（不得删除用户原始子项）；不要开始新工作，然后简短确认。"].join("\n");
+      OPEN_ITEMS_CLOSURE_GUIDANCE].join("\n");
     ctx.agents.withoutInitiator(() => agent.followup(userMessage(text, "dida-todo", "dida-todo close open Items")));
   }
 

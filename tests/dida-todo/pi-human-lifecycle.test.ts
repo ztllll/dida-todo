@@ -33,6 +33,7 @@ it("Pi 人类输入恢复同 binding 旧会话工作，自动消息不恢复也�
   expect(sendUserMessage).toHaveBeenCalledTimes(1);
   const guard = sendUserMessage.mock.calls[0]![0];
   expect(guard).toContain("#1 提交报告 [pending]");
+  expect(guard).toContain("保持原状");
   await handlers.get("input")!({ text: guard, source: "extension" }, ctx);
   await handlers.get("agent_settled")!({}, ctx);
   expect(sendUserMessage).toHaveBeenCalledTimes(1);
