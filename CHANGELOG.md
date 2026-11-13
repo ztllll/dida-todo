@@ -2,7 +2,7 @@
 
 All notable user-visible changes are recorded here. The project is released through pinned GitHub tags and does not publish to npm.
 
-## [Unreleased]
+0.9.5 之后的版本日志写在各版本 git tag 的正文里（`git tag -n99 <tag>` 查看），本文件不再更新。
 
 ## [0.9.5] - 2026-10-30
 
