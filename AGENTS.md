@@ -104,6 +104,6 @@ dsh-plugin/             dsh 组合包资源：index.mjs（构建产物，需提�
 
 1. 行为改动先写失败测试（`tests/dida-todo/`，用假 gateway），再改代码。
 2. 用户可见行为变化同步 README；调度、Poller、安装生命周期变化同步 README 的“调度”和“升级”两节。
-3. 发版按全局 AGENTS 的发版规则：tag 名 `V<YYYYMMDD><N>`，正文写版本日志。`package.json` 的 `version` 和 `tests/dida-todo/package.test.ts` 的版本断言用换算后的 `YYYY.MMDD.N`（各段不带前导零，如 `V202611131` ↔ `2026.1113.1`、`V202701051` ↔ `2027.105.1`）。`npm run check` 通过后提交、打 tag、推送。只走 GitHub，不发 npm。`CHANGELOG.md` 停在 0.9.5，不再更新。
+3. 发版按全局 AGENTS 的发版规则：版本号 `YYYY.MMDD.N`（各段不带前导零，如 `2026.1113.1`、`2027.105.1`）；`package.json` 的 `version`、`tests/dida-todo/package.test.ts` 的版本断言和 tag 名用同一个号，tag 正文写版本日志。`npm run check` 通过后提交、打 tag、推送。只走 GitHub，不发 npm。`CHANGELOG.md` 停在 0.9.5，不再更新。
 4. 安装：等使用 dida-todo 的 Pi 进程空闲 → `pi install git:github.com/ztllll/dida-todo@<tag>` → 对每个已运行进程 `/reload`。
 5. dsh：仓库根 `package.json` 同时是 Pi 包（`pi.extensions`）与 dsh 组合包（`dsh.bundle`，DSH Hub 只认根清单）；`dsh-plugin/cordis.patch.yml` 只允许 `insert`，不得覆盖或禁用 dsh 自带行（测试强制），保证卸载即恢复原样。用户安装：`dsh plugin --profile web add "github:ztllll/dida-todo#<tag>"`；仓库带 `dsh-plugin` topic，DSH Hub 自动收录。
